@@ -1,0 +1,213 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Social Media{% endblock %}
+
+{% block content %}
+<div class="page-header page-header--flex">
+  <div>
+    <h1 class="page-title">Social Media</h1>
+    <p class="page-subtitle">Track social media mentions and engagement</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('addSocialModal')">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Add Post
+  </button>
+</div>
+
+<!-- Filters & Search card -->
+<div class="filter-card">
+  <h3 class="filter-card-title">Filters &amp; Search</h3>
+  <form method="get" id="filterForm">
+    <div class="filter-row">
+      <div class="search-input-wrap">
+        <svg class="search-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" name="q" value="{{ q }}" class="search-input-field" placeholder="Search posts..." />
+      </div>
+      <select name="platform" class="filter-select" onchange="this.form.submit()">
+        <option value="">All Platforms</option>
+        {% for val, label in platform_choices %}
+        <option value="{{ val }}" {% if selected_platform == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="sentiment" class="filter-select" onchange="this.form.submit()">
+        <option value="">All Sentiments</option>
+        {% for val, label in sentiment_choices %}
+        <option value="{{ val }}" {% if selected_sentiment == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="country" class="filter-select" onchange="this.form.submit()">
+        <option value="">All Countries</option>
+        {% for c in countries %}
+        <option value="{{ c }}" {% if selected_country == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-row filter-row--dates">
+      <button type="button" class="date-btn" onclick="toggleDate('startDate')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        {% if date_from %}{{ date_from }}{% else %}Start date{% endif %}
+      </button>
+      <input type="date" name="date_from" id="startDate" value="{{ date_from }}" class="hidden-date-input" onchange="this.form.submit()" />
+      <button type="button" class="date-btn" onclick="toggleDate('endDate')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        {% if date_to %}{{ date_to }}{% else %}End date{% endif %}
+      </button>
+      <input type="date" name="date_to" id="endDate" value="{{ date_to }}" class="hidden-date-input" onchange="this.form.submit()" />
+      {% if q or selected_platform or selected_sentiment or selected_country or date_from or date_to %}
+      <a href="?" class="btn btn-secondary btn-sm">Clear filters</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<!-- Table -->
+<div class="table-card">
+  <h3 class="table-section-title">Posts ({{ total }})</h3>
+  <table class="data-table table table-hover">
+    <thead>
+      <tr>
+        <th>Message</th>
+        <th>Page Name</th>
+        <th>Platform</th>
+        <th>Date <span class="sort-icon">↑↓</span></th>
+        <th>Country</th>
+        <th>Sentiment</th>
+        <th>AVE <span class="sort-icon">↑↓</span></th>
+        <th>Reach <span class="sort-icon">↑↓</span></th>
+        <th>Relevancy <span class="sort-icon">↑↓</span></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in posts %}
+      <tr>
+        <td><a href="{{ p.url }}" target="_blank" class="table-link">{{ p.headline|truncatechars:50 }}</a></td>
+        <td class="fw-medium">{{ p.page_name|default:"—" }}</td>
+        <td>
+          <span class="type-badge type-badge--{{ p.platform|lower }}">{{ p.platform }}</span>
+        </td>
+        <td class="text-muted">{{ p.date_published|date:"M j, Y" }}</td>
+        <td class="text-muted">{{ p.country|default:"Unknown" }}</td>
+        <td><span class="badge badge--{{ p.sentiment }}">{{ p.get_sentiment_display }}</span></td>
+        <td class="text-muted">{{ p.ave|floatformat:0 }}</td>
+        <td class="text-muted">{{ p.reach|default:0 }}</td>
+        <td class="text-muted">{{ p.relevancy|floatformat:2 }}</td>
+        <td>
+          <div class="row-menu-wrap">
+            <button class="row-menu-btn" onclick="toggleRowMenu(this)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+            </button>
+            <div class="row-menu hidden">
+              <button class="row-menu-item row-menu-item--danger" onclick="closeMeAndRun(this, () => deletePost({{ p.id }}))">Delete</button>
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="10" class="table-empty">No social posts yet. Add the first one above.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Add Modal -->
+<div class="modal-overlay hidden" id="addSocialModal">
+  <div class="modal modal--lg">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Add Social Media Post</h2>
+        <p class="modal-subtitle">Add a new social media mention</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('addSocialModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Headline / Content</label>
+        <input type="text" id="sHeadline" class="form-control" placeholder="Post content or headline" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Platform</label>
+          <select id="sPlatform" class="form-select">
+            {% for val, label in platform_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Page Name</label>
+          <input type="text" id="sPageName" class="form-control" placeholder="Page or account name" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input type="url" id="sUrl" class="form-control" placeholder="https://..." />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Country</label>
+          <input type="text" id="sCountry" class="form-control" value="Botswana" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Sentiment</label>
+          <select id="sSentiment" class="form-select">
+            {% for val, label in sentiment_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">AVE</label>
+          <input type="number" id="sAve" class="form-control" placeholder="0" step="0.01" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Reach</label>
+          <input type="number" id="sReach" class="form-control" placeholder="0" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Relevancy</label>
+          <input type="number" id="sRelevancy" class="form-control" placeholder="0.00" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date Published</label>
+          <input type="date" id="sDate" class="form-control" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('addSocialModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addPost()">Add Post</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ORG_ID = '{{ org.id }}';
+
+function addPost() {
+  const headline = document.getElementById('sHeadline').value.trim();
+  if (!headline) return alert('Headline is required');
+  apiRequest(`/api/${ORG_ID}/social/`, 'POST', {
+    platform: document.getElementById('sPlatform').value,
+    page_name: document.getElementById('sPageName').value.trim(),
+    headline,
+    url: document.getElementById('sUrl').value.trim(),
+    country: document.getElementById('sCountry').value.trim(),
+    sentiment: document.getElementById('sSentiment').value,
+    ave: document.getElementById('sAve').value || 0,
+    reach: document.getElementById('sReach').value || 0,
+    relevancy: document.getElementById('sRelevancy').value || 0,
+    date_published: document.getElementById('sDate').value,
+  }).then(() => { closeModal('addSocialModal'); location.reload(); });
+}
+
+function deletePost(id) {
+  if (!confirm('Delete this post?')) return;
+  apiRequest(`/api/${ORG_ID}/social/${id}/delete/`, 'DELETE').then(() => location.reload());
+}
+function toggleDate(id) { document.getElementById(id).showPicker?.() || document.getElementById(id).click(); }
+</script>
+{% endblock %}

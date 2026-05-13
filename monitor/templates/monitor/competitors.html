@@ -1,0 +1,93 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Competitors{% endblock %}
+
+{% block content %}
+<div class="page-header page-header--flex">
+  <div>
+    <h1 class="page-title">Competitors</h1>
+    <p class="page-subtitle">Track and compare competitor coverage</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('addCompModal')">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Add Competitor
+  </button>
+</div>
+
+{% if competitors %}
+<div class="competitors-grid">
+  {% for comp in competitors %}
+  <div class="comp-card">
+    <div class="comp-card-header">
+      <div class="comp-avatar">{{ comp.name|first|upper }}</div>
+      <div class="comp-info">
+        <h3 class="comp-name">{{ comp.name }}</h3>
+        {% if comp.website %}
+        <a href="{{ comp.website }}" target="_blank" class="comp-website">{{ comp.website }}</a>
+        {% endif %}
+      </div>
+      <button class="icon-btn icon-btn--danger" onclick="deleteComp({{ comp.id }},'{{ comp.name|escapejs }}')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+      </button>
+    </div>
+    {% if comp.notes %}
+    <p class="comp-notes">{{ comp.notes }}</p>
+    {% endif %}
+    <div class="comp-added">Added {{ comp.created_at|date:"M j, Y" }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state-card">
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+  <h3>No competitors added yet</h3>
+  <p>Add competitor organisations to track their media coverage.</p>
+  <button class="btn btn-primary" onclick="openModal('addCompModal')">Add your first competitor</button>
+</div>
+{% endif %}
+
+<div class="modal-overlay hidden" id="addCompModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Add Competitor</h2>
+      <button class="modal-close" onclick="closeModal('addCompModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Competitor Name *</label>
+        <input type="text" id="compName" class="form-control" placeholder="Organisation name" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Website</label>
+        <input type="url" id="compWebsite" class="form-control" placeholder="https://competitor.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea id="compNotes" class="form-control form-textarea" placeholder="Any notes about this competitor..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('addCompModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addComp()">Add Competitor</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ORG_ID = '{{ org.id }}';
+function addComp() {
+  const name = document.getElementById('compName').value.trim();
+  if (!name) return alert('Name is required');
+  apiRequest(`/api/${ORG_ID}/competitors/`, 'POST', {
+    name,
+    website: document.getElementById('compWebsite').value.trim(),
+    notes: document.getElementById('compNotes').value.trim(),
+  }).then(() => { closeModal('addCompModal'); location.reload(); });
+}
+function deleteComp(id, name) {
+  if (!confirm(`Remove "${name}" from competitors?`)) return;
+  apiRequest(`/api/${ORG_ID}/competitors/${id}/delete/`, 'DELETE').then(() => location.reload());
+}
+</script>
+{% endblock %}

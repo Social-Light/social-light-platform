@@ -1,0 +1,185 @@
+{% extends 'monitor/base.html' %}
+{% block title %}User Management{% endblock %}
+
+{% block content %}
+<div class="page-header page-header--flex">
+  <div>
+    <h1 class="page-title">User Management</h1>
+    <p class="page-subtitle">Manage platform users and their roles</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('addUserModal')">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Create User
+  </button>
+</div>
+
+<div class="table-card">
+  <h3 class="table-section-title">All Users</h3>
+  <table class="data-table table table-hover">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Organization</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>
+          <div class="user-cell">
+            <div class="user-avatar-sm">{{ u.get_initials }}</div>
+            <span>{{ u.get_full_name|default:u.username }}</span>
+          </div>
+        </td>
+        <td class="text-muted">{{ u.email }}</td>
+        <td>
+          <span class="badge badge--blue">{{ u.get_role_display_name }}</span>
+        </td>
+        <td class="text-muted">{{ u.organization.name|default:"—" }}</td>
+        <td>
+          <div class="action-btns">
+            <button class="icon-btn" title="Edit" onclick="editUser({{ u.id }},'{{ u.first_name|escapejs }}','{{ u.last_name|escapejs }}','{{ u.email|escapejs }}','{{ u.role }}')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            {% if u != request.user %}
+            <button class="icon-btn icon-btn--danger" title="Delete" onclick="deleteUser({{ u.id }},'{{ u.get_full_name|escapejs }}')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="table-empty">No users yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Create User Modal -->
+<div class="modal-overlay hidden" id="addUserModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Create User</h2>
+      <button class="modal-close" onclick="closeModal('addUserModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">First Name</label>
+          <input type="text" id="uFirst" class="form-control" placeholder="First name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name</label>
+          <input type="text" id="uLast" class="form-control" placeholder="Last name" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" id="uEmail" class="form-control" placeholder="user@example.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input type="password" id="uPassword" class="form-control" placeholder="Temporary password" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Role</label>
+        <select id="uRole" class="form-select">
+          {% for val, label in role_choices %}
+          <option value="{{ val }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('addUserModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createUser()">Create User</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal-overlay hidden" id="editUserModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Edit User</h2>
+      <button class="modal-close" onclick="closeModal('editUserModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editUserId" />
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">First Name</label>
+          <input type="text" id="editUFirst" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name</label>
+          <input type="text" id="editULast" class="form-control" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" id="editUEmail" class="form-control" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Role</label>
+        <select id="editURole" class="form-select">
+          {% for val, label in role_choices %}
+          <option value="{{ val }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('editUserModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()">Save Changes</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ORG_ID = '{{ org.id }}';
+
+function createUser() {
+  const first = document.getElementById('uFirst').value.trim();
+  const email = document.getElementById('uEmail').value.trim();
+  if (!first || !email) return alert('First name and email are required');
+  apiRequest(`/api/${ORG_ID}/users/`, 'POST', {
+    first_name: first,
+    last_name: document.getElementById('uLast').value.trim(),
+    email,
+    password: document.getElementById('uPassword').value || 'changeme123',
+    role: document.getElementById('uRole').value,
+  }).then(() => { closeModal('addUserModal'); location.reload(); });
+}
+
+function editUser(id, first, last, email, role) {
+  document.getElementById('editUserId').value = id;
+  document.getElementById('editUFirst').value = first;
+  document.getElementById('editULast').value = last;
+  document.getElementById('editUEmail').value = email;
+  document.getElementById('editURole').value = role;
+  openModal('editUserModal');
+}
+
+function saveUser() {
+  const id = document.getElementById('editUserId').value;
+  apiRequest(`/api/${ORG_ID}/users/${id}/`, 'PUT', {
+    first_name: document.getElementById('editUFirst').value.trim(),
+    last_name: document.getElementById('editULast').value.trim(),
+    email: document.getElementById('editUEmail').value.trim(),
+    role: document.getElementById('editURole').value,
+  }).then(() => { closeModal('editUserModal'); location.reload(); });
+}
+
+function deleteUser(id, name) {
+  if (!confirm(`Delete user "${name}"?`)) return;
+  apiRequest(`/api/${ORG_ID}/users/${id}/delete/`, 'DELETE').then(() => location.reload());
+}
+</script>
+{% endblock %}

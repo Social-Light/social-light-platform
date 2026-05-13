@@ -1,0 +1,165 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Alerts{% endblock %}
+
+{% block content %}
+<div class="page-header page-header--flex">
+  <div>
+    <h1 class="page-title">Alerts Management</h1>
+    <p class="page-subtitle">Configure and manage media monitoring alerts</p>
+  </div>
+  <div class="header-actions">
+    <div class="search-input-wrap">
+      <svg class="search-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="alertSearch" class="search-input-field" placeholder="Search alerts..." oninput="filterAlerts(this.value)" />
+    </div>
+    <button class="btn btn-primary" onclick="openModal('addAlertModal')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Create Alert
+    </button>
+  </div>
+</div>
+
+{% if alerts %}
+<div class="table-card">
+  <h3 class="table-section-title">Active Alerts ({{ alerts|length }})</h3>
+  <table class="data-table table table-hover" id="alertsTable">
+    <thead>
+      <tr>
+        <th>Alert Name</th>
+        <th>Keywords</th>
+        <th>Recipients</th>
+        <th>Schedule</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in alerts %}
+      <tr data-name="{{ a.name|lower }}">
+        <td>
+          <div class="alert-name-cell">
+            <span class="fw-medium">{{ a.name }}</span>
+            {% if a.email_subject %}<span class="alert-subject">{{ a.email_subject|truncatechars:40 }}</span>{% endif %}
+          </div>
+        </td>
+        <td class="text-muted">{{ a.keywords|truncatechars:45 }}</td>
+        <td>
+          <div class="recipients-cell">
+            {% if a.email %}
+            <div class="recipient-avatar" title="{{ a.email }}">{{ a.email|first|upper }}</div>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </div>
+        </td>
+        <td class="text-muted">{{ a.get_frequency_display }}</td>
+        <td>
+          <span class="badge badge--{% if a.is_active %}green{% else %}gray{% endif %}">
+            {% if a.is_active %}Active{% else %}Paused{% endif %}
+          </span>
+        </td>
+        <td>
+          <div class="row-menu-wrap">
+            <button class="row-menu-btn" onclick="toggleRowMenu(this)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+            </button>
+            <div class="row-menu hidden">
+              <button class="row-menu-item row-menu-item--danger" onclick="closeMeAndRun(this, () => deleteAlert({{ a.id }}))">Delete</button>
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state-card">
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+  <h3>No alerts configured</h3>
+  <p>Create alerts to get notified when your keywords are mentioned in the media.</p>
+  <button class="btn btn-primary" onclick="openModal('addAlertModal')">Create your first alert</button>
+</div>
+{% endif %}
+
+<!-- Create Alert Modal -->
+<div class="modal-overlay hidden" id="addAlertModal">
+  <div class="modal modal--lg">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Create Alert</h2>
+        <p class="modal-subtitle">Set up a new media monitoring alert</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('addAlertModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Alert Name *</label>
+        <input type="text" id="alertName" class="form-control" placeholder="e.g. Brand mentions" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email Subject</label>
+        <input type="text" id="alertSubject" class="form-control" placeholder="e.g. Daily Media Digest — Brand Mentions" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Keywords (comma-separated)</label>
+        <input type="text" id="alertKeywords" class="form-control" placeholder="keyword1, keyword2, keyword3" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Notification Email</label>
+          <input type="email" id="alertEmail" class="form-control" placeholder="you@example.com" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Schedule / Frequency</label>
+          <select id="alertFreq" class="form-select">
+            <option value="immediate">Immediate</option>
+            <option value="daily" selected>Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Start Date</label>
+        <input type="date" id="alertStartDate" class="form-control" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('addAlertModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createAlert()">Create Alert</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ORG_ID = '{{ org.id }}';
+
+function createAlert() {
+  const name = document.getElementById('alertName').value.trim();
+  if (!name) return alert('Name is required');
+  apiRequest(`/api/${ORG_ID}/alerts/`, 'POST', {
+    name,
+    email_subject: document.getElementById('alertSubject').value.trim(),
+    keywords: document.getElementById('alertKeywords').value.trim(),
+    email: document.getElementById('alertEmail').value.trim(),
+    frequency: document.getElementById('alertFreq').value,
+    start_date: document.getElementById('alertStartDate').value || null,
+  }).then(() => { closeModal('addAlertModal'); location.reload(); });
+}
+
+function deleteAlert(id) {
+  if (!confirm('Delete this alert?')) return;
+  apiRequest(`/api/${ORG_ID}/alerts/${id}/delete/`, 'DELETE').then(() => location.reload());
+}
+
+function filterAlerts(q) {
+  const rows = document.querySelectorAll('#alertsTable tbody tr');
+  rows.forEach(r => {
+    r.style.display = r.dataset.name.includes(q.toLowerCase()) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

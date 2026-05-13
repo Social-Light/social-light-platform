@@ -1,0 +1,37 @@
+{% extends 'monitor/base.html' %}
+{% block title %}FAQs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">FAQs</h1>
+  <p class="page-subtitle">Frequently asked questions about the platform</p>
+</div>
+
+<div class="faqs-list">
+  {% for faq in faqs_data %}
+  <div class="faq-item">
+    <button class="faq-question" onclick="toggleFaq(this)">
+      {{ faq.q }}
+      <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <div class="faq-answer hidden">{{ faq.a }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleFaq(btn) {
+  const answer = btn.nextElementSibling;
+  const chevron = btn.querySelector('.faq-chevron');
+  const isOpen = !answer.classList.contains('hidden');
+  document.querySelectorAll('.faq-answer').forEach(a => a.classList.add('hidden'));
+  document.querySelectorAll('.faq-chevron').forEach(c => c.style.transform = '');
+  if (!isOpen) {
+    answer.classList.remove('hidden');
+    chevron.style.transform = 'rotate(180deg)';
+  }
+}
+</script>
+{% endblock %}

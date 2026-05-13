@@ -1,0 +1,319 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Online Media{% endblock %}
+
+{% block content %}
+<div class="page-header page-header--flex">
+  <div>
+    <h1 class="page-title">Online Media</h1>
+    <p class="page-subtitle">Manage and track online media coverage</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('addOnlineModal')">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Add Article
+  </button>
+</div>
+
+<!-- Filters & Search card -->
+<div class="filter-card">
+  <h3 class="filter-card-title">Filters &amp; Search</h3>
+  <form method="get" id="filterForm">
+    <div class="filter-row">
+      <div class="search-input-wrap">
+        <svg class="search-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" name="q" value="{{ q }}" class="search-input-field" placeholder="Search articles..." />
+      </div>
+      <select name="sentiment" class="filter-select" onchange="this.form.submit()">
+        <option value="">All Sentiments</option>
+        {% for val, label in sentiment_choices %}
+        <option value="{{ val }}" {% if selected_sentiment == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="coverage" class="filter-select" onchange="this.form.submit()">
+        <option value="">All Coverage Types</option>
+        {% for val, label in coverage_choices %}
+        <option value="{{ val }}" {% if selected_coverage == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="country" class="filter-select" onchange="this.form.submit()">
+        <option value="">All Countries</option>
+        {% for c in countries %}
+        <option value="{{ c }}" {% if selected_country == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-row filter-row--dates">
+      <button type="button" class="date-btn" onclick="toggleDate('startDate')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        {% if date_from %}{{ date_from }}{% else %}Start date{% endif %}
+      </button>
+      <input type="date" name="date_from" id="startDate" value="{{ date_from }}" class="hidden-date-input" onchange="this.form.submit()" />
+      <button type="button" class="date-btn" onclick="toggleDate('endDate')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        {% if date_to %}{{ date_to }}{% else %}End date{% endif %}
+      </button>
+      <input type="date" name="date_to" id="endDate" value="{{ date_to }}" class="hidden-date-input" onchange="this.form.submit()" />
+      {% if q or selected_sentiment or selected_coverage or selected_country or date_from or date_to %}
+      <a href="?" class="btn btn-secondary btn-sm">Clear filters</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<!-- Table -->
+<div class="table-card">
+  <h3 class="table-section-title">Articles ({{ total }})</h3>
+  <table class="data-table table table-hover">
+    <thead>
+      <tr>
+        <th>Source</th>
+        <th>Headline</th>
+        <th>Country</th>
+        <th>Date <span class="sort-icon">↑↓</span></th>
+        <th>Sentiment</th>
+        <th>Coverage</th>
+        <th>AVE <span class="sort-icon">↑↓</span></th>
+        <th>Reach <span class="sort-icon">↑↓</span></th>
+        <th>Relevancy <span class="sort-icon">↑↓</span></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in articles %}
+      <tr>
+        <td>
+          <div class="source-cell">
+            <div class="source-icon">{{ a.source|first|upper }}</div>
+            <span class="fw-medium">{{ a.source }}</span>
+          </div>
+        </td>
+        <td><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:45 }}</a></td>
+        <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
+        <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
+        <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
+        <td><span class="coverage-pill">{{ a.coverage|default:"Not Set" }}</span></td>
+        <td class="text-muted">{{ a.ave|floatformat:0 }}</td>
+        <td class="text-muted">{{ a.reach|default:0 }}</td>
+        <td class="text-muted">{{ a.relevancy|floatformat:2 }}</td>
+        <td>
+          <div class="row-menu-wrap">
+            <button class="row-menu-btn" onclick="toggleRowMenu(this)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+            </button>
+            <div class="row-menu hidden">
+              <button class="row-menu-item" onclick="closeMeAndRun(this, () => editOnline({{ a.id }},'{{ a.source|escapejs }}','{{ a.headline|escapejs }}','{{ a.url|escapejs }}','{{ a.country|escapejs }}','{{ a.sentiment }}',{{ a.ave }},'{{ a.coverage }}',{{ a.reach }},{{ a.relevancy }},'{{ a.date_published|date:"Y-m-d" }}'))">Edit</button>
+              <button class="row-menu-item row-menu-item--danger" onclick="closeMeAndRun(this, () => deleteArticle({{ a.id }}))">Delete</button>
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="10" class="table-empty">No online articles yet. Add the first one above.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Add Modal -->
+<div class="modal-overlay hidden" id="addOnlineModal">
+  <div class="modal modal--lg">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Add Online Article</h2>
+        <p class="modal-subtitle">Add a new online media coverage entry</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('addOnlineModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Headline</label>
+        <input type="text" id="oHeadline" class="form-control" placeholder="Article headline" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Source / Publisher</label>
+          <input type="text" id="oSource" class="form-control" placeholder="e.g. Botswana Gazette" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Coverage Type</label>
+          <select id="oCoverage" class="form-select">
+            {% for val, label in coverage_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input type="url" id="oUrl" class="form-control" placeholder="https://..." />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Country</label>
+          <input type="text" id="oCountry" class="form-control" value="Botswana" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Sentiment</label>
+          <select id="oSentiment" class="form-select">
+            {% for val, label in sentiment_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">AVE</label>
+          <input type="number" id="oAve" class="form-control" placeholder="0" step="0.01" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Reach</label>
+          <input type="number" id="oReach" class="form-control" placeholder="0" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Relevancy</label>
+          <input type="number" id="oRelevancy" class="form-control" placeholder="0.00" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date Published</label>
+          <input type="date" id="oDate" class="form-control" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('addOnlineModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addArticle()">Add Article</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay hidden" id="editOnlineModal">
+  <div class="modal modal--lg">
+    <div class="modal-header">
+      <h2 class="modal-title">Edit Article</h2>
+      <button class="modal-close" onclick="closeModal('editOnlineModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editOnlineId" />
+      <div class="form-group">
+        <label class="form-label">Headline</label>
+        <input type="text" id="editOHeadline" class="form-control" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Source</label>
+          <input type="text" id="editOSource" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Coverage</label>
+          <select id="editOCoverage" class="form-select">
+            {% for val, label in coverage_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input type="url" id="editOUrl" class="form-control" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Country</label>
+          <input type="text" id="editOCountry" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Sentiment</label>
+          <select id="editOSentiment" class="form-select">
+            {% for val, label in sentiment_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">AVE</label>
+          <input type="number" id="editOAve" class="form-control" step="0.01" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Reach</label>
+          <input type="number" id="editOReach" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Relevancy</label>
+          <input type="number" id="editORelevancy" class="form-control" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date Published</label>
+          <input type="date" id="editODate" class="form-control" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('editOnlineModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveArticle()">Save Changes</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ORG_ID = '{{ org.id }}';
+
+function addArticle() {
+  const headline = document.getElementById('oHeadline').value.trim();
+  if (!headline) return alert('Headline is required');
+  apiRequest(`/api/${ORG_ID}/online/`, 'POST', {
+    source: document.getElementById('oSource').value.trim(),
+    headline,
+    url: document.getElementById('oUrl').value.trim(),
+    country: document.getElementById('oCountry').value.trim(),
+    sentiment: document.getElementById('oSentiment').value,
+    ave: document.getElementById('oAve').value || 0,
+    coverage: document.getElementById('oCoverage').value,
+    reach: document.getElementById('oReach').value || 0,
+    relevancy: document.getElementById('oRelevancy').value || 0,
+    date_published: document.getElementById('oDate').value,
+  }).then(() => { closeModal('addOnlineModal'); location.reload(); });
+}
+
+function editOnline(id, source, headline, url, country, sentiment, ave, coverage, reach, relevancy, date) {
+  document.getElementById('editOnlineId').value = id;
+  document.getElementById('editOSource').value = source;
+  document.getElementById('editOHeadline').value = headline;
+  document.getElementById('editOUrl').value = url;
+  document.getElementById('editOCountry').value = country;
+  document.getElementById('editOSentiment').value = sentiment;
+  document.getElementById('editOAve').value = ave;
+  document.getElementById('editOCoverage').value = coverage;
+  document.getElementById('editOReach').value = reach;
+  document.getElementById('editORelevancy').value = relevancy;
+  document.getElementById('editODate').value = date;
+  openModal('editOnlineModal');
+}
+
+function saveArticle() {
+  const id = document.getElementById('editOnlineId').value;
+  apiRequest(`/api/${ORG_ID}/online/${id}/`, 'PUT', {
+    source: document.getElementById('editOSource').value.trim(),
+    headline: document.getElementById('editOHeadline').value.trim(),
+    url: document.getElementById('editOUrl').value.trim(),
+    country: document.getElementById('editOCountry').value.trim(),
+    sentiment: document.getElementById('editOSentiment').value,
+    ave: document.getElementById('editOAve').value || 0,
+    coverage: document.getElementById('editOCoverage').value,
+    reach: document.getElementById('editOReach').value || 0,
+    relevancy: document.getElementById('editORelevancy').value || 0,
+    date_published: document.getElementById('editODate').value,
+  }).then(() => { closeModal('editOnlineModal'); location.reload(); });
+}
+
+function deleteArticle(id) {
+  if (!confirm('Delete this article?')) return;
+  apiRequest(`/api/${ORG_ID}/online/${id}/delete/`, 'DELETE').then(() => location.reload());
+}
+function toggleDate(id) { document.getElementById(id).showPicker?.() || document.getElementById(id).click(); }
+</script>
+{% endblock %}

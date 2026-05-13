@@ -1,0 +1,256 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header page-header--flex">
+  <div>
+    <h1 class="page-title">Analytics</h1>
+    <p class="page-subtitle">Comprehensive analytics and insights</p>
+  </div>
+  <div class="header-actions">
+    <a href="{% url 'monitor:reports' org.id %}" class="btn btn-primary">Create Report</a>
+    <div class="dropdown-wrap">
+      <select class="btn-dropdown" onchange="window.location='/app/analytics/{{ org.id }}/?type='+this.value">
+        <option value="social" {% if media_type == 'social' %}selected{% endif %}>Social Posts</option>
+        <option value="online" {% if media_type == 'online' %}selected{% endif %}>Online Media</option>
+        <option value="broadcast" {% if media_type == 'broadcast' %}selected{% endif %}>Broadcast</option>
+        <option value="print" {% if media_type == 'print' %}selected{% endif %}>Print</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Stats Row -->
+<div class="stats-grid stats-grid--4">
+  <div class="stat-card stat-card--blue">
+    <div class="stat-card-inner">
+      <div class="stat-label">Total Mentions</div>
+      <div class="stat-value">{{ total }}</div>
+      <div class="stat-trend trend-flat">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Same as last year
+      </div>
+    </div>
+    <a href="#" class="stat-card-link">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+    </a>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-card-inner">
+      <div class="stat-label">This Month</div>
+      <div class="stat-value">{{ this_month }}</div>
+      <div class="stat-trend trend-flat">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Same as last month
+      </div>
+    </div>
+    <a href="#" class="stat-card-link">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+    </a>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-card-inner">
+      <div class="stat-label">Active Topics</div>
+      <div class="stat-tags-value">
+        {% for t in active_topics %}
+        <span class="topic-tag topic-tag--{{ forloop.counter|divisibleby:2|yesno:'blue,green' }}">{{ t }}</span>
+        {% empty %}
+        <span class="text-muted" style="font-size:13px;">—</span>
+        {% endfor %}
+      </div>
+    </div>
+    <a href="#" class="stat-card-link">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+    </a>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-card-inner">
+      <div class="stat-label">Total AVE</div>
+      <div class="stat-value">{{ total_ave|floatformat:0 }}</div>
+      <div class="stat-trend trend-flat">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Social Media
+      </div>
+    </div>
+    <a href="#" class="stat-card-link">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+    </a>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs-bar">
+  <button class="tab-btn active" data-tab="overview">Overview</button>
+  <button class="tab-btn" data-tab="keywords">Keywords</button>
+  <button class="tab-btn" data-tab="sources">Sources</button>
+  <button class="tab-btn" data-tab="geography">Geography</button>
+</div>
+
+<!-- Overview Tab -->
+<div class="tab-content active" id="tab-overview">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <h3 class="chart-title">{{ title }} Over the Years</h3>
+      <p class="chart-subtitle">Historical trend of mentions over the past years</p>
+    </div>
+    <div class="chart-body">
+      <canvas id="yearlyTrendChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Sentiment breakdown -->
+  <div class="sentiment-card">
+    <h3 class="chart-title" style="margin-bottom:16px;">Sentiment Breakdown</h3>
+    {% with total_sent=pos|add:neu|add:neg %}
+    {% if total_sent > 0 %}
+    <div class="sentiment-bars">
+      <div class="sentiment-row">
+        <span class="sentiment-label sentiment-label--positive">Positive</span>
+        <div class="sentiment-bar-outer">
+          <div class="sentiment-bar-inner sentiment-bar-inner--positive" style="width:{% widthratio pos total_sent 100 %}%"></div>
+        </div>
+        <span class="sentiment-pct">{{ pos }}</span>
+      </div>
+      <div class="sentiment-row">
+        <span class="sentiment-label sentiment-label--neutral">Neutral</span>
+        <div class="sentiment-bar-outer">
+          <div class="sentiment-bar-inner sentiment-bar-inner--neutral" style="width:{% widthratio neu total_sent 100 %}%"></div>
+        </div>
+        <span class="sentiment-pct">{{ neu }}</span>
+      </div>
+      <div class="sentiment-row">
+        <span class="sentiment-label sentiment-label--negative">Negative</span>
+        <div class="sentiment-bar-outer">
+          <div class="sentiment-bar-inner sentiment-bar-inner--negative" style="width:{% widthratio neg total_sent 100 %}%"></div>
+        </div>
+        <span class="sentiment-pct">{{ neg }}</span>
+      </div>
+    </div>
+    {% else %}
+    <p class="text-muted">No sentiment data yet.</p>
+    {% endif %}
+    {% endwith %}
+  </div>
+</div>
+
+<!-- Keywords Tab -->
+<div class="tab-content hidden" id="tab-keywords">
+  <div class="chart-card">
+    <h3 class="chart-title" style="margin-bottom:16px;">Active Keywords</h3>
+    {% if active_topics %}
+    <div class="keyword-list">
+      {% for t in active_topics %}
+      <div class="keyword-row">
+        <span class="keyword-label">{{ t }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted">No keywords configured. <a href="{% url 'monitor:dashboard' org.id %}">Add keywords from the dashboard.</a></p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Sources Tab -->
+<div class="tab-content hidden" id="tab-sources">
+  <div class="chart-card">
+    <h3 class="chart-title" style="margin-bottom:16px;">Top Sources</h3>
+    {% if top_sources %}
+    <table class="data-table table table-hover">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Count</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in top_sources %}
+        <tr>
+          <td>{{ s.source|default:s.platform|default:"Unknown" }}</td>
+          <td>{{ s.c }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No source data yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Geography Tab -->
+<div class="tab-content hidden" id="tab-geography">
+  <div class="chart-card">
+    <h3 class="chart-title" style="margin-bottom:16px;">Coverage by Country</h3>
+    {% if top_countries %}
+    <table class="data-table table table-hover">
+      <thead>
+        <tr>
+          <th>Country</th>
+          <th>Mentions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in top_countries %}
+        <tr>
+          <td>{{ c.country }}</td>
+          <td>{{ c.c }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No geographic data yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(p => { p.classList.add('hidden'); p.classList.remove('active'); });
+    btn.classList.add('active');
+    const panel = document.getElementById('tab-' + btn.dataset.tab);
+    if (panel) { panel.classList.remove('hidden'); panel.classList.add('active'); }
+  });
+});
+
+// Yearly trend chart
+const ctx = document.getElementById('yearlyTrendChart');
+if (ctx) {
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: {{ years_json|safe }},
+      datasets: [{
+        label: '{{ title }}',
+        data: {{ yearly_counts_json|safe }},
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.08)',
+        tension: 0.4,
+        fill: true,
+        borderWidth: 2,
+        pointRadius: 4,
+        pointBackgroundColor: '#3b82f6',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' }, border: { display: false } },
+        x: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { display: false }, border: { display: false } }
+      }
+    }
+  });
+}
+</script>
+{% endblock %}

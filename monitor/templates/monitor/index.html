@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% load static %}
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Media Monitor — Social Light</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <link rel="stylesheet" href="{% static 'monitor/css/main.css' %}" />
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">◎</div>
+      <span class="logo-text">SocialLight</span>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.4"/><rect x="9" y="1" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.4"/><rect x="1" y="9" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.4"/><rect x="9" y="9" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.4"/></svg>
+        Dashboard
+      </a>
+      <a href="#" class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.5v4l2.5 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        History
+      </a>
+      <a href="#" class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Reports
+      </a>
+      <a href="#" class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 13c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Settings
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-badge">Powered by Anthropic</div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1 class="page-title">Media Monitor</h1>
+        <span class="page-subtitle">Real-time brand intelligence</span>
+      </div>
+      <div class="topbar-right">
+        <div class="status-dot"></div>
+        <span class="status-text">Live</span>
+      </div>
+    </header>
+
+    <!-- Search -->
+    <section class="search-section">
+      <div class="search-bar">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <input type="text" id="brandInput" class="search-input" placeholder="Enter a brand, person, or keyword..." autocomplete="off" />
+        <button id="monitorBtn" class="monitor-btn">Monitor</button>
+      </div>
+      <div class="suggestions">
+        {% for s in suggestions %}
+        <button class="suggestion-chip" data-brand="{{ s }}">{{ s }}</button>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Loading state -->
+    <div id="loadingState" class="loading-state hidden">
+      <div class="loading-spinner">
+        <div class="spinner-ring"></div>
+      </div>
+      <p class="loading-label" id="loadingLabel">Scanning the web...</p>
+      <div class="loading-steps">
+        <div class="step" id="step1">Searching news & social media</div>
+        <div class="step" id="step2">Analysing sentiment</div>
+        <div class="step" id="step3">Generating insights</div>
+      </div>
+    </div>
+
+    <!-- Error state -->
+    <div id="errorState" class="error-state hidden">
+      <div class="error-icon">⚠</div>
+      <p id="errorMsg">Something went wrong. Please try again.</p>
+    </div>
+
+    <!-- Empty state -->
+    <div id="emptyState" class="empty-state">
+      <div class="empty-icon">◎</div>
+      <h2>Monitor any brand or keyword</h2>
+      <p>Enter a brand name above to scan for mentions, sentiment, and trending topics across the web.</p>
+    </div>
+
+    <!-- Results -->
+    <div id="resultsContainer" class="results hidden">
+
+      <!-- Summary banner -->
+      <div class="summary-banner">
+        <div class="summary-brand" id="summaryBrand">Brand Name</div>
+        <p class="summary-text" id="summaryText">Loading summary...</p>
+        <div class="trend-badge" id="trendBadge"></div>
+      </div>
+
+      <!-- Metric cards -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">Total mentions</div>
+          <div class="metric-value" id="metricMentions">—</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Est. reach</div>
+          <div class="metric-value" id="metricReach">—</div>
+        </div>
+        <div class="metric-card positive">
+          <div class="metric-label">Positive</div>
+          <div class="metric-value" id="metricPositive">—</div>
+        </div>
+        <div class="metric-card neutral">
+          <div class="metric-label">Neutral</div>
+          <div class="metric-value" id="metricNeutral">—</div>
+        </div>
+        <div class="metric-card negative">
+          <div class="metric-label">Negative</div>
+          <div class="metric-value" id="metricNegative">—</div>
+        </div>
+      </div>
+
+      <!-- Sentiment bar -->
+      <div class="sentiment-bar-card">
+        <div class="card-header">Sentiment breakdown</div>
+        <div class="sentiment-bar" id="sentimentBar">
+          <div class="sb-positive" id="sbPositive"></div>
+          <div class="sb-neutral" id="sbNeutral"></div>
+          <div class="sb-negative" id="sbNegative"></div>
+        </div>
+        <div class="sentiment-legend">
+          <span class="legend-dot positive"></span><span id="legPositive">Positive 0%</span>
+          <span class="legend-dot neutral"></span><span id="legNeutral">Neutral 0%</span>
+          <span class="legend-dot negative"></span><span id="legNegative">Negative 0%</span>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab active" data-tab="mentions">Mentions</button>
+        <button class="tab" data-tab="sentiment">Sentiment Trend</button>
+        <button class="tab" data-tab="trends">Trending Topics</button>
+        <button class="tab" data-tab="competitors">Competitors</button>
+      </div>
+
+      <!-- Tab: Mentions -->
+      <div class="tab-panel active" id="tab-mentions">
+        <div class="mentions-filters">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="positive">Positive</button>
+          <button class="filter-btn" data-filter="neutral">Neutral</button>
+          <button class="filter-btn" data-filter="negative">Negative</button>
+        </div>
+        <div id="mentionsList" class="mentions-list"></div>
+      </div>
+
+      <!-- Tab: Sentiment chart -->
+      <div class="tab-panel hidden" id="tab-sentiment">
+        <div class="chart-card">
+          <div class="chart-legend" id="sentChartLegend"></div>
+          <div class="chart-wrap">
+            <canvas id="sentimentChart" role="img" aria-label="Sentiment over time line chart">Sentiment trend data.</canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Trending Topics -->
+      <div class="tab-panel hidden" id="tab-trends">
+        <div id="trendsList" class="trends-list"></div>
+      </div>
+
+      <!-- Tab: Competitors -->
+      <div class="tab-panel hidden" id="tab-competitors">
+        <div id="competitorsList" class="competitors-list"></div>
+      </div>
+
+    </div><!-- /results -->
+
+  </main>
+
+  <script src="{% static 'monitor/js/app.js' %}"></script>
+</body>
+</html>

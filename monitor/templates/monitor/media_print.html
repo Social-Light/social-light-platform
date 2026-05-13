@@ -1,0 +1,289 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Print Media{% endblock %}
+
+{% block content %}
+<div class="page-header page-header--flex">
+  <div>
+    <h1 class="page-title">Print Media</h1>
+    <p class="page-subtitle">Manage print media coverage</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('addPrintModal')">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Add Article
+  </button>
+</div>
+
+<!-- Filters & Search card -->
+<div class="filter-card">
+  <h3 class="filter-card-title">Filters &amp; Search</h3>
+  <form method="get" id="filterForm">
+    <div class="filter-row">
+      <div class="search-input-wrap">
+        <svg class="search-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" name="q" value="{{ q }}" class="search-input-field" placeholder="Search articles..." />
+      </div>
+      <select name="section" class="filter-select" onchange="this.form.submit()">
+        <option value="">All Sections</option>
+        {% for s in sections %}
+        <option value="{{ s }}" {% if selected_section == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <select name="sentiment" class="filter-select" onchange="this.form.submit()">
+        <option value="">All Sentiments</option>
+        {% for val, label in sentiment_choices %}
+        <option value="{{ val }}" {% if selected_sentiment == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="country" class="filter-select" onchange="this.form.submit()">
+        <option value="">All Countries</option>
+        {% for c in countries %}
+        <option value="{{ c }}" {% if selected_country == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-row filter-row--dates">
+      <button type="button" class="date-btn" onclick="toggleDate('startDate')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        {% if date_from %}{{ date_from }}{% else %}Start date{% endif %}
+      </button>
+      <input type="date" name="date_from" id="startDate" value="{{ date_from }}" class="hidden-date-input" onchange="this.form.submit()" />
+      <button type="button" class="date-btn" onclick="toggleDate('endDate')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        {% if date_to %}{{ date_to }}{% else %}End date{% endif %}
+      </button>
+      <input type="date" name="date_to" id="endDate" value="{{ date_to }}" class="hidden-date-input" onchange="this.form.submit()" />
+      {% if q or selected_section or selected_sentiment or selected_country or date_from or date_to %}
+      <a href="?" class="btn btn-secondary btn-sm">Clear filters</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<!-- Table -->
+<div class="table-card">
+  <h3 class="table-section-title">Articles ({{ total }})</h3>
+  <table class="data-table table table-hover">
+    <thead>
+      <tr>
+        <th>Headline</th>
+        <th>Publisher</th>
+        <th>Author</th>
+        <th>Section</th>
+        <th>Country</th>
+        <th>Date <span class="sort-icon">↑↓</span></th>
+        <th>Sentiment</th>
+        <th>AVE <span class="sort-icon">↑↓</span></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in articles %}
+      <tr>
+        <td><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:50 }}</a></td>
+        <td class="fw-medium">{{ a.source }}</td>
+        <td class="text-muted">{{ a.author|default:"—" }}</td>
+        <td><span class="section-pill">{{ a.section|default:"Main" }}</span></td>
+        <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
+        <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
+        <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
+        <td class="text-muted">{{ a.ave|floatformat:0 }}</td>
+        <td>
+          <div class="row-menu-wrap">
+            <button class="row-menu-btn" onclick="toggleRowMenu(this)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+            </button>
+            <div class="row-menu hidden">
+              <button class="row-menu-item" onclick="closeMeAndRun(this, () => editPrint({{ a.id }},'{{ a.source|escapejs }}','{{ a.headline|escapejs }}','{{ a.author|escapejs }}','{{ a.section|escapejs }}','{{ a.url|escapejs }}','{{ a.country|escapejs }}','{{ a.sentiment }}',{{ a.ave }},'{{ a.date_published|date:"Y-m-d" }}'))">Edit</button>
+              <button class="row-menu-item row-menu-item--danger" onclick="closeMeAndRun(this, () => deleteArticle({{ a.id }}))">Delete</button>
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" class="table-empty">No print articles yet. Add the first one above.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Add Modal -->
+<div class="modal-overlay hidden" id="addPrintModal">
+  <div class="modal modal--lg">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Add Print Article</h2>
+        <p class="modal-subtitle">Add a new print media coverage entry</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('addPrintModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Headline</label>
+        <input type="text" id="pHeadline" class="form-control" placeholder="Article headline or title" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Publisher</label>
+          <input type="text" id="pSource" class="form-control" placeholder="Publisher name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Author</label>
+          <input type="text" id="pAuthor" class="form-control" placeholder="Author name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Section</label>
+          <input type="text" id="pSection" class="form-control" placeholder="e.g. Business, Main" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input type="url" id="pUrl" class="form-control" placeholder="https://..." />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Country</label>
+          <input type="text" id="pCountry" class="form-control" value="Botswana" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Sentiment</label>
+          <select id="pSentiment" class="form-select">
+            {% for val, label in sentiment_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">AVE</label>
+          <input type="number" id="pAve" class="form-control" placeholder="0" step="0.01" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date Published</label>
+        <input type="date" id="pDate" class="form-control" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('addPrintModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addArticle()">Add Article</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay hidden" id="editPrintModal">
+  <div class="modal modal--lg">
+    <div class="modal-header">
+      <h2 class="modal-title">Edit Article</h2>
+      <button class="modal-close" onclick="closeModal('editPrintModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editPrintId" />
+      <div class="form-group">
+        <label class="form-label">Headline</label>
+        <input type="text" id="editPHeadline" class="form-control" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Publisher</label>
+          <input type="text" id="editPSource" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Author</label>
+          <input type="text" id="editPAuthor" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Section</label>
+          <input type="text" id="editPSection" class="form-control" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input type="url" id="editPUrl" class="form-control" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Country</label>
+          <input type="text" id="editPCountry" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Sentiment</label>
+          <select id="editPSentiment" class="form-select">
+            {% for val, label in sentiment_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">AVE</label>
+          <input type="number" id="editPAve" class="form-control" step="0.01" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date Published</label>
+        <input type="date" id="editPDate" class="form-control" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('editPrintModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveArticle()">Save Changes</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ORG_ID = '{{ org.id }}';
+
+function addArticle() {
+  const headline = document.getElementById('pHeadline').value.trim();
+  if (!headline) return alert('Headline is required');
+  apiRequest(`/api/${ORG_ID}/print/`, 'POST', {
+    source: document.getElementById('pSource').value.trim(),
+    headline,
+    author: document.getElementById('pAuthor').value.trim(),
+    section: document.getElementById('pSection').value.trim(),
+    url: document.getElementById('pUrl').value.trim(),
+    country: document.getElementById('pCountry').value.trim(),
+    sentiment: document.getElementById('pSentiment').value,
+    ave: document.getElementById('pAve').value || 0,
+    date_published: document.getElementById('pDate').value,
+  }).then(() => { closeModal('addPrintModal'); location.reload(); });
+}
+
+function editPrint(id, source, headline, author, section, url, country, sentiment, ave, date) {
+  document.getElementById('editPrintId').value = id;
+  document.getElementById('editPSource').value = source;
+  document.getElementById('editPHeadline').value = headline;
+  document.getElementById('editPAuthor').value = author;
+  document.getElementById('editPSection').value = section;
+  document.getElementById('editPUrl').value = url;
+  document.getElementById('editPCountry').value = country;
+  document.getElementById('editPSentiment').value = sentiment;
+  document.getElementById('editPAve').value = ave;
+  document.getElementById('editPDate').value = date;
+  openModal('editPrintModal');
+}
+
+function saveArticle() {
+  const id = document.getElementById('editPrintId').value;
+  apiRequest(`/api/${ORG_ID}/print/${id}/`, 'PUT', {
+    source: document.getElementById('editPSource').value.trim(),
+    headline: document.getElementById('editPHeadline').value.trim(),
+    author: document.getElementById('editPAuthor').value.trim(),
+    section: document.getElementById('editPSection').value.trim(),
+    url: document.getElementById('editPUrl').value.trim(),
+    country: document.getElementById('editPCountry').value.trim(),
+    sentiment: document.getElementById('editPSentiment').value,
+    ave: document.getElementById('editPAve').value || 0,
+    date_published: document.getElementById('editPDate').value,
+  }).then(() => { closeModal('editPrintModal'); location.reload(); });
+}
+
+function deleteArticle(id) {
+  if (!confirm('Delete this article?')) return;
+  apiRequest(`/api/${ORG_ID}/print/${id}/delete/`, 'DELETE').then(() => location.reload());
+}
+function toggleDate(id) { document.getElementById(id).showPicker?.() || document.getElementById(id).click(); }
+</script>
+{% endblock %}

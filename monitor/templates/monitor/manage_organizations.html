@@ -1,0 +1,497 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manage Organizations — Social Light</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{% static 'monitor/css/main.css' %}" />
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    body { display: flex; min-height: 100vh; font-family: 'Inter', sans-serif; background: #f8faff; }
+
+    /* ── Left panel ─────────────────────────── */
+    .ml-left {
+      width: 260px; flex-shrink: 0;
+      background: linear-gradient(160deg, #0f2459 0%, #1a3d7c 50%, #1d4ed8 100%);
+      display: flex; flex-direction: column; justify-content: space-between;
+      padding: 28px 20px; position: fixed; top: 0; bottom: 0; left: 0;
+      overflow: hidden;
+    }
+    .ml-left::before {
+      content: ''; position: absolute; bottom: -60px; right: -60px;
+      width: 240px; height: 240px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%);
+    }
+    .ml-logo { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; margin-bottom: 32px; }
+    .ml-logo img { width: 44px; height: 44px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,0.1); padding: 3px; }
+    .ml-logo-text { font-size: 13px; font-weight: 800; color: #fff; letter-spacing: 0.08em; line-height: 1.1; }
+    .ml-logo-sub { font-size: 8px; color: rgba(255,255,255,0.5); letter-spacing: 0.14em; text-transform: uppercase; display: block; margin-top: 2px; }
+
+    .ml-nav { flex: 1; position: relative; z-index: 1; }
+    .ml-nav-label { font-size: 10px; font-weight: 700; color: rgba(147,175,212,0.55); letter-spacing: 0.1em; text-transform: uppercase; padding: 0 8px 6px; margin-top: 16px; display: block; }
+    .ml-nav-item {
+      display: flex; align-items: center; gap: 9px; padding: 9px 10px;
+      border-radius: 7px; color: rgba(255,255,255,0.65); font-size: 13.5px;
+      font-weight: 500; text-decoration: none; margin-bottom: 2px;
+      transition: all 0.15s;
+    }
+    .ml-nav-item:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .ml-nav-item.active { background: rgba(29,78,216,0.35); color: #93c5fd; }
+
+    .ml-user { position: relative; z-index: 1; }
+    .ml-user-card {
+      background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px; padding: 10px 12px; margin-bottom: 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .ml-avatar { width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
+    .ml-user-name { font-size: 12px; font-weight: 600; color: #fff; }
+    .ml-user-email { font-size: 11px; color: rgba(255,255,255,0.5); }
+    .ml-logout { display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.45); font-size: 12px; text-decoration: none; padding: 6px 8px; border-radius: 6px; transition: color 0.15s; }
+    .ml-logout:hover { color: rgba(255,255,255,0.8); }
+
+    /* ── Main content ──────────────────────── */
+    .ml-content { margin-left: 260px; flex: 1; padding: 32px; min-height: 100vh; }
+    .ml-topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+    .ml-back { display: inline-flex; align-items: center; gap: 6px; color: #64748b; font-size: 13px; text-decoration: none; transition: color 0.15s; }
+    .ml-back:hover { color: #1d4ed8; }
+    .ml-page-title { font-size: 22px; font-weight: 800; color: #0f2459; letter-spacing: -0.01em; }
+    .ml-page-sub { font-size: 13px; color: #64748b; margin-top: 2px; }
+    .btn-create {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: linear-gradient(135deg, #1d4ed8, #0f2459); color: #fff;
+      border: none; border-radius: 9px; padding: 10px 20px;
+      font-size: 13.5px; font-weight: 700; font-family: 'Inter', sans-serif;
+      cursor: pointer; box-shadow: 0 3px 12px rgba(29,78,216,0.25);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn-create:hover { transform: translateY(-1px); box-shadow: 0 5px 16px rgba(29,78,216,0.35); }
+
+    /* ── Search / filter bar ───────────────── */
+    .ml-filter-bar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .ml-search {
+      flex: 1; min-width: 220px; padding: 9px 14px 9px 36px;
+      border: 1.5px solid #e2e8f0; border-radius: 8px;
+      font-size: 13.5px; font-family: 'Inter', sans-serif;
+      color: #0f172a; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 10px center / 16px;
+      outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .ml-search:focus { border-color: #1d4ed8; box-shadow: 0 0 0 3px rgba(29,78,216,0.1); }
+    .ml-filter-select {
+      padding: 9px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px;
+      font-size: 13.5px; font-family: 'Inter', sans-serif; color: #374151;
+      background: #fff; outline: none; cursor: pointer;
+    }
+
+    /* ── Table card ────────────────────────── */
+    .ml-card { background: #fff; border-radius: 14px; border: 1.5px solid #e8edf5; overflow: hidden; box-shadow: 0 2px 12px rgba(15,36,89,0.06); }
+    .ml-card-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid #f1f5f9; }
+    .ml-card-title { font-size: 14px; font-weight: 700; color: #0f2459; }
+    .ml-count { font-size: 12px; color: #64748b; background: #f1f5f9; border-radius: 100px; padding: 3px 10px; font-weight: 600; }
+    .ml-table { width: 100%; border-collapse: collapse; }
+    .ml-table thead tr { background: #f8faff; }
+    .ml-table th { padding: 11px 18px; text-align: left; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #e8edf5; white-space: nowrap; }
+    .ml-table td { padding: 14px 18px; border-bottom: 1px solid #f1f5f9; font-size: 13.5px; color: #374151; vertical-align: middle; }
+    .ml-table tbody tr:last-child td { border-bottom: none; }
+    .ml-table tbody tr:hover td { background: #f8faff; }
+    .org-link { font-weight: 700; color: #1d4ed8; text-decoration: none; font-size: 14px; }
+    .org-link:hover { color: #0f2459; }
+    .org-meta { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .badge-status { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 100px; font-size: 11px; font-weight: 700; }
+    .badge-status.active { background: #dcfce7; color: #15803d; }
+    .badge-status.active::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #22c55e; display: inline-block; }
+    .badge-status.inactive { background: #f1f5f9; color: #64748b; }
+    .badge-status.inactive::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #94a3b8; display: inline-block; }
+    .tbl-actions { display: flex; gap: 6px; }
+    .tbl-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 7px; border: 1.5px solid #e2e8f0; background: #fff; cursor: pointer; color: #64748b; transition: all 0.15s; }
+    .tbl-btn:hover { background: #eff6ff; color: #1d4ed8; border-color: #1d4ed8; }
+    .tbl-btn.del:hover { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }
+    .ml-empty { text-align: center; padding: 48px 24px; color: #94a3b8; font-size: 14px; }
+    .ml-empty svg { margin-bottom: 12px; opacity: 0.4; }
+  </style>
+</head>
+<body>
+
+<!-- Left sidebar -->
+<aside class="ml-left">
+  <div>
+    <div class="ml-logo">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" alt="Social Light" />
+      <div>
+        <div class="ml-logo-text">SOCIAL LIGHT</div>
+        <span class="ml-logo-sub">Globally African</span>
+      </div>
+    </div>
+    <nav class="ml-nav">
+      <span class="ml-nav-label">Platform</span>
+      <a href="{% url 'monitor:organizations' %}" class="ml-nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        Switch Organization
+      </a>
+      <a href="{% url 'monitor:manage_organizations' %}" class="ml-nav-item active">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Manage Organizations
+      </a>
+      {% if orgs.first %}
+      <span class="ml-nav-label">Recent</span>
+      {% for org in orgs|slice:":4" %}
+      <a href="{% url 'monitor:dashboard' org.id %}" class="ml-nav-item" style="font-size:12.5px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        {{ org.name|truncatechars:22 }}
+      </a>
+      {% endfor %}
+      {% endif %}
+    </nav>
+  </div>
+  <div class="ml-user">
+    <div class="ml-user-card">
+      <div class="ml-avatar">{{ user.get_initials }}</div>
+      <div>
+        <div class="ml-user-name">{{ user.get_full_name }}</div>
+        <div class="ml-user-email">{{ user.email }}</div>
+      </div>
+    </div>
+    <a href="{% url 'monitor:logout' %}" class="ml-logout">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Sign out
+    </a>
+  </div>
+</aside>
+
+<!-- Main content -->
+<div class="ml-content">
+  <div class="ml-topbar">
+    <div>
+      <div class="ml-page-title">Organizations</div>
+      <div class="ml-page-sub">Create, edit and manage all platform organizations</div>
+    </div>
+    <button class="btn-create" onclick="openCreateModal()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Create Organization
+    </button>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="ml-filter-bar">
+    <input type="text" class="ml-search" id="orgSearch" placeholder="Search organizations…" oninput="filterTable()" />
+    <select class="ml-filter-select" id="statusFilter" onchange="filterTable()">
+      <option value="">All statuses</option>
+      <option value="active">Active</option>
+      <option value="inactive">Inactive</option>
+    </select>
+    <select class="ml-filter-select" id="industryFilter" onchange="filterTable()">
+      <option value="">All industries</option>
+      {% for val, label in industry_choices %}
+      <option value="{{ val }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Table -->
+  <div class="ml-card">
+    <div class="ml-card-head">
+      <span class="ml-card-title">All Organizations</span>
+      <span class="ml-count" id="orgCount">{{ orgs|length }} total</span>
+    </div>
+    <table class="ml-table" id="orgsTable">
+      <thead>
+        <tr>
+          <th>Organization</th>
+          <th>Email</th>
+          <th>Industry</th>
+          <th>Country</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="orgsTableBody">
+        {% for org in orgs %}
+        <tr data-name="{{ org.name|lower }}" data-status="{{ org.status }}" data-industry="{{ org.industry }}">
+          <td>
+            <a href="{% url 'monitor:dashboard' org.id %}" class="org-link">{{ org.name }}</a>
+            {% if org.country %}<div class="org-meta">{{ org.country }}</div>{% endif %}
+          </td>
+          <td style="color:#64748b;font-size:13px;">{{ org.email|default:"—" }}</td>
+          <td style="color:#64748b;font-size:13px;">{{ org.get_industry_display|default:"—" }}</td>
+          <td style="color:#64748b;font-size:13px;">{{ org.country|default:"—" }}</td>
+          <td>
+            <span class="badge-status {% if org.status == 'active' %}active{% else %}inactive{% endif %}">
+              {{ org.get_status_display }}
+            </span>
+          </td>
+          <td>
+            <div class="tbl-actions">
+              <button class="tbl-btn" title="Edit" onclick="openEditModal('{{ org.id }}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button class="tbl-btn del" title="Delete" onclick="deleteOrg('{{ org.id }}','{{ org.name|escapejs }}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="ml-empty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <div>No organizations yet. Create one to get started.</div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Create / Edit Org Modal ─────────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="orgModal">
+  <div class="modal modal--xl">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title" id="orgModalTitle">Create Organization</h2>
+        <p class="modal-subtitle">Fill in the organization details below. Fields marked with * are required.</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('orgModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="orgId" />
+      <div class="form-group">
+        <label class="form-label">Company Name *</label>
+        <input type="text" id="orgName" class="form-control" placeholder="Company name" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Industry *</label>
+          <select id="orgIndustry" class="form-select" onchange="updateSuggestions()">
+            <option value="">— Select —</option>
+            {% for val, label in industry_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Country *</label>
+          <select id="orgCountry" class="form-select">
+            <option value="Botswana">Botswana</option>
+            <option value="Afghanistan">Afghanistan</option><option value="Albania">Albania</option><option value="Algeria">Algeria</option><option value="Angola">Angola</option><option value="Argentina">Argentina</option><option value="Armenia">Armenia</option><option value="Australia">Australia</option><option value="Austria">Austria</option><option value="Azerbaijan">Azerbaijan</option><option value="Bahamas">Bahamas</option><option value="Bahrain">Bahrain</option><option value="Bangladesh">Bangladesh</option><option value="Belarus">Belarus</option><option value="Belgium">Belgium</option><option value="Belize">Belize</option><option value="Benin">Benin</option><option value="Bolivia">Bolivia</option><option value="Bosnia and Herzegovina">Bosnia and Herzegovina</option><option value="Brazil">Brazil</option><option value="Bulgaria">Bulgaria</option><option value="Burkina Faso">Burkina Faso</option><option value="Burundi">Burundi</option><option value="Cambodia">Cambodia</option><option value="Cameroon">Cameroon</option><option value="Canada">Canada</option><option value="Cape Verde">Cape Verde</option><option value="Chad">Chad</option><option value="Chile">Chile</option><option value="China">China</option><option value="Colombia">Colombia</option><option value="Comoros">Comoros</option><option value="Congo">Congo</option><option value="Costa Rica">Costa Rica</option><option value="Croatia">Croatia</option><option value="Cuba">Cuba</option><option value="Cyprus">Cyprus</option><option value="Czech Republic">Czech Republic</option><option value="Democratic Republic of Congo">Democratic Republic of Congo</option><option value="Denmark">Denmark</option><option value="Djibouti">Djibouti</option><option value="Dominican Republic">Dominican Republic</option><option value="Ecuador">Ecuador</option><option value="Egypt">Egypt</option><option value="El Salvador">El Salvador</option><option value="Equatorial Guinea">Equatorial Guinea</option><option value="Eritrea">Eritrea</option><option value="Estonia">Estonia</option><option value="Eswatini">Eswatini</option><option value="Ethiopia">Ethiopia</option><option value="Fiji">Fiji</option><option value="Finland">Finland</option><option value="France">France</option><option value="Gabon">Gabon</option><option value="Gambia">Gambia</option><option value="Georgia">Georgia</option><option value="Germany">Germany</option><option value="Ghana">Ghana</option><option value="Greece">Greece</option><option value="Guatemala">Guatemala</option><option value="Guinea">Guinea</option><option value="Guyana">Guyana</option><option value="Haiti">Haiti</option><option value="Honduras">Honduras</option><option value="Hungary">Hungary</option><option value="Iceland">Iceland</option><option value="India">India</option><option value="Indonesia">Indonesia</option><option value="Iran">Iran</option><option value="Iraq">Iraq</option><option value="Ireland">Ireland</option><option value="Israel">Israel</option><option value="Italy">Italy</option><option value="Jamaica">Jamaica</option><option value="Japan">Japan</option><option value="Jordan">Jordan</option><option value="Kazakhstan">Kazakhstan</option><option value="Kenya">Kenya</option><option value="Kuwait">Kuwait</option><option value="Laos">Laos</option><option value="Latvia">Latvia</option><option value="Lebanon">Lebanon</option><option value="Lesotho">Lesotho</option><option value="Liberia">Liberia</option><option value="Libya">Libya</option><option value="Lithuania">Lithuania</option><option value="Luxembourg">Luxembourg</option><option value="Madagascar">Madagascar</option><option value="Malawi">Malawi</option><option value="Malaysia">Malaysia</option><option value="Mali">Mali</option><option value="Malta">Malta</option><option value="Mauritania">Mauritania</option><option value="Mauritius">Mauritius</option><option value="Mexico">Mexico</option><option value="Moldova">Moldova</option><option value="Mongolia">Mongolia</option><option value="Morocco">Morocco</option><option value="Mozambique">Mozambique</option><option value="Myanmar">Myanmar</option><option value="Namibia">Namibia</option><option value="Nepal">Nepal</option><option value="Netherlands">Netherlands</option><option value="New Zealand">New Zealand</option><option value="Nicaragua">Nicaragua</option><option value="Niger">Niger</option><option value="Nigeria">Nigeria</option><option value="North Korea">North Korea</option><option value="North Macedonia">North Macedonia</option><option value="Norway">Norway</option><option value="Oman">Oman</option><option value="Pakistan">Pakistan</option><option value="Palestine">Palestine</option><option value="Panama">Panama</option><option value="Papua New Guinea">Papua New Guinea</option><option value="Paraguay">Paraguay</option><option value="Peru">Peru</option><option value="Philippines">Philippines</option><option value="Poland">Poland</option><option value="Portugal">Portugal</option><option value="Qatar">Qatar</option><option value="Romania">Romania</option><option value="Russia">Russia</option><option value="Rwanda">Rwanda</option><option value="Saudi Arabia">Saudi Arabia</option><option value="Senegal">Senegal</option><option value="Serbia">Serbia</option><option value="Seychelles">Seychelles</option><option value="Sierra Leone">Sierra Leone</option><option value="Singapore">Singapore</option><option value="Slovakia">Slovakia</option><option value="Slovenia">Slovenia</option><option value="Somalia">Somalia</option><option value="South Africa">South Africa</option><option value="South Korea">South Korea</option><option value="South Sudan">South Sudan</option><option value="Spain">Spain</option><option value="Sri Lanka">Sri Lanka</option><option value="Sudan">Sudan</option><option value="Suriname">Suriname</option><option value="Sweden">Sweden</option><option value="Switzerland">Switzerland</option><option value="Syria">Syria</option><option value="Taiwan">Taiwan</option><option value="Tajikistan">Tajikistan</option><option value="Tanzania">Tanzania</option><option value="Thailand">Thailand</option><option value="Togo">Togo</option><option value="Trinidad and Tobago">Trinidad and Tobago</option><option value="Tunisia">Tunisia</option><option value="Turkey">Turkey</option><option value="Uganda">Uganda</option><option value="Ukraine">Ukraine</option><option value="United Arab Emirates">United Arab Emirates</option><option value="United Kingdom">United Kingdom</option><option value="United States">United States</option><option value="Uruguay">Uruguay</option><option value="Uzbekistan">Uzbekistan</option><option value="Venezuela">Venezuela</option><option value="Vietnam">Vietnam</option><option value="Yemen">Yemen</option><option value="Zambia">Zambia</option><option value="Zimbabwe">Zimbabwe</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Address *</label>
+        <input type="text" id="orgAddress" class="form-control" placeholder="e.g. Central Business District, Gaborone" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Contact Email *</label>
+          <input type="email" id="orgEmail" class="form-control" placeholder="contact@org.com" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone Number *</label>
+          <input type="text" id="orgPhone" class="form-control" placeholder="e.g. 2673706000" />
+        </div>
+      </div>
+      <div class="modal-section">
+        <h3 class="modal-section-title">Branding</h3>
+        <div class="form-group">
+          <label class="form-label">Organization Logo (PNG recommended)</label>
+          <input type="file" id="orgLogo" class="form-control" accept=".png,.jpg,.jpeg,.svg" onchange="previewLogo(this)" />
+        </div>
+        <div class="logo-preview-wrap">
+          <div class="logo-preview-circle" id="logoPreview">
+            <span id="logoInitials">?</span>
+            <img id="logoImg" style="display:none;width:100%;height:100%;object-fit:contain;border-radius:50%;" />
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:16px;">
+          <label class="form-label">Gradient Colors</label>
+          <div class="gradient-pickers">
+            <input type="color" id="gradColor1" value="#1d4ed8" class="gradient-color-input" onchange="updateGradientPreview()" />
+            <input type="color" id="gradColor2" value="#0f172a" class="gradient-color-input" onchange="updateGradientPreview()" />
+          </div>
+          <div class="gradient-style-label">Style: Linear 180°</div>
+          <div class="gradient-bar" id="gradientBar"></div>
+          <small class="form-hint">*Will be used to style the report cover.</small>
+        </div>
+      </div>
+      <div class="modal-section">
+        <h3 class="modal-section-title">Media Links</h3>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Website</label><input type="url" id="orgWebsite" class="form-control" placeholder="https://www.org.co.bw" /></div>
+          <div class="form-group"><label class="form-label">Facebook</label><input type="url" id="orgFacebook" class="form-control" placeholder="https://www.facebook.com/..." /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">LinkedIn</label><input type="url" id="orgLinkedin" class="form-control" placeholder="https://www.linkedin.com/company/..." /></div>
+          <div class="form-group"><label class="form-label">X Handle</label><input type="text" id="orgXHandle" class="form-control" placeholder="@exampleorg" /></div>
+        </div>
+      </div>
+      <div class="modal-section" id="keywordsSection" style="display:none;">
+        <div class="kw-section-header-row">
+          <h3 class="modal-section-title" style="margin-bottom:0;">Keywords</h3>
+          <button class="btn btn-secondary btn-sm" onclick="promptAddCategory()">+ Add Category</button>
+        </div>
+        <div id="kwSections"></div>
+        <div id="newCatRow" class="tag-input-row" style="display:none;margin-top:10px;">
+          <input type="text" id="newCatInput" class="form-control tag-input-field" placeholder="Category name" onkeydown="newCatKeydown(event)" />
+          <button class="btn btn-primary btn-sm" onclick="confirmAddCategory()">Add</button>
+          <button class="btn btn-secondary btn-sm" onclick="cancelAddCategory()">Cancel</button>
+        </div>
+      </div>
+      <div class="modal-section" id="competitorsSection" style="display:none;">
+        <h3 class="modal-section-title">Suggested Competitors *</h3>
+        <p class="form-hint" id="compHint">Select Industry and Country to see competitor suggestions.</p>
+        <div class="tag-cloud" id="suggCloud" style="margin-bottom:14px;"></div>
+        <label class="form-label">Add Competitor</label>
+        <div class="tag-input-row">
+          <input type="text" id="compInput" class="form-control tag-input-field" placeholder="Type a name and press Enter" onkeydown="compKeydown(event)" />
+          <button class="btn btn-primary btn-sm" onclick="addCompetitor()">Add</button>
+        </div>
+        <div class="tag-cloud" id="compCloud"></div>
+      </div>
+      <div class="form-group" id="statusGroup" style="display:none;">
+        <label class="form-label">Status</label>
+        <select id="orgStatus" class="form-select">
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('orgModal')">Cancel</button>
+      <button class="btn btn-primary" id="orgSaveBtn" onclick="saveOrg()">Create Organization</button>
+    </div>
+  </div>
+</div>
+
+<script src="{% static 'monitor/js/app.js' %}"></script>
+<script>
+function openModal(id) {
+  const el = document.getElementById(id); if (!el) return;
+  el.classList.remove('hidden');
+  el.style.cssText = 'display:flex!important;position:fixed;inset:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:9999;padding:20px;box-sizing:border-box;';
+  const box = el.firstElementChild;
+  if (box) box.style.cssText = 'display:flex!important;flex-direction:column;position:relative;inset:auto;z-index:1;width:100%;max-width:800px;height:auto;max-height:90vh;overflow-y:auto;background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);';
+}
+function closeModal(id) {
+  const el = document.getElementById(id); if (!el) return;
+  el.classList.add('hidden'); el.style.cssText = 'display:none!important;';
+  const box = el.firstElementChild; if (box) box.removeAttribute('style');
+}
+
+// ── Search/filter ─────────────────────────────────────────────────────────────
+function filterTable() {
+  const q = document.getElementById('orgSearch').value.toLowerCase();
+  const st = document.getElementById('statusFilter').value;
+  const ind = document.getElementById('industryFilter').value;
+  const rows = document.querySelectorAll('#orgsTableBody tr[data-name]');
+  let visible = 0;
+  rows.forEach(r => {
+    const nameMatch = r.dataset.name.includes(q);
+    const stMatch = !st || r.dataset.status === st;
+    const indMatch = !ind || r.dataset.industry === ind;
+    const show = nameMatch && stMatch && indMatch;
+    r.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('orgCount').textContent = visible + ' total';
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let _orgMode = 'create', _orgId = null, _kwMap = {}, _compMap = {}, _suggestions = [];
+let _categories = ['brand','personnel','campaign'];
+const CAT_LABELS = {brand:'Brand Keywords',personnel:'Personnel',campaign:'Campaigns'};
+
+function openCreateModal() {
+  _orgMode='create';_orgId=null;_kwMap={};_compMap={};_suggestions=[];clearForm();
+  document.getElementById('orgModalTitle').textContent='Create Organization';
+  document.getElementById('orgSaveBtn').textContent='Create Organization';
+  document.getElementById('keywordsSection').style.display='none';
+  document.getElementById('competitorsSection').style.display='none';
+  document.getElementById('statusGroup').style.display='none';
+  openModal('orgModal');
+}
+function openEditModal(orgId) {
+  _orgMode='edit';_orgId=orgId;_kwMap={};_compMap={};clearForm();
+  fetch(`/api/organizations/${orgId}/details/`).then(r=>r.json()).then(d=>{
+    document.getElementById('orgId').value=d.id;
+    document.getElementById('orgName').value=d.name;
+    document.getElementById('orgEmail').value=d.email;
+    document.getElementById('orgIndustry').value=d.industry;
+    document.getElementById('orgCountry').value=d.country;
+    document.getElementById('orgStatus').value=d.status;
+    document.getElementById('orgAddress').value=d.address||'';
+    document.getElementById('orgPhone').value=d.phone||'';
+    document.getElementById('orgWebsite').value=d.website||'';
+    document.getElementById('orgFacebook').value=d.facebook_url||'';
+    document.getElementById('orgLinkedin').value=d.linkedin_url||'';
+    document.getElementById('orgXHandle').value=d.x_handle||'';
+    document.getElementById('gradColor1').value=d.gradient_color1||'#1d4ed8';
+    document.getElementById('gradColor2').value=d.gradient_color2||'#0f172a';
+    updateGradientPreview();
+    if(d.logo_url){document.getElementById('logoImg').src=d.logo_url;document.getElementById('logoImg').style.display='block';document.getElementById('logoInitials').style.display='none';}else{setLogoInitials(d.name);}
+    d.keywords.forEach(kw=>{_kwMap[kw.id]={keyword:kw.keyword,category:kw.category};});
+    (d.keyword_categories||[]).forEach(cat=>{if(!_categories.includes(cat))_categories.push(cat);});
+    renderAllKwSections();
+    d.competitors.forEach(c=>{_compMap[c.id]=c.name;});
+    renderCompChips();_suggestions=d.suggestions||[];renderSuggestions();
+    document.getElementById('keywordsSection').style.display='block';
+    document.getElementById('competitorsSection').style.display='block';
+    document.getElementById('statusGroup').style.display='block';
+    document.getElementById('orgModalTitle').textContent='Edit Organization';
+    document.getElementById('orgSaveBtn').textContent='Update Organization';
+    openModal('orgModal');
+  });
+}
+function clearForm() {
+  ['orgId','orgName','orgEmail','orgAddress','orgPhone','orgWebsite','orgFacebook','orgLinkedin','orgXHandle'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('orgIndustry').value='';document.getElementById('orgCountry').value='Botswana';document.getElementById('orgStatus').value='active';
+  document.getElementById('gradColor1').value='#1d4ed8';document.getElementById('gradColor2').value='#0f172a';updateGradientPreview();
+  document.getElementById('logoImg').style.display='none';document.getElementById('logoInitials').style.display='flex';document.getElementById('logoInitials').textContent='?';
+  _categories=['brand','personnel','campaign'];document.getElementById('kwSections').innerHTML='';document.getElementById('compCloud').innerHTML='';document.getElementById('suggCloud').innerHTML='';document.getElementById('orgLogo').value='';
+}
+function saveOrg() {
+  const name=document.getElementById('orgName').value.trim();if(!name)return alert('Company name is required');
+  const fd=new FormData();
+  fd.append('name',name);fd.append('email',document.getElementById('orgEmail').value.trim());fd.append('industry',document.getElementById('orgIndustry').value);
+  fd.append('country',document.getElementById('orgCountry').value.trim()||'Botswana');fd.append('status',document.getElementById('orgStatus').value||'active');
+  fd.append('address',document.getElementById('orgAddress').value.trim());fd.append('phone',document.getElementById('orgPhone').value.trim());
+  fd.append('website',document.getElementById('orgWebsite').value.trim());fd.append('facebook_url',document.getElementById('orgFacebook').value.trim());
+  fd.append('linkedin_url',document.getElementById('orgLinkedin').value.trim());fd.append('x_handle',document.getElementById('orgXHandle').value.trim());
+  fd.append('gradient_color1',document.getElementById('gradColor1').value);fd.append('gradient_color2',document.getElementById('gradColor2').value);
+  const logoFile=document.getElementById('orgLogo').files[0];if(logoFile)fd.append('logo',logoFile);
+  const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';
+  const url=_orgMode==='edit'?`/api/organizations/${_orgId}/`:'/api/organizations/';
+  fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf},body:fd}).then(r=>{if(!r.ok)throw new Error();return r.json();}).then(()=>{closeModal('orgModal');location.reload();}).catch(()=>alert('Failed to save'));
+}
+function deleteOrg(id,name) {
+  if(!confirm(`Delete "${name}"? This will remove all associated data.`))return;
+  const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';
+  fetch(`/api/organizations/${id}/delete/`,{method:'DELETE',headers:{'X-CSRFToken':csrf}}).then(()=>location.reload());
+}
+function getCatLabel(cat){return CAT_LABELS[cat]||(cat.charAt(0).toUpperCase()+cat.slice(1).replace(/_/g,' '));}
+function catDisplayName(cat){return getCatLabel(cat).toUpperCase().replace(/\s+/g,'_');}
+function renderAllKwSections(){document.getElementById('kwSections').innerHTML=_categories.map((cat,i)=>{const count=Object.values(_kwMap).filter(v=>v.category===cat).length;return`<div class="kw-preview-section${i>0?' kw-preview-section--divider':''}" id="kwSection-${cat}"><div class="kw-preview-header"><span class="kw-preview-cat">${escHtml(catDisplayName(cat))}</span><span class="kw-preview-count">(${count})</span></div><div class="kw-preview-cloud" id="kwCloud-${cat}">${renderChipsForCat(cat)}</div><div class="kw-add-row"><input type="text" id="kwInput-${cat}" class="kw-add-input" placeholder="Add keyword…" onkeydown="kwKeydown(event,'${cat}')" /><button class="kw-add-btn" onclick="addKeyword('${cat}')">Add</button></div></div>`;}).join('');}
+function renderChipsForCat(cat){return Object.entries(_kwMap).filter(([,v])=>v.category===cat).map(([id,v])=>`<span class="kw-chip">${escHtml(v.keyword)}<button class="kw-chip-x" onclick="removeKeyword(${id})">&times;</button></span>`).join('');}
+function refreshCatCloud(cat){const el=document.getElementById(`kwCloud-${cat}`);if(!el)return;el.innerHTML=renderChipsForCat(cat);const h=el.closest('.kw-preview-section')?.querySelector('.kw-preview-count');if(h)h.textContent=`(${Object.values(_kwMap).filter(v=>v.category===cat).length})`;}
+function kwKeydown(e,cat){if(e.key==='Enter'){e.preventDefault();addKeyword(cat);}}
+function addKeyword(cat){const input=document.getElementById(`kwInput-${cat}`);const kw=input.value.trim();if(!kw||!_orgId)return;if(Object.values(_kwMap).some(v=>v.keyword===kw&&v.category===cat)){input.value='';return;}if(Object.keys(_kwMap).length>=30)return alert('Max 30 keywords');const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';fetch(`/api/${_orgId}/keywords/`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({keyword:kw,category:cat})}).then(r=>r.json()).then(d=>{_kwMap[d.id]={keyword:d.keyword,category:d.category};refreshCatCloud(cat);input.value='';});}
+function removeKeyword(id){const cat=_kwMap[id]?.category;const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';fetch(`/api/${_orgId}/keywords/${id}/delete/`,{method:'DELETE',headers:{'X-CSRFToken':csrf}}).then(()=>{delete _kwMap[id];if(cat)refreshCatCloud(cat);});}
+function promptAddCategory(){document.getElementById('newCatRow').style.display='flex';document.getElementById('newCatInput').focus();}
+function newCatKeydown(e){if(e.key==='Enter'){e.preventDefault();confirmAddCategory();}}
+function confirmAddCategory(){const input=document.getElementById('newCatInput');const label=input.value.trim();if(!label)return;const cat=label.toLowerCase().replace(/\s+/g,'_');if(_categories.includes(cat)){alert('Already exists');return;}CAT_LABELS[cat]=label;_categories.push(cat);renderAllKwSections();input.value='';document.getElementById('newCatRow').style.display='none';setTimeout(()=>document.getElementById(`kwSection-${cat}`)?.scrollIntoView({behavior:'smooth',block:'nearest'}),50);}
+function cancelAddCategory(){document.getElementById('newCatInput').value='';document.getElementById('newCatRow').style.display='none';}
+function compKeydown(e){if(e.key==='Enter'){e.preventDefault();addCompetitor();}}
+function addCompetitor(name){const input=document.getElementById('compInput');const val=(name||input.value).trim();if(!val||!_orgId)return;if(Object.values(_compMap).includes(val)){input.value='';return;}const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';fetch(`/api/${_orgId}/competitors/`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({name:val})}).then(r=>r.json()).then(d=>{_compMap[d.id]=d.name;renderCompChips();_suggestions=_suggestions.filter(s=>s!==val);renderSuggestions();input.value='';});}
+function removeCompetitor(id){const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';fetch(`/api/${_orgId}/competitors/${id}/delete/`,{method:'DELETE',headers:{'X-CSRFToken':csrf}}).then(()=>{delete _compMap[id];renderCompChips();});}
+function renderCompChips(){document.getElementById('compCloud').innerHTML=Object.entries(_compMap).map(([id,name])=>`<span class="tag-chip">${escHtml(name)}<button class="tag-chip-x" onclick="removeCompetitor(${id})">&times;</button></span>`).join('');}
+function renderSuggestions(){const el=document.getElementById('suggCloud');const hint=document.getElementById('compHint');if(!_suggestions.length){el.innerHTML='';hint.textContent='All suggested competitors added.';return;}hint.style.display='none';el.innerHTML=_suggestions.map(s=>`<span class="tag-chip tag-chip--suggestion" onclick="addCompetitor('${escHtml(s)}')">${escHtml(s)} <span class="tag-chip-plus">+</span></span>`).join('');}
+function updateSuggestions(){if(_orgMode!=='edit'||!_orgId)return;fetch(`/api/organizations/${_orgId}/details/`).then(r=>r.json()).then(d=>{_suggestions=d.suggestions||[];renderSuggestions();});}
+function previewLogo(input){const file=input.files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{document.getElementById('logoImg').src=e.target.result;document.getElementById('logoImg').style.display='block';document.getElementById('logoInitials').style.display='none';};reader.readAsDataURL(file);}
+function setLogoInitials(name){const parts=(name||'').split(' ').filter(Boolean);const initials=parts.length>=2?(parts[0][0]+parts[parts.length-1][0]).toUpperCase():(name||'?').slice(0,2).toUpperCase();document.getElementById('logoInitials').textContent=initials;document.getElementById('logoInitials').style.display='flex';document.getElementById('logoImg').style.display='none';}
+function updateGradientPreview(){const c1=document.getElementById('gradColor1').value;const c2=document.getElementById('gradColor2').value;document.getElementById('gradientBar').style.background=`linear-gradient(180deg,${c1},${c2})`;}
+updateGradientPreview();
+function escHtml(str){return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+</script>
+</body>
+</html>

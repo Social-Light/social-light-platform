@@ -1,0 +1,386 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">{{ org.name }}'s Dashboard</h1>
+</div>
+
+<!-- Stats Row -->
+<div class="stats-grid">
+  <div class="stat-card stat-card--blue">
+    <div class="stat-card-inner">
+      <div class="stat-label">Total Mentions</div>
+      <div class="stat-value">{{ total_mentions }}</div>
+      <div class="stat-trend {% if total_mentions > 0 %}trend-up{% else %}trend-flat{% endif %}">
+        {% if total_mentions > 0 %}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        Increased from last month
+        {% else %}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Same as last month
+        {% endif %}
+      </div>
+    </div>
+    <a href="{% url 'monitor:analytics' org.id %}" class="stat-card-link">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+    </a>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-card-inner">
+      <div class="stat-label">Monthly Mentions</div>
+      <div class="stat-value">{{ monthly_mentions }}</div>
+      <div class="stat-trend {% if monthly_mentions > 0 %}trend-up{% else %}trend-flat{% endif %}">
+        {% if monthly_mentions > 0 %}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        Increased from last month
+        {% else %}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Same as last month
+        {% endif %}
+      </div>
+    </div>
+    <a href="{% url 'monitor:analytics' org.id %}" class="stat-card-link">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+    </a>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-card-inner">
+      <div class="stat-label">Total Keyphrases</div>
+      <div class="stat-value">{{ total_keyphrases }}</div>
+      <div class="stat-trend trend-flat">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Same as last month
+      </div>
+    </div>
+    <a href="{% url 'monitor:analytics' org.id %}" class="stat-card-link">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+    </a>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-card-inner">
+      <div class="stat-label">Media Types</div>
+      <div class="stat-value-tags">
+        {% for mt in media_types %}
+        <span class="media-type-tag">{{ mt }}</span>
+        {% empty %}
+        <span class="text-muted" style="font-size:13px;">None yet</span>
+        {% endfor %}
+      </div>
+    </div>
+    <a href="{% url 'monitor:analytics' org.id %}" class="stat-card-link">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+    </a>
+  </div>
+</div>
+
+<!-- Charts Row -->
+<div class="charts-row">
+  <!-- Keyword Trends -->
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <h3 class="chart-title">This Month's Top Keyword Trends</h3>
+      <p class="chart-subtitle">Distribution of most mentioned keywords this month</p>
+    </div>
+    <div class="chart-body chart-body--pie">
+      <canvas id="keywordPieChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Aggregated mentions -->
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <h3 class="chart-title">Aggregated Media Mentions Across Platforms ({{ current_year }})</h3>
+      <p class="chart-subtitle">Monthly trends across all media types</p>
+    </div>
+    <div class="chart-body">
+      <canvas id="mediaLineChart"></canvas>
+    </div>
+    <div class="chart-legend-row">
+      <span class="chart-legend-item" style="--c:#3b82f6">Online Articles</span>
+      <span class="chart-legend-item" style="--c:#10b981">Social Media</span>
+      <span class="chart-legend-item" style="--c:#f59e0b">Broadcast</span>
+      <span class="chart-legend-item" style="--c:#ef4444">Print Media</span>
+    </div>
+  </div>
+</div>
+
+<!-- Latest News -->
+<div class="latest-news-section">
+  <h2 class="section-title"><a href="{% url 'monitor:media_online' org.id %}">Latest News</a></h2>
+
+  <!-- Online Articles -->
+  <div class="subsection">
+    <div class="subsection-header">
+      <div>
+        <h3 class="subsection-title">Online Articles</h3>
+        <p class="subsection-subtitle">Latest online media mentions</p>
+      </div>
+      <a href="{% url 'monitor:media_online' org.id %}" class="view-all-btn">
+        View All
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+      </a>
+    </div>
+
+    {% if latest_online %}
+    <div class="filter-bar">
+      <select class="filter-select" onchange="filterTable(this,'online-table','sentiment')">
+        <option value="">All Sentiment</option>
+        <option value="positive">Positive</option>
+        <option value="neutral">Neutral</option>
+        <option value="negative">Negative</option>
+      </select>
+      <select class="filter-select" onchange="filterTable(this,'online-table','country')">
+        <option value="">All Countries</option>
+      </select>
+      <span class="filter-count">Showing {{ latest_online|length }} of {{ latest_online|length }} articles</span>
+    </div>
+    <table class="data-table table table-hover" id="online-table">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Summary</th>
+          <th>Date Published <span class="sort-icon">↑↓</span></th>
+          <th>Country</th>
+          <th>Sentiment</th>
+          <th>AVE <span class="sort-icon">↑↓</span></th>
+          <th>Coverage</th>
+          <th>Reach <span class="sort-icon">↑↓</span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in latest_online %}
+        <tr data-sentiment="{{ a.sentiment }}" data-country="{{ a.country }}">
+          <td>
+            <div class="source-cell">
+              <div class="source-icon">{{ a.source|first|upper }}</div>
+              <span>{{ a.source }}</span>
+            </div>
+          </td>
+          <td><a href="{{ a.url }}" target="_blank" class="table-link">*{{ a.headline|truncatechars:50 }}</a></td>
+          <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
+          <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
+          <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
+          <td class="text-muted">{{ a.ave|floatformat:2 }}</td>
+          <td class="text-muted">{{ a.coverage|default:"Not Set" }}</td>
+          <td class="text-muted">{{ a.reach|default:0 }}</td>
+          <td>
+            <button class="icon-btn icon-btn--danger" onclick="deleteOnline('{{ org.id }}',{{ a.id }})">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-table">No online articles yet. <a href="{% url 'monitor:media_online' org.id %}">Add the first one.</a></div>
+    {% endif %}
+  </div>
+
+  <!-- Print Articles -->
+  <div class="subsection">
+    <div class="subsection-header">
+      <div>
+        <h3 class="subsection-title">Print Articles</h3>
+        <p class="subsection-subtitle">Latest print media mentions</p>
+      </div>
+      <a href="{% url 'monitor:media_print' org.id %}" class="view-all-btn">
+        View All
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+      </a>
+    </div>
+    {% if latest_print %}
+    <table class="data-table table table-hover">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Summary</th>
+          <th>Date Published <span class="sort-icon">↑↓</span></th>
+          <th>Country</th>
+          <th>Sentiment</th>
+          <th>AVE <span class="sort-icon">↑↓</span></th>
+          <th>Section</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in latest_print %}
+        <tr>
+          <td class="text-muted">{{ a.source }}</td>
+          <td><a href="{{ a.url }}" target="_blank" class="table-link">*{{ a.headline|truncatechars:50 }}</a></td>
+          <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
+          <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
+          <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
+          <td class="text-muted">{{ a.ave|floatformat:2 }}</td>
+          <td class="text-muted">{{ a.section|default:"Main" }}</td>
+          <td>
+            <button class="icon-btn icon-btn--danger" onclick="deletePrint('{{ org.id }}',{{ a.id }})">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-table">No print articles yet. <a href="{% url 'monitor:media_print' org.id %}">Add the first one.</a></div>
+    {% endif %}
+  </div>
+
+  <!-- Social Media Posts -->
+  <div class="subsection">
+    <div class="subsection-header">
+      <div>
+        <h3 class="subsection-title">Social Media Posts</h3>
+        <p class="subsection-subtitle">Latest social media mentions</p>
+      </div>
+      <a href="{% url 'monitor:media_social' org.id %}" class="view-all-btn">
+        View All
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+      </a>
+    </div>
+    {% if latest_social %}
+    <table class="data-table table table-hover">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Summary</th>
+          <th>Page Name</th>
+          <th>Date Published <span class="sort-icon">↑↓</span></th>
+          <th>Country</th>
+          <th>Sentiment</th>
+          <th>AVE <span class="sort-icon">↑↓</span></th>
+          <th>Rank <span class="sort-icon">↑↓</span></th>
+          <th>Reach <span class="sort-icon">↑↓</span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in latest_social %}
+        <tr>
+          <td>
+            <div class="source-cell">
+              <div class="platform-icon platform-icon--{{ p.platform|lower }}">
+                {% if p.platform == 'Facebook' %}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                {% elif p.platform == 'Twitter' %}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="#1da1f2"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                {% else %}
+                <span style="font-size:10px;font-weight:700;color:#6b7280;">{{ p.platform|first }}</span>
+                {% endif %}
+              </div>
+              <span class="text-muted">{{ p.platform }}</span>
+            </div>
+          </td>
+          <td><a href="{{ p.url }}" target="_blank" class="table-link">*{{ p.headline|truncatechars:45 }}</a></td>
+          <td class="text-muted">{{ p.page_name|default:"—" }}</td>
+          <td class="text-muted">{{ p.date_published|date:"M j, Y" }}</td>
+          <td class="text-muted">{{ p.country|default:"Unknown" }}</td>
+          <td><span class="badge badge--{{ p.sentiment }}">{{ p.get_sentiment_display }}</span></td>
+          <td class="text-muted">{{ p.ave|floatformat:2 }}</td>
+          <td class="text-muted">{{ p.rank|floatformat:2 }}</td>
+          <td class="text-muted">{{ p.reach|default:0 }}</td>
+          <td>
+            <button class="icon-btn icon-btn--danger" onclick="deleteSocial('{{ org.id }}',{{ p.id }})">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-table">No social posts yet. <a href="{% url 'monitor:media_social' org.id %}">Add the first one.</a></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const keywordData = {{ keyword_trends_json|safe }};
+const months = {{ months_json|safe }};
+const onlineData = {{ online_monthly_json|safe }};
+const printData = {{ print_monthly_json|safe }};
+const socialData = {{ social_monthly_json|safe }};
+const broadcastData = {{ broadcast_monthly_json|safe }};
+
+// Keyword Pie Chart
+const pieCtx = document.getElementById('keywordPieChart');
+if (pieCtx) {
+  const labels = keywordData.map(d => d.label);
+  const values = keywordData.map(d => d.value);
+  const hasData = values.some(v => v > 0);
+  new Chart(pieCtx, {
+    type: 'doughnut',
+    data: {
+      labels: hasData ? labels : ['No data'],
+      datasets: [{
+        data: hasData ? values : [1],
+        backgroundColor: hasData
+          ? ['#1d4ed8','#3b82f6','#60a5fa','#93c5fd','#bfdbfe','#dbeafe','#eff6ff','#1e3a5f','#0f172a','#334155']
+          : ['#e5e7eb'],
+        borderWidth: 2,
+        borderColor: '#fff',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { font: { size: 11, family: 'Inter' }, color: '#6b7280', padding: 12 }
+        },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw}` } }
+      },
+      cutout: '55%',
+    }
+  });
+}
+
+// Media Line Chart
+const lineCtx = document.getElementById('mediaLineChart');
+if (lineCtx) {
+  new Chart(lineCtx, {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [
+        { label: 'Online Articles', data: onlineData, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', tension: 0.4, fill: true, borderWidth: 2, pointRadius: 3 },
+        { label: 'Social Media',    data: socialData,   borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.06)', tension: 0.4, fill: true, borderWidth: 2, pointRadius: 3 },
+        { label: 'Broadcast',       data: broadcastData,borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.05)', tension: 0.4, fill: true, borderWidth: 2, pointRadius: 3 },
+        { label: 'Print Media',     data: printData,    borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.06)', tension: 0.4, fill: true, borderWidth: 2, pointRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' }, border: { display: false } },
+        x: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { display: false }, border: { display: false } }
+      }
+    }
+  });
+}
+
+function deleteOnline(orgId, id) {
+  if (!confirm('Delete this article?')) return;
+  apiRequest(`/api/${orgId}/online/${id}/delete/`, 'DELETE').then(() => location.reload());
+}
+function deletePrint(orgId, id) {
+  if (!confirm('Delete this article?')) return;
+  apiRequest(`/api/${orgId}/print/${id}/delete/`, 'DELETE').then(() => location.reload());
+}
+function deleteSocial(orgId, id) {
+  if (!confirm('Delete this post?')) return;
+  apiRequest(`/api/${orgId}/social/${id}/delete/`, 'DELETE').then(() => location.reload());
+}
+</script>
+{% endblock %}

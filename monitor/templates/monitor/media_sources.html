@@ -1,0 +1,270 @@
+{% extends 'monitor/base.html' %}
+{% load static %}
+{% block title %}Media Sources{% endblock %}
+
+{% block content %}
+<div class="page-header page-header--flex">
+  <div>
+    <h1 class="page-title">Media Sources</h1>
+    <p class="page-subtitle">Manage your media sources and contacts</p>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-primary" onclick="openModal('addSourceModal')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Source
+    </button>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="filter-card">
+  <div class="filter-row">
+    <div class="search-input-wrap">
+      <svg class="search-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="search-input-field" id="searchInput" placeholder="Search sources…" oninput="filterSources()" />
+    </div>
+    <select class="filter-select" id="typeFilter" onchange="filterSources()">
+      <option value="">All Types</option>
+      {% for val, label in source_type_choices %}
+      <option value="{{ val }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select class="filter-select" id="countryFilter" onchange="filterSources()">
+      <option value="">All Countries</option>
+      {% for s in sources %}{% if s.country %}
+      <option value="{{ s.country }}">{{ s.country }}</option>
+      {% endif %}{% endfor %}
+    </select>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="table-card">
+  <table class="data-table" id="sourcesTable">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>URL</th>
+        <th>Country</th>
+        <th style="text-align:right;">Reach</th>
+        <th style="width:40px;"></th>
+      </tr>
+    </thead>
+    <tbody id="sourcesBody">
+      {% for s in sources %}
+      <tr data-name="{{ s.name|lower }}" data-type="{{ s.source_type }}" data-country="{{ s.country|lower }}">
+        <td>
+          <div class="source-cell">
+            <div class="source-icon">{{ s.name|slice:":2"|upper }}</div>
+            <div>
+              <div style="font-weight:500;color:var(--text);">{{ s.name }}</div>
+              {% if s.handle %}<div style="font-size:11.5px;color:var(--text-muted);">{{ s.handle }}</div>{% endif %}
+            </div>
+          </div>
+        </td>
+        <td>
+          <span class="type-badge type-badge--{{ s.source_type }}">{{ s.source_type }}</span>
+        </td>
+        <td>
+          {% if s.url %}
+          <a href="{{ s.url }}" target="_blank" class="table-link" style="font-size:13px;">{{ s.url|truncatechars:40 }}</a>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td>{{ s.country|default:"—" }}</td>
+        <td style="text-align:right;font-weight:500;">{{ s.reach|default:0 }}</td>
+        <td>
+          <div class="row-menu-wrap">
+            <button class="row-menu-btn" onclick="toggleRowMenu(this)" title="Actions">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            </button>
+            <div class="row-menu hidden">
+              <button class="row-menu-item" onclick="closeMeAndRun(this, () => openEditModal({{ s.id }}, '{{ s.name|escapejs }}', '{{ s.source_type }}', '{{ s.url|escapejs }}', '{{ s.handle|escapejs }}', '{{ s.country|escapejs }}', {{ s.reach }}))">Edit</button>
+              <button class="row-menu-item row-menu-item--danger" onclick="closeMeAndRun(this, () => deleteSource({{ s.id }}, '{{ s.name|escapejs }}'))">Delete</button>
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="table-empty">No media sources yet. Click <strong>Add Source</strong> to get started.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Add Source Modal -->
+<div class="modal-overlay hidden" id="addSourceModal">
+  <div class="modal modal--sm">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Add New Media Source</div>
+        <div class="modal-subtitle">Add a new media source to your database</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('addSourceModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input type="text" class="form-input" id="addName" placeholder="Media source name" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-select" id="addType">
+            {% for val, label in source_type_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Country</label>
+          <input type="text" class="form-input" id="addCountry" placeholder="Country" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">URL</label>
+          <input type="text" class="form-input" id="addUrl" placeholder="example.com" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Handle <span style="color:var(--text-dim);font-weight:400;">(Optional)</span></label>
+          <input type="text" class="form-input" id="addHandle" placeholder="@handle" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reach</label>
+        <input type="number" class="form-input" id="addReach" value="0" min="0" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('addSourceModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createSource()">Add Source</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Source Modal -->
+<div class="modal-overlay hidden" id="editSourceModal">
+  <div class="modal modal--sm">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Edit Media Source</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('editSourceModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editSourceId" />
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input type="text" class="form-input" id="editName" placeholder="Media source name" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-select" id="editType">
+            {% for val, label in source_type_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Country</label>
+          <input type="text" class="form-input" id="editCountry" placeholder="Country" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">URL</label>
+          <input type="text" class="form-input" id="editUrl" placeholder="example.com" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Handle <span style="color:var(--text-dim);font-weight:400;">(Optional)</span></label>
+          <input type="text" class="form-input" id="editHandle" placeholder="@handle" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reach</label>
+        <input type="number" class="form-input" id="editReach" value="0" min="0" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('editSourceModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ORG_ID = '{{ org.id }}';
+
+// ── Filter ─────────────────────────────────────────────
+function filterSources() {
+  const q       = document.getElementById('searchInput').value.toLowerCase();
+  const type    = document.getElementById('typeFilter').value;
+  const country = document.getElementById('countryFilter').value.toLowerCase();
+  document.querySelectorAll('#sourcesBody tr[data-name]').forEach(tr => {
+    const nameMatch    = !q       || tr.dataset.name.includes(q);
+    const typeMatch    = !type    || tr.dataset.type === type;
+    const countryMatch = !country || tr.dataset.country.includes(country);
+    tr.style.display = (nameMatch && typeMatch && countryMatch) ? '' : 'none';
+  });
+}
+
+// ── Create ─────────────────────────────────────────────
+async function createSource() {
+  const name = document.getElementById('addName').value.trim();
+  if (!name) { alert('Please enter a source name.'); return; }
+  const body = {
+    name,
+    source_type: document.getElementById('addType').value,
+    url:         document.getElementById('addUrl').value.trim(),
+    handle:      document.getElementById('addHandle').value.trim(),
+    country:     document.getElementById('addCountry').value.trim(),
+    reach:       parseInt(document.getElementById('addReach').value) || 0,
+  };
+  try {
+    await apiRequest(`/api/${ORG_ID}/sources/`, 'POST', body);
+    location.reload();
+  } catch (e) { alert(e.message); }
+}
+
+// ── Edit ───────────────────────────────────────────────
+function openEditModal(id, name, type, url, handle, country, reach) {
+  document.getElementById('editSourceId').value = id;
+  document.getElementById('editName').value     = name;
+  document.getElementById('editType').value     = type;
+  document.getElementById('editUrl').value      = url;
+  document.getElementById('editHandle').value   = handle;
+  document.getElementById('editCountry').value  = country;
+  document.getElementById('editReach').value    = reach;
+  openModal('editSourceModal');
+}
+
+async function saveEdit() {
+  const id   = document.getElementById('editSourceId').value;
+  const name = document.getElementById('editName').value.trim();
+  if (!name) { alert('Please enter a source name.'); return; }
+  const body = {
+    name,
+    source_type: document.getElementById('editType').value,
+    url:         document.getElementById('editUrl').value.trim(),
+    handle:      document.getElementById('editHandle').value.trim(),
+    country:     document.getElementById('editCountry').value.trim(),
+    reach:       parseInt(document.getElementById('editReach').value) || 0,
+  };
+  try {
+    await apiRequest(`/api/${ORG_ID}/sources/${id}/`, 'PUT', body);
+    location.reload();
+  } catch (e) { alert(e.message); }
+}
+
+// ── Delete ─────────────────────────────────────────────
+async function deleteSource(id, name) {
+  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  try {
+    await apiRequest(`/api/${ORG_ID}/sources/${id}/delete/`, 'DELETE');
+    location.reload();
+  } catch (e) { alert(e.message); }
+}
+</script>
+{% endblock %}

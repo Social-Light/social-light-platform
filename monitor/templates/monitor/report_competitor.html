@@ -1,0 +1,576 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Competitor Analysis Report{% endblock %}
+
+{% block content %}
+<style>
+/* ── Report page ─────────────────────────────────────────────────────────── */
+.report-page {
+  max-width: 900px;
+  margin: 0 auto;
+  background: #fff;
+  padding: 48px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.08);
+  font-family: 'Inter', sans-serif;
+}
+
+/* Controls bar */
+.report-controls {
+  max-width: 900px;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Header */
+.rpt-header { margin-bottom: 24px; }
+.rpt-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a2b45;
+  margin: 0 0 6px;
+}
+.rpt-subtitle {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0 0 2px;
+}
+.rpt-divider {
+  border: none;
+  border-top: 2px solid #e5e7eb;
+  margin: 20px 0;
+}
+
+/* KPI row */
+.rpt-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 32px;
+}
+.rpt-kpi-box {
+  background: #1a2b45;
+  border-radius: 8px;
+  padding: 16px 18px;
+  color: #fff;
+}
+.rpt-kpi-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #93c5fd;
+  margin-bottom: 8px;
+}
+.rpt-kpi-value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.rpt-kpi-sub {
+  font-size: 11px;
+  color: #93c5fd;
+  margin-top: 4px;
+}
+
+/* Section heading */
+.rpt-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1d4ed8;
+  margin: 32px 0 4px;
+}
+.rpt-section-rule {
+  border: none;
+  border-top: 2px solid #1d4ed8;
+  margin: 0 0 16px;
+}
+
+/* Two-column sub-layout */
+.rpt-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.rpt-chart-wrap {
+  position: relative;
+  min-height: 180px;
+}
+.rpt-chart-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+/* Insight box */
+.rpt-insight {
+  background: #eff6ff;
+  border-left: 4px solid #1d4ed8;
+  border-radius: 0 6px 6px 0;
+  padding: 14px 16px;
+  margin: 16px 0;
+}
+.rpt-insight-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #1a2b45;
+  margin-bottom: 4px;
+}
+.rpt-insight p {
+  font-size: 13px;
+  color: #374151;
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* SOV / data tables */
+.rpt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.rpt-table thead tr {
+  background: #1d2b45;
+  color: #fff;
+}
+.rpt-table thead th {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+}
+.rpt-table tbody tr:nth-child(even) { background: #f9fafb; }
+.rpt-table tbody tr:nth-child(odd)  { background: #fff; }
+.rpt-table tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.rpt-table tr.is-org td {
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+/* Sentiment boxes */
+.rpt-sent-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.rpt-sent-box { border-radius: 8px; overflow: hidden; }
+.rpt-sent-header {
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+}
+.rpt-sent-body {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  padding: 16px 14px;
+  text-align: center;
+}
+.rpt-sent-pct {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.rpt-sent-mentions {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+/* Footer */
+.rpt-footer {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 16px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 12px;
+  margin-top: 32px;
+}
+
+/* Print */
+@media print {
+  .no-print,
+  .sidebar,
+  .topheader,
+  .main-content > *:not(#reportPage) { display: none !important; }
+  .main-content { margin: 0 !important; padding: 0 !important; }
+  .report-page { box-shadow: none !important; padding: 24px !important; }
+  @page { margin: 0; size: A4; }
+}
+</style>
+
+<!-- ── Controls bar ─────────────────────────────────────────────────────── -->
+<div class="report-controls no-print">
+  <a href="{% url 'monitor:reports' org.id %}" class="btn btn-secondary btn-sm">
+    &larr; Back
+  </a>
+  <form method="get" style="display:flex;align-items:center;gap:8px;">
+    <input type="date" name="date_from" value="{{ date_from|date:'Y-m-d' }}"
+           class="form-control form-control-sm" style="width:140px;">
+    <span style="color:#6b7280;font-size:13px;">to</span>
+    <input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}"
+           class="form-control form-control-sm" style="width:140px;">
+    <button type="submit" class="btn btn-secondary btn-sm">Apply</button>
+  </form>
+  <button class="btn btn-primary btn-sm" onclick="downloadPDF()">
+    &#8681; Download PDF
+  </button>
+  <a href="{% url 'monitor:report_competitor_pptx' org.id %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"
+     class="btn btn-secondary btn-sm">
+    &#8681; Download PPTX
+  </a>
+</div>
+
+<!-- ── Report body ──────────────────────────────────────────────────────── -->
+<div class="report-page" id="reportPage">
+
+  <!-- Header -->
+  <div class="rpt-header">
+    <h1 class="rpt-title">{{ org.name }} Competitor Analysis</h1>
+    <p class="rpt-subtitle">Media Monitoring Report | {{ month_label }}</p>
+    <p class="rpt-subtitle">{{ date_from|date:"d M Y" }} &mdash; {{ date_to|date:"d M Y" }}</p>
+  </div>
+  <hr class="rpt-divider">
+
+  <!-- KPI row -->
+  <div class="rpt-kpi-row">
+    <div class="rpt-kpi-box">
+      <div class="rpt-kpi-label">Total Broadcast Mentions</div>
+      <div class="rpt-kpi-value">{{ org_bc_count }}</div>
+      <div class="rpt-kpi-sub">Broadcasts in period</div>
+    </div>
+    <div class="rpt-kpi-box">
+      <div class="rpt-kpi-label">Online Article Mentions</div>
+      <div class="rpt-kpi-value">{{ org_art_count }}</div>
+      <div class="rpt-kpi-sub">Digital articles in period</div>
+    </div>
+    <div class="rpt-kpi-box">
+      <div class="rpt-kpi-label">Positive Sentiment</div>
+      <div class="rpt-kpi-value">{{ pos_pct }}%</div>
+      <div class="rpt-kpi-sub">of broadcast coverage</div>
+    </div>
+    <div class="rpt-kpi-box">
+      <div class="rpt-kpi-label">Online Article AVE</div>
+      <div class="rpt-kpi-value" style="font-size:22px;">BWP {{ org_art_ave|floatformat:0 }}</div>
+      <div class="rpt-kpi-sub">Advertising Value Equivalency</div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 1: Broadcast & Radio ───────────────────────────────────── -->
+  <p class="rpt-section-title">1. Broadcast &amp; Radio Performance</p>
+  <hr class="rpt-section-rule">
+
+  <div class="rpt-chart-wrap" style="margin-bottom:20px;">
+    <canvas id="broadcastChart" height="180"></canvas>
+  </div>
+
+  <div class="rpt-insight">
+    <div class="rpt-insight-label">Insight</div>
+    <p>
+      {{ org.name }} recorded <strong>{{ org_bc_count }}</strong> broadcast mention{{ org_bc_count|pluralize }}
+      during {{ month_label }}.
+      Positive sentiment accounted for <strong>{{ pos_pct }}%</strong> of broadcast coverage,
+      with <strong>{{ pos_bc }}</strong> positive, <strong>{{ neu_bc }}</strong> neutral,
+      and <strong>{{ neg_bc }}</strong> negative mentions.
+    </p>
+  </div>
+
+  <!-- ── SECTION 2: Online & Digital ────────────────────────────────────── -->
+  <p class="rpt-section-title">2. Online &amp; Digital Performance</p>
+  <hr class="rpt-section-rule">
+
+  <div class="rpt-two-col">
+    <div>
+      <p class="rpt-chart-label">Online Articles</p>
+      <div class="rpt-chart-wrap">
+        <canvas id="articleChart" height="200"></canvas>
+      </div>
+    </div>
+    <div>
+      <p class="rpt-chart-label">Social Media Posts</p>
+      <div class="rpt-chart-wrap">
+        <canvas id="socialChart" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="rpt-insight">
+    <div class="rpt-insight-label">Insight</div>
+    <p>
+      {{ org.name }} had <strong>{{ org_art_count }}</strong> online article{{ org_art_count|pluralize }}
+      and <strong>{{ org_soc_count }}</strong> social media post{{ org_soc_count|pluralize }}
+      during {{ month_label }}.
+      {% if comp_avg_art > 0 %}
+        Competitor average for online articles was <strong>{{ comp_avg_art }}</strong>.
+      {% endif %}
+    </p>
+  </div>
+
+  <!-- ── SECTION 3: Print / Newspaper Coverage ───────────────────────────── -->
+  <p class="rpt-section-title">3. Newspaper Coverage Analysis</p>
+  <hr class="rpt-section-rule">
+
+  <div class="rpt-two-col">
+    <div>
+      <p class="rpt-chart-label">Print Mentions by Organisation</p>
+      <div class="rpt-chart-wrap">
+        <canvas id="printChart" height="200"></canvas>
+      </div>
+    </div>
+    <div>
+      <p class="rpt-chart-label">Sentiment Breakdown (Print)</p>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px;">
+        <div style="background:#f0fdf4;border-radius:8px;padding:14px;text-align:center;">
+          <div style="font-size:24px;font-weight:700;color:#16a34a;">{{ print_pos }}</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:4px;">Positive</div>
+        </div>
+        <div style="background:#f9fafb;border-radius:8px;padding:14px;text-align:center;">
+          <div style="font-size:24px;font-weight:700;color:#374151;">{{ print_neu }}</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:4px;">Neutral</div>
+        </div>
+        <div style="background:#fef2f2;border-radius:8px;padding:14px;text-align:center;">
+          <div style="font-size:24px;font-weight:700;color:#dc2626;">{{ print_neg }}</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:4px;">Negative</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if print_detail %}
+  <p style="font-size:13px;font-weight:600;color:#374151;margin:8px 0 8px;">Recent Print Articles</p>
+  <table class="rpt-table">
+    <thead>
+      <tr>
+        <th>Headline</th>
+        <th>Publisher</th>
+        <th>Date</th>
+        <th>Sentiment</th>
+        <th>AVE (BWP)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in print_detail %}
+      <tr>
+        <td>{{ row.headline|truncatechars:60 }}</td>
+        <td>{{ row.source }}</td>
+        <td>{{ row.date_published|date:"d M Y" }}</td>
+        <td>
+          {% if row.sentiment == 'positive' %}
+            <span style="color:#16a34a;font-weight:600;">Positive</span>
+          {% elif row.sentiment == 'negative' %}
+            <span style="color:#dc2626;font-weight:600;">Negative</span>
+          {% else %}
+            <span style="color:#6b7280;">Neutral</span>
+          {% endif %}
+        </td>
+        <td>{{ row.ave|floatformat:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- ── SECTION 4: Bank Mentions Across Print Media (publisher volume) ─── -->
+  <p class="rpt-section-title">4. Mentions Across Print Media (by Publisher)</p>
+  <hr class="rpt-section-rule">
+
+  {% if pub_data %}
+  <div class="rpt-chart-wrap" style="margin-bottom:20px;">
+    <canvas id="pubChart" height="160"></canvas>
+  </div>
+  {% else %}
+  <p style="font-size:13px;color:#9ca3af;margin-bottom:20px;">No print publication data for this period.</p>
+  {% endif %}
+
+  <!-- ── SECTION 5: Share of Voice ──────────────────────────────────────── -->
+  <p class="rpt-section-title">5. Share of Voice &mdash; Competitive Landscape</p>
+  <hr class="rpt-section-rule">
+
+  {% if sov_table %}
+  <table class="rpt-table">
+    <thead>
+      <tr>
+        <th>Rank</th>
+        <th>Organisation</th>
+        <th>Total Mentions</th>
+        <th>Share (%)</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in sov_table %}
+      <tr{% if row.is_org %} class="is-org"{% endif %}>
+        <td>{{ row.rank }}</td>
+        <td>{{ row.name }}{% if row.is_org %} &#9679;{% endif %}</td>
+        <td>{{ row.count }}</td>
+        <td>{{ row.share }}%</td>
+        <td>{{ row.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- ── SECTION 6: Overall Sentiment Analysis ──────────────────────────── -->
+  <p class="rpt-section-title">6. Overall Sentiment Analysis</p>
+  <hr class="rpt-section-rule">
+
+  <div class="rpt-sent-row">
+    <div class="rpt-sent-box">
+      <div class="rpt-sent-header" style="background:#16a34a;">Positive</div>
+      <div class="rpt-sent-body">
+        <div class="rpt-sent-pct" style="color:#16a34a;">{{ pos_pct }}%</div>
+        <div class="rpt-sent-mentions">{{ pos_bc }} mention{{ pos_bc|pluralize }}</div>
+      </div>
+    </div>
+    <div class="rpt-sent-box">
+      <div class="rpt-sent-header" style="background:#64748b;">Neutral</div>
+      <div class="rpt-sent-body">
+        <div class="rpt-sent-pct" style="color:#374151;">{{ neu_pct }}%</div>
+        <div class="rpt-sent-mentions">{{ neu_bc }} mention{{ neu_bc|pluralize }}</div>
+      </div>
+    </div>
+    <div class="rpt-sent-box">
+      <div class="rpt-sent-header" style="background:#dc2626;">Negative</div>
+      <div class="rpt-sent-body">
+        <div class="rpt-sent-pct" style="color:#dc2626;">{{ neg_pct }}%</div>
+        <div class="rpt-sent-mentions">{{ neg_bc }} mention{{ neg_bc|pluralize }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rpt-insight">
+    <div class="rpt-insight-label">Insight</div>
+    <p>
+      {{ org.name }} recorded a total of <strong>{{ org_total }}</strong> media
+      mention{{ org_total|pluralize }} across all channels during {{ month_label }}.
+      Overall sentiment was predominantly
+      {% if pos_pct >= 50 %}
+        <strong>positive</strong>, with {{ pos_pct }}% of broadcast coverage conveying a favourable tone.
+      {% elif neg_pct >= 50 %}
+        <strong>negative</strong>, with {{ neg_pct }}% of broadcast coverage conveying an unfavourable tone.
+      {% else %}
+        <strong>neutral</strong>, with balanced coverage across channels.
+      {% endif %}
+      Online article reach totalled <strong>{{ org_art_reach|floatformat:0 }}</strong> readers.
+    </p>
+  </div>
+
+  <!-- Footer -->
+  <div class="rpt-footer">
+    <p>Generated by Social Light Media Monitoring &mdash; {{ date_from|date:"d M Y" }} to {{ date_to|date:"d M Y" }}</p>
+    <p style="margin:2px 0 0;">Confidential | For internal use only</p>
+  </div>
+
+</div><!-- /report-page -->
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var BLUE_ORG  = '#1d4ed8';
+  var BLUE_COMP = '#93c5fd';
+
+  function makeColors(data) {
+    return data.map(function (d) { return d.is_org ? BLUE_ORG : BLUE_COMP; });
+  }
+
+  function buildHBar(canvasId, rawJson, labelField) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var data;
+    try { data = JSON.parse(rawJson); } catch(e) { return; }
+    if (!data || !data.length) return;
+
+    var labels = data.map(function(d) { return d[labelField || 'label']; });
+    var values = data.map(function(d) { return d.value; });
+    var colors = data[0].hasOwnProperty('is_org') ? makeColors(data) : makePubColors(data.length);
+
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: values,
+          backgroundColor: colors,
+          borderRadius: 4,
+          borderSkipped: false,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: function(ctx) { return ' ' + ctx.parsed.x + ' mentions'; }
+          }}
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { font: { size: 11, family: 'Inter' }, color: '#6b7280' }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { font: { size: 12, family: 'Inter' }, color: '#374151' }
+          }
+        }
+      }
+    });
+  }
+
+  function makePubColors(n) {
+    var colors = [];
+    for (var i = 0; i < n; i++) {
+      var t = n > 1 ? i / (n - 1) : 0;
+      // Interpolate from BLUE_ORG (#1d4ed8) to BLUE_COMP (#93c5fd)
+      var r = Math.round(0x1d + t * (0x93 - 0x1d));
+      var g = Math.round(0x4e + t * (0xc5 - 0x4e));
+      var b = Math.round(0xd8 + t * (0xfd - 0xd8));
+      colors.push('rgb(' + r + ',' + g + ',' + b + ')');
+    }
+    return colors;
+  }
+
+  buildHBar('broadcastChart', '{{ bc_json|escapejs }}');
+  buildHBar('articleChart',   '{{ art_json|escapejs }}');
+  buildHBar('socialChart',    '{{ soc_json|escapejs }}');
+  buildHBar('printChart',     '{{ print_json|escapejs }}');
+  buildHBar('pubChart',       '{{ pub_json|escapejs }}');
+
+  // ── Print / PDF helpers ───────────────────────────────────────────────── //
+  window.addEventListener('beforeprint', function () {
+    document.querySelectorAll('canvas').forEach(function (c) {
+      var img = new Image();
+      img.src = c.toDataURL('image/png', 1.0);
+      img.style.width  = c.offsetWidth  + 'px';
+      img.style.height = c.offsetHeight + 'px';
+      c.style.display = 'none';
+      c.parentNode.insertBefore(img, c.nextSibling);
+      c._pi = img;
+    });
+  });
+
+  window.addEventListener('afterprint', function () {
+    document.querySelectorAll('canvas').forEach(function (c) {
+      if (c._pi) { c._pi.remove(); c._pi = null; c.style.display = ''; }
+    });
+  });
+})();
+
+function downloadPDF() { window.print(); }
+</script>
+{% endblock %}
