@@ -1,731 +1,364 @@
 {% load static %}<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Social Light — Media Intelligence Platform</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root{--navy:#0f2459;--navy-dk:#070f26;--blue:#1d4ed8;--blue-lt:#3b82f6;--blue-xl:#60a5fa;}
+    *,*::before,*::after{box-sizing:border-box;}
+    html{scroll-behavior:smooth;}
+    body{font-family:'Inter',system-ui,sans-serif;color:#0f172a;background:#fff;-webkit-font-smoothing:antialiased;margin:0;}
 
-    :root {
-      --blue-deep:   #1a3d7c;
-      --blue-brand:  #1d4ed8;
-      --blue-mid:    #2563eb;
-      --blue-light:  #60a5fa;
-      --blue-pale:   #eff6ff;
-      --navy:        #0f1f3d;
-      --text:        #0f172a;
-      --text-muted:  #64748b;
-      --white:       #ffffff;
-      --border:      #e2e8f0;
-      --radius:      12px;
-    }
+    /* Nav */
+    .site-nav{position:fixed;top:0;left:0;right:0;z-index:999;transition:background .3s,box-shadow .3s;}
+    .site-nav.scrolled{background:rgba(7,15,38,.95);backdrop-filter:blur(12px);box-shadow:0 1px 0 rgba(255,255,255,.06);}
+    .nav-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:18px 24px;}
+    .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
+    .nav-logo img{width:38px;height:38px;object-fit:contain;border-radius:8px;}
+    .nav-logo-name{font-size:14px;font-weight:800;color:#fff;letter-spacing:.07em;display:block;}
+    .nav-logo-sub{font-size:8px;color:rgba(255,255,255,.4);letter-spacing:.14em;text-transform:uppercase;display:block;margin-top:1px;}
+    .nav-signin{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;transition:background .15s,transform .15s;font-family:inherit;}
+    .nav-signin:hover{background:#1a45c4;transform:translateY(-1px);color:#fff;}
 
-    html { scroll-behavior: smooth; }
-    body { font-family: 'Inter', sans-serif; color: var(--text); background: var(--white); }
-    a { text-decoration: none; color: inherit; }
+    /* Hero */
+    .hero{position:relative;min-height:100vh;overflow:hidden;display:flex;align-items:center;background:var(--navy-dk);}
+    .hero-bg{position:absolute;inset:0;background:url('{% static "images/image5.jpg" %}') center center/cover no-repeat;opacity:.22;}
+    .hero-gradient{position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 60% 50%,rgba(29,78,216,.18) 0%,transparent 70%),linear-gradient(160deg,rgba(7,15,38,.98) 0%,rgba(15,36,89,.92) 50%,rgba(7,15,38,.96) 100%);}
+    .hero-content{position:relative;z-index:2;max-width:1160px;margin:0 auto;padding:120px 24px 80px;display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;}
+    @media(max-width:900px){.hero-content{grid-template-columns:1fr;gap:40px;text-align:center;}.hero-ctas,.hero-trust{justify-content:center!important;}}
+    .hero-eyebrow{display:inline-flex;align-items:center;gap:7px;background:rgba(29,78,216,.18);border:1px solid rgba(29,78,216,.35);border-radius:100px;padding:5px 14px;font-size:12px;font-weight:600;color:var(--blue-xl);letter-spacing:.06em;text-transform:uppercase;margin-bottom:22px;}
+    .hero-title{font-size:clamp(38px,5.5vw,64px);font-weight:900;color:#fff;line-height:1.05;letter-spacing:-.03em;margin-bottom:22px;}
+    .hero-title span{background:linear-gradient(90deg,var(--blue-xl),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .hero-sub{font-size:17px;color:rgba(255,255,255,.6);line-height:1.75;max-width:480px;margin-bottom:36px;}
+    .hero-ctas{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+    .btn-hero-primary{display:inline-flex;align-items:center;gap:8px;padding:14px 28px;background:linear-gradient(135deg,var(--blue) 0%,var(--navy) 100%);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;font-family:inherit;text-decoration:none;cursor:pointer;box-shadow:0 4px 20px rgba(29,78,216,.45);transition:transform .2s,box-shadow .2s;}
+    .btn-hero-primary:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(29,78,216,.55);color:#fff;}
+    .btn-hero-outline{display:inline-flex;align-items:center;gap:8px;padding:13px 24px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.85);border:1.5px solid rgba(255,255,255,.2);border-radius:10px;font-size:15px;font-weight:600;font-family:inherit;text-decoration:none;transition:background .15s,border-color .15s;}
+    .btn-hero-outline:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.4);color:#fff;}
+    .hero-trust{display:flex;align-items:center;gap:12px;margin-top:28px;font-size:13px;color:rgba(255,255,255,.4);flex-wrap:wrap;}
+    .trust-avatars{display:flex;}
+    .trust-avatar{width:28px;height:28px;border-radius:50%;border:2px solid rgba(15,36,89,.8);background:linear-gradient(135deg,#1d4ed8,#7c3aed);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-left:-8px;}
+    .trust-avatar:first-child{margin-left:0;}
+    .hero-visual{position:relative;}
+    .hero-img-card{border-radius:16px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08);position:relative;}
+    .hero-img-card img{width:100%;display:block;opacity:.85;}
+    .hero-img-card::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 50%,rgba(7,15,38,.7) 100%);}
+    .hero-chips{position:absolute;bottom:20px;left:20px;right:20px;display:flex;gap:10px;flex-wrap:wrap;z-index:2;}
+    .hero-chip{background:rgba(255,255,255,.12);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px 14px;}
+    .hero-chip-val{font-size:18px;font-weight:800;color:#fff;display:block;line-height:1;}
+    .hero-chip-lbl{font-size:11px;color:rgba(255,255,255,.55);display:block;margin-top:2px;}
 
-    /* ── NAV ─────────────────────────────────────────────────── */
-    .nav {
-      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 40px; height: 68px;
-      background: rgba(255,255,255,0.92);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid rgba(30,64,175,0.08);
-    }
-    .nav-logo { display: flex; align-items: center; gap: 10px; }
-    .nav-logo img { height: 42px; width: auto; object-fit: contain; }
-    .nav-logo-text {
-      font-size: 15px; font-weight: 800; letter-spacing: 0.06em;
-      color: var(--blue-deep);
-      line-height: 1.1;
-    }
-    .nav-logo-sub {
-      font-size: 9px; font-weight: 500; letter-spacing: 0.12em;
-      color: var(--blue-light); text-transform: uppercase; display: block;
-    }
-    .nav-actions { display: flex; align-items: center; gap: 12px; }
-    .btn-signin {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: var(--blue-brand); color: var(--white);
-      padding: 9px 22px; border-radius: 8px;
-      font-size: 14px; font-weight: 600;
-      transition: background 0.2s, transform 0.15s;
-      border: none; cursor: pointer;
-    }
-    .btn-signin:hover { background: var(--blue-deep); transform: translateY(-1px); }
-    .btn-signin svg { flex-shrink: 0; }
+    /* Stats strip */
+    .stats-strip{background:linear-gradient(135deg,var(--navy) 0%,#122048 100%);padding:52px 0;}
+    .stat-block{text-align:center;padding:0 8px;}
+    .stat-block-val{font-size:40px;font-weight:900;color:#fff;letter-spacing:-.03em;display:block;line-height:1;}
+    .stat-block-lbl{font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;display:block;}
 
-    /* ── HERO ─────────────────────────────────────────────────── */
-    .hero {
-      min-height: 100vh;
-      display: flex; align-items: center;
-      background: linear-gradient(135deg, #f0f7ff 0%, #e8f0fe 40%, #dbeafe 100%);
-      padding: 120px 40px 80px;
-      position: relative; overflow: hidden;
-    }
-    .hero::before {
-      content: '';
-      position: absolute; inset: 0;
-      background:
-        radial-gradient(ellipse 80% 60% at 70% 40%, rgba(29,78,216,0.08) 0%, transparent 60%),
-        radial-gradient(ellipse 40% 40% at 20% 80%, rgba(96,165,250,0.12) 0%, transparent 60%);
-    }
-    .hero-inner {
-      max-width: 1140px; margin: 0 auto;
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 60px; align-items: center;
-      position: relative; z-index: 1;
-      width: 100%;
-    }
-    .hero-eyebrow {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: rgba(29,78,216,0.08); border: 1px solid rgba(29,78,216,0.2);
-      border-radius: 100px; padding: 5px 14px;
-      font-size: 12px; font-weight: 600; color: var(--blue-brand);
-      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 20px;
-    }
-    .hero-eyebrow span { width: 6px; height: 6px; background: var(--blue-brand); border-radius: 50%; flex-shrink: 0; }
-    .hero-title {
-      font-size: clamp(36px, 4.5vw, 58px);
-      font-weight: 900; line-height: 1.08;
-      color: var(--navy); margin-bottom: 22px; letter-spacing: -0.02em;
-    }
-    .hero-title .accent {
-      background: linear-gradient(135deg, var(--blue-brand) 0%, var(--blue-light) 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .hero-sub {
-      font-size: 18px; color: var(--text-muted); line-height: 1.7;
-      margin-bottom: 36px; max-width: 480px;
-    }
-    .hero-cta { display: flex; gap: 12px; flex-wrap: wrap; }
-    .btn-primary-hero {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: linear-gradient(135deg, var(--blue-brand) 0%, var(--blue-deep) 100%);
-      color: var(--white); padding: 14px 28px; border-radius: 10px;
-      font-size: 15px; font-weight: 700;
-      box-shadow: 0 4px 20px rgba(29,78,216,0.35);
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .btn-primary-hero:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(29,78,216,0.4); }
-    .btn-outline-hero {
-      display: inline-flex; align-items: center; gap: 8px;
-      border: 2px solid rgba(29,78,216,0.3); color: var(--blue-brand);
-      padding: 14px 28px; border-radius: 10px;
-      font-size: 15px; font-weight: 600;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .btn-outline-hero:hover { border-color: var(--blue-brand); background: var(--blue-pale); }
-    .hero-trust {
-      margin-top: 40px; display: flex; align-items: center; gap: 16px;
-      font-size: 13px; color: var(--text-muted);
-    }
-    .hero-trust-avatars { display: flex; }
-    .hero-trust-avatars span {
-      width: 32px; height: 32px; border-radius: 50%;
-      background: linear-gradient(135deg, var(--blue-brand), var(--blue-deep));
-      border: 2px solid #fff; display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; color: #fff; margin-left: -8px;
-    }
-    .hero-trust-avatars span:first-child { margin-left: 0; }
+    /* Sections */
+    section{padding:96px 0;}
+    .section-inner{max-width:1160px;margin:0 auto;padding:0 24px;}
+    .section-tag{display:inline-block;padding:4px 14px;border-radius:100px;background:#eff6ff;color:var(--blue);font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;}
+    .section-tag-dark{background:rgba(29,78,216,.2);color:#60a5fa;}
+    .section-title{font-size:clamp(28px,4vw,42px);font-weight:900;color:#0f172a;letter-spacing:-.02em;margin-bottom:14px;line-height:1.1;}
+    .section-title-light{color:#fff;}
+    .section-sub{font-size:16px;color:#64748b;line-height:1.75;max-width:580px;}
+    .section-sub-light{color:rgba(255,255,255,.55);}
 
-    /* Dashboard mockup */
-    .hero-visual {
-      position: relative;
-    }
-    .mockup-shell {
-      background: var(--white);
-      border-radius: 16px;
-      box-shadow: 0 24px 80px rgba(15,31,61,0.18), 0 4px 16px rgba(29,78,216,0.1);
-      overflow: hidden;
-      border: 1px solid rgba(29,78,216,0.1);
-    }
-    .mockup-bar {
-      background: var(--navy); padding: 10px 16px;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
-    .mockup-body {
-      padding: 20px;
-      background: #f8faff;
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 12px; min-height: 280px;
-    }
-    .mockup-card {
-      background: var(--white); border-radius: 10px;
-      padding: 14px 16px;
-      border: 1px solid var(--border);
-    }
-    .mockup-card-label {
-      font-size: 10px; font-weight: 700; color: var(--text-muted);
-      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
-    }
-    .mockup-card-value { font-size: 26px; font-weight: 800; color: var(--navy); }
-    .mockup-card-sub { font-size: 11px; color: var(--blue-brand); font-weight: 600; margin-top: 2px; }
-    .mockup-bar-chart {
-      grid-column: 1 / -1;
-      background: var(--white); border-radius: 10px;
-      padding: 14px 16px; border: 1px solid var(--border);
-    }
-    .mockup-bars {
-      display: flex; align-items: flex-end; gap: 6px; height: 80px; margin-top: 10px;
-    }
-    .mockup-bar-item {
-      flex: 1; border-radius: 4px 4px 0 0;
-      background: linear-gradient(180deg, var(--blue-brand) 0%, var(--blue-deep) 100%);
-      opacity: 0.85; transition: opacity 0.2s;
-    }
-    .mockup-bar-item:nth-child(2) { opacity: 0.6; }
-    .mockup-bar-item:nth-child(3) { background: linear-gradient(180deg, var(--blue-light), var(--blue-brand)); }
-    .mockup-bar-item:nth-child(4) { opacity: 0.5; }
-    .mockup-bar-item:nth-child(5) { opacity: 0.9; }
-    .mockup-badge {
-      position: absolute; top: -14px; right: -14px;
-      background: linear-gradient(135deg, #16a34a, #15803d);
-      color: #fff; border-radius: 10px; padding: 10px 16px;
-      box-shadow: 0 8px 24px rgba(22,163,74,0.3);
-      font-size: 13px; font-weight: 700; white-space: nowrap;
-    }
-    .mockup-badge-sub { font-size: 11px; font-weight: 400; opacity: 0.85; }
+    /* Feature cards */
+    .features-section{background:#fff;}
+    .feat-card{border-radius:16px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,.07);transition:transform .2s,box-shadow .2s;height:100%;display:flex;flex-direction:column;}
+    .feat-card:hover{transform:translateY(-4px);box-shadow:0 12px 36px rgba(0,0,0,.12);}
+    .feat-img{position:relative;height:210px;overflow:hidden;}
+    .feat-img img{width:100%;height:100%;object-fit:cover;transition:transform .4s;}
+    .feat-card:hover .feat-img img{transform:scale(1.04);}
+    .feat-img-overlay{position:absolute;inset:0;background:linear-gradient(180deg,transparent 30%,rgba(7,15,38,.65) 100%);}
+    .feat-tag{position:absolute;top:14px;left:14px;background:rgba(255,255,255,.15);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.2);border-radius:100px;padding:4px 12px;font-size:11.5px;font-weight:600;color:#fff;}
+    .feat-body{padding:22px 24px 26px;flex:1;background:#fff;}
+    .feat-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;}
+    .feat-title{font-size:17px;font-weight:800;color:#0f172a;margin-bottom:8px;letter-spacing:-.01em;}
+    .feat-desc{font-size:13.5px;color:#64748b;line-height:1.65;}
 
-    /* ── STATS STRIP ──────────────────────────────────────────── */
-    .stats-strip {
-      background: var(--navy);
-      padding: 50px 40px;
-    }
-    .stats-inner {
-      max-width: 1140px; margin: 0 auto;
-      display: grid; grid-template-columns: repeat(4, 1fr);
-      gap: 20px;
-    }
-    .stat-item { text-align: center; }
-    .stat-num {
-      font-size: 42px; font-weight: 900; color: var(--white);
-      letter-spacing: -0.02em; line-height: 1;
-    }
-    .stat-num span { color: var(--blue-light); }
-    .stat-label { font-size: 14px; color: rgba(255,255,255,0.55); margin-top: 6px; font-weight: 500; }
+    /* How it works */
+    .hiw-section{background:linear-gradient(160deg,var(--navy-dk) 0%,var(--navy) 60%,#122d6a 100%);}
+    .hiw-step{display:flex;align-items:flex-start;gap:20px;padding:28px 0;border-bottom:1px solid rgba(255,255,255,.07);}
+    .hiw-step:last-child{border-bottom:none;padding-bottom:0;}
+    .hiw-num{width:48px;height:48px;border-radius:50%;flex-shrink:0;background:rgba(29,78,216,.25);border:1.5px solid rgba(29,78,216,.5);color:#60a5fa;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+    .hiw-step-title{font-size:17px;font-weight:700;color:#fff;margin-bottom:6px;}
+    .hiw-step-desc{font-size:14px;color:rgba(255,255,255,.55);line-height:1.65;margin:0;}
+    .hiw-img{border-radius:16px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);}
+    .hiw-img img{width:100%;display:block;}
 
-    /* ── FEATURES ─────────────────────────────────────────────── */
-    .features {
-      padding: 100px 40px;
-      background: var(--white);
-    }
-    .section-eyebrow {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: var(--blue-pale); border-radius: 100px; padding: 5px 14px;
-      font-size: 12px; font-weight: 700; color: var(--blue-brand);
-      letter-spacing: 0.06em; text-transform: uppercase;
-    }
-    .section-title {
-      font-size: clamp(28px, 3.5vw, 42px); font-weight: 800;
-      color: var(--navy); margin: 16px 0 14px; letter-spacing: -0.02em; line-height: 1.15;
-    }
-    .section-sub {
-      font-size: 17px; color: var(--text-muted); max-width: 560px; line-height: 1.7;
-    }
-    .features-inner { max-width: 1140px; margin: 0 auto; }
-    .features-head { margin-bottom: 60px; }
-    .features-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-    }
-    .feature-card {
-      background: #fafbff;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 32px 28px;
-      transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
-      position: relative; overflow: hidden;
-    }
-    .feature-card::before {
-      content: '';
-      position: absolute; top: 0; left: 0; right: 0; height: 3px;
-      background: linear-gradient(90deg, var(--blue-brand), var(--blue-light));
-      opacity: 0; transition: opacity 0.2s;
-    }
-    .feature-card:hover { transform: translateY(-4px); box-shadow: 0 16px 48px rgba(29,78,216,0.1); border-color: rgba(29,78,216,0.2); }
-    .feature-card:hover::before { opacity: 1; }
-    .feature-icon {
-      width: 52px; height: 52px; border-radius: 12px;
-      background: var(--blue-pale); display: flex; align-items: center; justify-content: center;
-      margin-bottom: 20px;
-    }
-    .feature-icon svg { color: var(--blue-brand); }
-    .feature-name {
-      font-size: 17px; font-weight: 700; color: var(--navy); margin-bottom: 10px;
-    }
-    .feature-desc {
-      font-size: 14px; color: var(--text-muted); line-height: 1.7;
-    }
-    .feature-card-wide {
-      grid-column: span 3;
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 40px; align-items: center;
-      padding: 40px;
-    }
-    .feature-wide-visual {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-    }
-    .mini-chart {
-      background: var(--white); border: 1px solid var(--border);
-      border-radius: 10px; padding: 14px;
-    }
-    .mini-chart-label { font-size: 10px; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-    .mini-bars { display: flex; align-items: flex-end; gap: 4px; height: 48px; }
-    .mini-bar { flex: 1; border-radius: 3px 3px 0 0; }
-    .mini-bar.pos { background: #16a34a; }
-    .mini-bar.neu { background: #64748b; }
-    .mini-bar.neg { background: #dc2626; }
-    .mini-bar.blu { background: var(--blue-brand); }
-    .mini-pct { font-size: 22px; font-weight: 800; color: var(--navy); margin-top: 4px; }
-    .mini-sub { font-size: 11px; color: var(--blue-brand); font-weight: 600; }
+    /* Landscape */
+    .landscape-section{background:var(--navy-dk);padding:80px 0;}
+    .media-pill{display:inline-flex;align-items:center;gap:7px;padding:7px 16px;border-radius:100px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);font-size:13px;font-weight:600;color:rgba(255,255,255,.75);text-decoration:none;}
+    .pill-dot{width:7px;height:7px;border-radius:50%;display:inline-block;}
+    .metric-tile{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:18px 16px;}
+    .metric-tile-val{font-size:24px;font-weight:900;color:#fff;display:block;}
+    .metric-tile-lbl{font-size:12px;color:rgba(255,255,255,.45);margin-top:3px;display:block;}
 
-    /* ── HOW IT WORKS ─────────────────────────────────────────── */
-    .how {
-      padding: 100px 40px;
-      background: linear-gradient(180deg, #f8faff 0%, var(--white) 100%);
-    }
-    .how-inner { max-width: 1140px; margin: 0 auto; }
-    .how-head { text-align: center; margin-bottom: 70px; }
-    .how-head .section-sub { margin: 0 auto; }
-    .steps {
-      display: grid; grid-template-columns: repeat(3, 1fr);
-      gap: 0; position: relative;
-    }
-    .steps::before {
-      content: '';
-      position: absolute; top: 30px; left: calc(16.66% + 20px); right: calc(16.66% + 20px);
-      height: 2px;
-      background: linear-gradient(90deg, var(--blue-brand), var(--blue-light), var(--blue-brand));
-    }
-    .step { text-align: center; padding: 0 24px; }
-    .step-num {
-      width: 60px; height: 60px; border-radius: 50%;
-      background: linear-gradient(135deg, var(--blue-brand) 0%, var(--blue-deep) 100%);
-      color: var(--white); font-size: 22px; font-weight: 800;
-      display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 24px;
-      box-shadow: 0 8px 24px rgba(29,78,216,0.3);
-      position: relative; z-index: 1;
-    }
-    .step-title { font-size: 17px; font-weight: 700; color: var(--navy); margin-bottom: 10px; }
-    .step-desc { font-size: 14px; color: var(--text-muted); line-height: 1.7; }
+    /* CTA */
+    .cta-section{position:relative;overflow:hidden;padding:100px 0;}
+    .cta-bg{position:absolute;inset:0;background:url('{% static "images/image4.jpg" %}') center center/cover no-repeat;}
+    .cta-overlay{position:absolute;inset:0;background:linear-gradient(160deg,rgba(7,15,38,.96) 0%,rgba(15,36,89,.92) 100%);}
+    .cta-inner{position:relative;z-index:2;text-align:center;}
+    .cta-title{font-size:clamp(28px,4vw,48px);font-weight:900;color:#fff;letter-spacing:-.03em;margin-bottom:16px;}
+    .cta-sub{font-size:17px;color:rgba(255,255,255,.6);margin-bottom:36px;max-width:520px;margin-left:auto;margin-right:auto;}
 
-    /* ── INTELLIGENCE STRIP ───────────────────────────────────── */
-    .intel-strip {
-      padding: 80px 40px;
-      background: linear-gradient(135deg, var(--navy) 0%, var(--blue-deep) 100%);
-      position: relative; overflow: hidden;
-    }
-    .intel-strip::before {
-      content: '';
-      position: absolute;
-      top: -40%; right: -10%;
-      width: 500px; height: 500px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(96,165,250,0.15) 0%, transparent 70%);
-    }
-    .intel-inner {
-      max-width: 1140px; margin: 0 auto;
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 60px; align-items: center;
-      position: relative; z-index: 1;
-    }
-    .intel-title { font-size: 34px; font-weight: 800; color: var(--white); line-height: 1.2; margin-bottom: 16px; }
-    .intel-title span { color: var(--blue-light); }
-    .intel-sub { font-size: 16px; color: rgba(255,255,255,0.65); line-height: 1.7; margin-bottom: 32px; }
-    .intel-pills { display: flex; flex-wrap: wrap; gap: 10px; }
-    .intel-pill {
-      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 100px; padding: 8px 16px;
-      font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.9);
-    }
-    .intel-metrics {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
-    }
-    .intel-metric {
-      background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px; padding: 20px 22px;
-    }
-    .intel-metric-val { font-size: 32px; font-weight: 800; color: var(--white); line-height: 1; }
-    .intel-metric-val span { color: var(--blue-light); font-size: 18px; }
-    .intel-metric-label { font-size: 13px; color: rgba(255,255,255,0.55); margin-top: 6px; }
+    /* Footer */
+    footer{background:var(--navy-dk);border-top:1px solid rgba(255,255,255,.06);padding:40px 0;}
+    .footer-inner{max-width:1160px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;}
+    .footer-logo{display:flex;align-items:center;gap:10px;}
+    .footer-logo img{width:32px;height:32px;object-fit:contain;border-radius:6px;}
+    .footer-logo-name{font-size:13px;font-weight:800;color:#fff;letter-spacing:.07em;display:block;}
+    .footer-logo-sub{font-size:8px;color:rgba(255,255,255,.35);letter-spacing:.14em;text-transform:uppercase;display:block;}
+    .footer-copy{font-size:13px;color:rgba(255,255,255,.3);}
 
-    /* ── CTA ──────────────────────────────────────────────────── */
-    .cta-section {
-      padding: 100px 40px;
-      text-align: center;
-      background: var(--white);
-    }
-    .cta-inner { max-width: 640px; margin: 0 auto; }
-    .cta-title { font-size: clamp(28px, 4vw, 44px); font-weight: 900; color: var(--navy); margin-bottom: 18px; letter-spacing: -0.02em; }
-    .cta-sub { font-size: 17px; color: var(--text-muted); line-height: 1.7; margin-bottom: 40px; }
-    .cta-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-
-    /* ── FOOTER ───────────────────────────────────────────────── */
-    .footer {
-      background: var(--navy); padding: 40px;
-      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
-    }
-    .footer-logo { display: flex; align-items: center; gap: 10px; }
-    .footer-logo img { height: 36px; width: auto; filter: brightness(0) invert(1); opacity: 0.85; }
-    .footer-logo-text { font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.8); letter-spacing: 0.06em; }
-    .footer-copy { font-size: 13px; color: rgba(255,255,255,0.4); }
-
-    /* ── RESPONSIVE ───────────────────────────────────────────── */
-    @media (max-width: 900px) {
-      .nav { padding: 0 20px; }
-      .hero { padding: 100px 20px 60px; }
-      .hero-inner { grid-template-columns: 1fr; gap: 40px; }
-      .hero-visual { order: -1; }
-      .stats-inner { grid-template-columns: repeat(2, 1fr); }
-      .features { padding: 70px 20px; }
-      .features-grid { grid-template-columns: 1fr 1fr; }
-      .feature-card-wide { grid-column: span 2; }
-      .how, .intel-strip, .cta-section { padding: 70px 20px; }
-      .steps { grid-template-columns: 1fr; gap: 40px; }
-      .steps::before { display: none; }
-      .intel-inner { grid-template-columns: 1fr; }
-      .footer { padding: 30px 20px; flex-direction: column; align-items: flex-start; }
-    }
-    @media (max-width: 600px) {
-      .features-grid { grid-template-columns: 1fr; }
-      .feature-card-wide { grid-column: span 1; grid-template-columns: 1fr; }
-      .feature-wide-visual { display: none; }
-      .stats-inner { grid-template-columns: 1fr 1fr; }
-      .hero-cta { flex-direction: column; }
-      .intel-metrics { grid-template-columns: 1fr 1fr; }
-    }
+    @media(max-width:768px){section{padding:64px 0;}.hero-content{padding:100px 20px 60px;}}
   </style>
 </head>
 <body>
 
-<!-- ── NAV ──────────────────────────────────────────────────── -->
-<nav class="nav">
-  <div class="nav-logo">
-    <img src="{% static 'images/social_lightbw_logo.jpeg' %}" alt="Social Light logo" />
-    <div>
-      <div class="nav-logo-text">SOCIAL LIGHT</div>
-      <span class="nav-logo-sub">Globally African</span>
-    </div>
-  </div>
-  <div class="nav-actions">
-    <a href="{% url 'monitor:login' %}" class="btn-signin">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+<!-- NAV -->
+<nav class="site-nav" id="siteNav">
+  <div class="nav-inner">
+    <a href="{% url 'monitor:home' %}" class="nav-logo">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" alt="Social Light"/>
+      <div>
+        <span class="nav-logo-name">SOCIAL LIGHT</span>
+        <span class="nav-logo-sub">Globally African</span>
+      </div>
+    </a>
+    <a href="{% url 'monitor:login' %}" class="nav-signin">
       Sign In
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
     </a>
   </div>
 </nav>
 
-<!-- ── HERO ──────────────────────────────────────────────────── -->
+<!-- HERO -->
 <section class="hero">
-  <div class="hero-inner">
-    <div class="hero-content">
+  <div class="hero-bg"></div>
+  <div class="hero-gradient"></div>
+  <div class="hero-content">
+    <div>
       <div class="hero-eyebrow">
-        <span></span> Africa's Media Intelligence Platform
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Real-time Media Intelligence
       </div>
-      <h1 class="hero-title">
-        Know what the<br/>
-        media says about<br/>
-        <span class="accent">your brand.</span>
-      </h1>
-      <p class="hero-sub">
-        Track every mention, analyse competitor coverage, measure sentiment, and turn media data into strategic decisions — all in one platform built for African markets.
-      </p>
-      <div class="hero-cta">
-        <a href="{% url 'monitor:login' %}" class="btn-primary-hero">
+      <h1 class="hero-title">Know what the<br/>media says about<br/><span>your brand.</span></h1>
+      <p class="hero-sub">Track every mention across broadcast, print, online and social media. Analyse sentiment, benchmark competitors, and turn coverage into decisions.</p>
+      <div class="hero-ctas">
+        <a href="{% url 'monitor:login' %}" class="btn-hero-primary">
           Get Started
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </a>
-        <a href="#features" class="btn-outline-hero">
-          See Features
-        </a>
+        <a href="#features" class="btn-hero-outline">See Features</a>
       </div>
       <div class="hero-trust">
-        <div class="hero-trust-avatars">
-          <span>FN</span><span>BW</span><span>SL</span><span>AI</span>
+        <div class="trust-avatars">
+          <div class="trust-avatar">TM</div>
+          <div class="trust-avatar" style="background:linear-gradient(135deg,#7c3aed,#1d4ed8);">KN</div>
+          <div class="trust-avatar" style="background:linear-gradient(135deg,#be185d,#7c3aed);">AL</div>
+          <div class="trust-avatar" style="background:linear-gradient(135deg,#0284c7,#16a34a);">+</div>
         </div>
-        <span>Trusted by leading organisations across Africa</span>
+        Trusted by leading organisations across Africa
       </div>
     </div>
 
     <div class="hero-visual">
-      <div class="mockup-shell">
-        <div class="mockup-bar">
-          <div class="mockup-dot" style="background:#ef4444;"></div>
-          <div class="mockup-dot" style="background:#f59e0b;"></div>
-          <div class="mockup-dot" style="background:#22c55e;"></div>
+      <div class="hero-img-card">
+        <img src="{% static 'images/image1.jpg' %}" alt="Social media analytics"/>
+        <div class="hero-chips">
+          <div class="hero-chip"><span class="hero-chip-val">50K+</span><span class="hero-chip-lbl">Sources monitored</span></div>
+          <div class="hero-chip"><span class="hero-chip-val">360°</span><span class="hero-chip-lbl">Brand coverage</span></div>
+          <div class="hero-chip"><span class="hero-chip-val">24/7</span><span class="hero-chip-lbl">Monitoring</span></div>
         </div>
-        <div class="mockup-body">
-          <div class="mockup-card">
-            <div class="mockup-card-label">Total Mentions</div>
-            <div class="mockup-card-value">1,284</div>
-            <div class="mockup-card-sub">↑ 18% this month</div>
-          </div>
-          <div class="mockup-card">
-            <div class="mockup-card-label">Positive Sentiment</div>
-            <div class="mockup-card-value">73%</div>
-            <div class="mockup-card-sub">↑ 5pts vs last month</div>
-          </div>
-          <div class="mockup-bar-chart">
-            <div class="mockup-card-label">Share of Voice — Competitors</div>
-            <div class="mockup-bars">
-              <div class="mockup-bar-item" style="height:90%;"></div>
-              <div class="mockup-bar-item" style="height:55%;"></div>
-              <div class="mockup-bar-item" style="height:72%;"></div>
-              <div class="mockup-bar-item" style="height:40%;"></div>
-              <div class="mockup-bar-item" style="height:65%;"></div>
-              <div class="mockup-bar-item" style="height:30%;"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="mockup-badge">
-        ✓ Live Coverage<br/>
-        <span class="mockup-badge-sub">Updated in real-time</span>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── STATS STRIP ────────────────────────────────────────────── -->
+<!-- STATS STRIP -->
 <div class="stats-strip">
-  <div class="stats-inner">
-    <div class="stat-item">
-      <div class="stat-num">50<span>K+</span></div>
-      <div class="stat-label">Media sources monitored</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-num">4</div>
-      <div class="stat-label">Media channels tracked</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-num">360<span>°</span></div>
-      <div class="stat-label">Brand coverage view</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-num">24<span>/7</span></div>
-      <div class="stat-label">Continuous monitoring</div>
+  <div class="section-inner">
+    <div class="row g-4 justify-content-center">
+      <div class="col-6 col-md-3"><div class="stat-block"><span class="stat-block-val">50K+</span><span class="stat-block-lbl">Media sources</span></div></div>
+      <div class="col-6 col-md-3"><div class="stat-block"><span class="stat-block-val">4</span><span class="stat-block-lbl">Channels tracked</span></div></div>
+      <div class="col-6 col-md-3"><div class="stat-block"><span class="stat-block-val">360°</span><span class="stat-block-lbl">Coverage view</span></div></div>
+      <div class="col-6 col-md-3"><div class="stat-block"><span class="stat-block-val">24/7</span><span class="stat-block-lbl">Continuous monitoring</span></div></div>
     </div>
   </div>
 </div>
 
-<!-- ── FEATURES ───────────────────────────────────────────────── -->
-<section class="features" id="features">
-  <div class="features-inner">
-    <div class="features-head">
-      <div class="section-eyebrow">Platform Features</div>
+<!-- FEATURES -->
+<section class="features-section" id="features">
+  <div class="section-inner">
+    <div class="text-center mb-5">
+      <span class="section-tag">Platform Features</span>
       <h2 class="section-title">Everything you need to master<br/>your media presence</h2>
-      <p class="section-sub">From broadcast radio to online articles, Social Light gives you a complete picture of how your brand is covered across every channel.</p>
+      <p class="section-sub mx-auto">One platform for monitoring, analysing, and reporting on every piece of media coverage your brand receives.</p>
     </div>
-
-    <div class="features-grid">
-
-      <!-- Media Monitoring -->
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.55 12 19.79 19.79 0 0 1 1.51 3.39a2 2 0 0 1 1.84-2.18h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8a16 16 0 0 0 8 8l.38-.38a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 17.92z"/></svg>
-        </div>
-        <h3 class="feature-name">Media Monitoring</h3>
-        <p class="feature-desc">Track your brand across broadcast, print, online, and social media in real time. Never miss a mention that matters.</p>
-      </div>
-
-      <!-- Competitor Analytics -->
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        </div>
-        <h3 class="feature-name">Competitor Analytics</h3>
-        <p class="feature-desc">Compare your share of voice against competitors. Understand who's winning the narrative and why — across every channel.</p>
-      </div>
-
-      <!-- Brand Mentions -->
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-        </div>
-        <h3 class="feature-name">Brand Mentions</h3>
-        <p class="feature-desc">See every article, post, and broadcast clip that references your brand — with full context, source details, and reach metrics.</p>
-      </div>
-
-      <!-- Campaign Tracking -->
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        </div>
-        <h3 class="feature-name">Campaign Tracking</h3>
-        <p class="feature-desc">Measure the media impact of every campaign. Track coverage volume, tone, and reach before, during, and after launch.</p>
-      </div>
-
-      <!-- Sentiment Analysis -->
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-        </div>
-        <h3 class="feature-name">Sentiment Analysis</h3>
-        <p class="feature-desc">Understand whether your coverage is positive, neutral, or negative. Spot reputational risks early and protect your brand image.</p>
-      </div>
-
-      <!-- Reports -->
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        </div>
-        <h3 class="feature-name">Intelligence Reports</h3>
-        <p class="feature-desc">Generate polished competitor analysis and media reports. Download as PDF or PowerPoint — ready to share with stakeholders.</p>
-      </div>
-
-      <!-- Wide card: Media Intelligence -->
-      <div class="feature-card feature-card-wide">
-        <div>
-          <div class="feature-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-          </div>
-          <h3 class="feature-name" style="font-size:20px;">Media Intelligence Dashboard</h3>
-          <p class="feature-desc" style="font-size:15px;margin-bottom:20px;">A single command centre giving your team a live view of all coverage — broadcast, print, online, and social — with AVE, reach, and sentiment metrics at a glance.</p>
-          <a href="{% url 'monitor:login' %}" class="btn-signin" style="display:inline-flex;">Access Dashboard →</a>
-        </div>
-        <div class="feature-wide-visual">
-          <div class="mini-chart">
-            <div class="mini-chart-label">Sentiment Split</div>
-            <div class="mini-bars">
-              <div class="mini-bar pos" style="height:70%;"></div>
-              <div class="mini-bar neu" style="height:45%;"></div>
-              <div class="mini-bar neg" style="height:25%;"></div>
-            </div>
-            <div class="mini-pct" style="color:#16a34a;">70%</div>
-            <div class="mini-sub">Positive coverage</div>
-          </div>
-          <div class="mini-chart">
-            <div class="mini-chart-label">Monthly Mentions</div>
-            <div class="mini-bars">
-              <div class="mini-bar blu" style="height:50%;"></div>
-              <div class="mini-bar blu" style="height:70%;"></div>
-              <div class="mini-bar blu" style="height:60%;"></div>
-              <div class="mini-bar blu" style="height:90%;"></div>
-              <div class="mini-bar blu" style="height:75%;"></div>
-            </div>
-            <div class="mini-pct">1,284</div>
-            <div class="mini-sub">Mentions this month</div>
-          </div>
-          <div class="mini-chart">
-            <div class="mini-chart-label">Share of Voice</div>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
-              <div style="width:54px;height:54px;border-radius:50%;background:conic-gradient(#1d4ed8 0% 62%,#93c5fd 62% 80%,#dbeafe 80% 100%);"></div>
-              <div>
-                <div style="font-size:11px;font-weight:700;color:#1d4ed8;">● You 62%</div>
-                <div style="font-size:11px;color:#64748b;">● Comp A 18%</div>
-                <div style="font-size:11px;color:#93c5fd;">● Others 20%</div>
-              </div>
-            </div>
-          </div>
-          <div class="mini-chart">
-            <div class="mini-chart-label">AVE (BWP)</div>
-            <div class="mini-pct" style="margin-top:10px;">485K</div>
-            <div class="mini-sub">Advertising value</div>
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="feat-card">
+          <div class="feat-img"><img src="{% static 'images/image1.jpg' %}" alt="Social"/><div class="feat-img-overlay"></div><span class="feat-tag">Social Media</span></div>
+          <div class="feat-body">
+            <div class="feat-icon" style="background:#eff6ff;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2"><path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/></svg></div>
+            <h3 class="feat-title">Social Media Monitoring</h3>
+            <p class="feat-desc">Track brand mentions, hashtags, and conversations across Facebook, Twitter, Instagram, LinkedIn and more in real time.</p>
           </div>
         </div>
       </div>
-
-    </div>
-  </div>
-</section>
-
-<!-- ── HOW IT WORKS ────────────────────────────────────────────── -->
-<section class="how">
-  <div class="how-inner">
-    <div class="how-head">
-      <div class="section-eyebrow">How It Works</div>
-      <h2 class="section-title" style="text-align:center;">From raw coverage to strategic insight</h2>
-      <p class="section-sub" style="text-align:center;">Three steps to turn scattered media data into clear, actionable intelligence.</p>
-    </div>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">1</div>
-        <h3 class="step-title">Capture Every Mention</h3>
-        <p class="step-desc">Social Light collects coverage from broadcast, print, online news, and social media — so nothing slips through the cracks.</p>
+      <div class="col-md-4">
+        <div class="feat-card">
+          <div class="feat-img"><img src="{% static 'images/image4.jpg' %}" alt="Broadcast"/><div class="feat-img-overlay"></div><span class="feat-tag">Broadcast</span></div>
+          <div class="feat-body">
+            <div class="feat-icon" style="background:#f3e8ff;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+            <h3 class="feat-title">Broadcast Coverage</h3>
+            <p class="feat-desc">Capture TV and radio mentions with full coverage metrics including duration, reach, and AVE calculations.</p>
+          </div>
+        </div>
       </div>
-      <div class="step">
-        <div class="step-num">2</div>
-        <h3 class="step-title">Analyse & Compare</h3>
-        <p class="step-desc">Measure sentiment, track reach, calculate AVE, and benchmark your performance against competitors in the same industry.</p>
+      <div class="col-md-4">
+        <div class="feat-card">
+          <div class="feat-img"><img src="{% static 'images/image3.jpg' %}" alt="Analytics"/><div class="feat-img-overlay"></div><span class="feat-tag">Analytics</span></div>
+          <div class="feat-body">
+            <div class="feat-icon" style="background:#f0fdf4;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+            <h3 class="feat-title">Sentiment Analysis</h3>
+            <p class="feat-desc">Understand the tone of your coverage instantly. Positive, neutral, and negative trends surfaced with visual dashboards.</p>
+          </div>
+        </div>
       </div>
-      <div class="step">
-        <div class="step-num">3</div>
-        <h3 class="step-title">Report & Decide</h3>
-        <p class="step-desc">Generate boardroom-ready reports, share insights with your team, and make confident communications decisions backed by data.</p>
+      <div class="col-md-4">
+        <div class="feat-card">
+          <div class="feat-img"><img src="{% static 'images/image2.jpg' %}" alt="Online"/><div class="feat-img-overlay"></div><span class="feat-tag">Online Media</span></div>
+          <div class="feat-body">
+            <div class="feat-icon" style="background:#fef9c3;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a16207" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+            <h3 class="feat-title">Online News Tracking</h3>
+            <p class="feat-desc">Monitor digital publications and news websites for brand and competitor mentions with source-level detail.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="feat-card">
+          <div class="feat-img"><img src="{% static 'images/image5.jpg' %}" alt="Competitors"/><div class="feat-img-overlay"></div><span class="feat-tag">Competitors</span></div>
+          <div class="feat-body">
+            <div class="feat-icon" style="background:#fee2e2;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+            <h3 class="feat-title">Competitor Analytics</h3>
+            <p class="feat-desc">Track competitors side-by-side. Compare share of voice, sentiment, and coverage volume across all channels.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="feat-card">
+          <div class="feat-img"><img src="{% static 'images/reports.jpg' %}" alt="Reports"/><div class="feat-img-overlay"></div><span class="feat-tag">Reports</span></div>
+          <div class="feat-body">
+            <div class="feat-icon" style="background:#e0e7ff;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3730a3" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <h3 class="feat-title">Intelligence Reports</h3>
+            <p class="feat-desc">Generate presentation-ready PDF and PowerPoint reports with one click, ready to share with stakeholders.</p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── MEDIA INTELLIGENCE STRIP ────────────────────────────────── -->
-<section class="intel-strip">
-  <div class="intel-inner">
-    <div>
-      <h2 class="intel-title">Built for <span>African</span> media landscapes</h2>
-      <p class="intel-sub">Social Light understands the nuances of African media — from local newspapers to regional broadcast networks — giving you intelligence that global tools miss.</p>
-      <div class="intel-pills">
-        <span class="intel-pill">Broadcast Radio</span>
-        <span class="intel-pill">Television</span>
-        <span class="intel-pill">Online News</span>
-        <span class="intel-pill">Print Newspapers</span>
-        <span class="intel-pill">Social Media</span>
-        <span class="intel-pill">AVE Calculation</span>
+<!-- HOW IT WORKS -->
+<section class="hiw-section">
+  <div class="section-inner">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-5">
+        <span class="section-tag section-tag-dark">How It Works</span>
+        <h2 class="section-title section-title-light">Three steps to<br/>total media clarity</h2>
+        <p class="section-sub section-sub-light">From raw mentions to boardroom-ready insights — Social Light handles every step of the media intelligence pipeline.</p>
+        <div class="mt-5">
+          <div class="hiw-step">
+            <div class="hiw-num">1</div>
+            <div><div class="hiw-step-title">Capture Every Mention</div><p class="hiw-step-desc">Our system ingests broadcast, print, online and social data automatically — or via manual entry — all in one place.</p></div>
+          </div>
+          <div class="hiw-step">
+            <div class="hiw-num">2</div>
+            <div><div class="hiw-step-title">Analyse &amp; Compare</div><p class="hiw-step-desc">Sentiment analysis, AVE calculations, reach metrics, and competitor benchmarking surface the insights that matter.</p></div>
+          </div>
+          <div class="hiw-step">
+            <div class="hiw-num">3</div>
+            <div><div class="hiw-step-title">Report &amp; Decide</div><p class="hiw-step-desc">Generate branded PDF and PowerPoint reports for stakeholders with a single click. Data that drives decisions.</p></div>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="intel-metrics">
-      <div class="intel-metric">
-        <div class="intel-metric-val">360<span>°</span></div>
-        <div class="intel-metric-label">Cross-channel brand view</div>
-      </div>
-      <div class="intel-metric">
-        <div class="intel-metric-val">Real<span>-time</span></div>
-        <div class="intel-metric-label">Coverage updates</div>
-      </div>
-      <div class="intel-metric">
-        <div class="intel-metric-val">PDF<span> &amp; PPT</span></div>
-        <div class="intel-metric-label">Report export formats</div>
-      </div>
-      <div class="intel-metric">
-        <div class="intel-metric-val">Multi<span>-org</span></div>
-        <div class="intel-metric-label">Organisation management</div>
+      <div class="col-lg-7">
+        <div class="hiw-img"><img src="{% static 'images/image2.jpg' %}" alt="Media professional at work"/></div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── CTA ─────────────────────────────────────────────────────── -->
+<!-- MEDIA LANDSCAPE -->
+<section class="landscape-section">
+  <div class="section-inner">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-5">
+        <span class="section-tag section-tag-dark">Built for Africa</span>
+        <h2 class="section-title section-title-light">Designed for every<br/>African media landscape</h2>
+        <p class="section-sub section-sub-light mb-4">From the Botswana Daily News to regional broadcast stations — Social Light covers the channels that matter to your market.</p>
+        <div class="d-flex flex-wrap gap-2 mb-4">
+          <span class="media-pill"><span class="pill-dot" style="background:#a855f7;"></span>Broadcast Radio</span>
+          <span class="media-pill"><span class="pill-dot" style="background:#3b82f6;"></span>Television</span>
+          <span class="media-pill"><span class="pill-dot" style="background:#10b981;"></span>Online News</span>
+          <span class="media-pill"><span class="pill-dot" style="background:#f59e0b;"></span>Print Media</span>
+          <span class="media-pill"><span class="pill-dot" style="background:#ef4444;"></span>Social Media</span>
+          <span class="media-pill"><span class="pill-dot" style="background:#64748b;"></span>AVE Calculation</span>
+        </div>
+        <div class="row g-3">
+          <div class="col-6"><div class="metric-tile"><span class="metric-tile-val">360°</span><span class="metric-tile-lbl">Full coverage view</span></div></div>
+          <div class="col-6"><div class="metric-tile"><span class="metric-tile-val">Real-time</span><span class="metric-tile-lbl">Live updates</span></div></div>
+          <div class="col-6"><div class="metric-tile"><span class="metric-tile-val">PDF &amp; PPT</span><span class="metric-tile-lbl">One-click exports</span></div></div>
+          <div class="col-6"><div class="metric-tile"><span class="metric-tile-val">Multi-org</span><span class="metric-tile-lbl">Manage many clients</span></div></div>
+        </div>
+      </div>
+      <div class="col-lg-7">
+        <div class="row g-3">
+          <div class="col-6"><img src="{% static 'images/image3.jpg' %}" alt="Analytics" style="width:100%;border-radius:12px;object-fit:cover;height:240px;display:block;"/></div>
+          <div class="col-6"><img src="{% static 'images/image5.jpg' %}" alt="Media landscape" style="width:100%;border-radius:12px;object-fit:cover;height:240px;display:block;"/></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
 <section class="cta-section">
-  <div class="cta-inner">
-    <h2 class="cta-title">Ready to take control of your media presence?</h2>
-    <p class="cta-sub">Sign in to your Social Light account and start turning media coverage into strategic advantage.</p>
-    <div class="cta-actions">
-      <a href="{% url 'monitor:login' %}" class="btn-primary-hero">
-        Sign In to Dashboard
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-      </a>
-    </div>
+  <div class="cta-bg"></div>
+  <div class="cta-overlay"></div>
+  <div class="section-inner cta-inner">
+    <h2 class="cta-title">Ready to take control of<br/>your media presence?</h2>
+    <p class="cta-sub">Join organisations across Africa using Social Light to monitor, analyse, and act on their media coverage.</p>
+    <a href="{% url 'monitor:login' %}" class="btn-hero-primary" style="font-size:16px;padding:15px 32px;">
+      Sign In to Dashboard
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </a>
   </div>
 </section>
 
-<!-- ── FOOTER ──────────────────────────────────────────────────── -->
-<footer class="footer">
-  <div class="footer-logo">
-    <img src="{% static 'images/social_lightbw_logo.jpeg' %}" alt="Social Light" />
-    <div>
-      <div class="footer-logo-text">SOCIAL LIGHT</div>
-      <div style="font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:0.1em;">GLOBALLY AFRICAN</div>
+<!-- FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" alt="Social Light"/>
+      <div><span class="footer-logo-name">SOCIAL LIGHT</span><span class="footer-logo-sub">Globally African</span></div>
     </div>
+    <div class="footer-copy">&copy; {% now "Y" %} Social Light. All rights reserved.</div>
   </div>
-  <div class="footer-copy">&copy; {% now "Y" %} Social Light. All rights reserved.</div>
 </footer>
 
+<script>
+  const nav = document.getElementById('siteNav');
+  window.addEventListener('scroll', () => nav.classList.toggle('scrolled', window.scrollY > 40));
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

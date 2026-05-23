@@ -1,11 +1,11 @@
 {% extends 'monitor/base.html' %}
-{% block title %}Competitors{% endblock %}
+{% block title %}Competitor Analysis{% endblock %}
 
 {% block content %}
 <div class="page-header page-header--flex">
   <div>
-    <h1 class="page-title">Competitors</h1>
-    <p class="page-subtitle">Track and compare competitor coverage</p>
+    <h1 class="page-title">Competitor Analysis</h1>
+    <p class="page-subtitle">Monitor and analyze competitor media presence</p>
   </div>
   <button class="btn btn-primary" onclick="openModal('addCompModal')">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -14,29 +14,233 @@
 </div>
 
 {% if competitors %}
-<div class="competitors-grid">
-  {% for comp in competitors %}
-  <div class="comp-card">
-    <div class="comp-card-header">
-      <div class="comp-avatar">{{ comp.name|first|upper }}</div>
-      <div class="comp-info">
-        <h3 class="comp-name">{{ comp.name }}</h3>
-        {% if comp.website %}
-        <a href="{{ comp.website }}" target="_blank" class="comp-website">{{ comp.website }}</a>
-        {% endif %}
+<!-- Charts Row -->
+<div class="charts-row">
+  <!-- Donut Chart -->
+  <div class="chart-card">
+    <div class="chart-card-header chart-card-header--flex">
+      <div>
+        <h3 class="chart-title">Competitor Mentions</h3>
       </div>
-      <button class="icon-btn icon-btn--danger" onclick="deleteComp({{ comp.id }},'{{ comp.name|escapejs }}')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-      </button>
+      <div class="toggle-group">
+        <button class="toggle-btn active" id="btnMonthly" onclick="switchDonut('monthly')">Monthly</button>
+        <button class="toggle-btn" id="btnOverall" onclick="switchDonut('overall')">Overall</button>
+      </div>
     </div>
-    {% if comp.notes %}
-    <p class="comp-notes">{{ comp.notes }}</p>
-    {% endif %}
-    <div class="comp-added">Added {{ comp.created_at|date:"M j, Y" }}</div>
+    <div class="chart-body chart-body--donut">
+      <canvas id="donutChart"></canvas>
+    </div>
   </div>
-  {% endfor %}
+
+  <!-- Line Chart -->
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <h3 class="chart-title">Number of Articles Mentioning Competitors (Yearly)</h3>
+    </div>
+    <div class="chart-legend-row">
+      <span class="legend-dot" style="background:#818cf8"></span><span class="legend-label">Online Articles</span>
+      <span class="legend-dot" style="background:#34d399"></span><span class="legend-label">Broadcast Articles</span>
+      <span class="legend-dot" style="background:#f87171"></span><span class="legend-label">Print Media Articles</span>
+    </div>
+    <div class="chart-body">
+      <canvas id="yearlyLineChart"></canvas>
+    </div>
+  </div>
 </div>
+
+<!-- Search & Filter -->
+<div class="filter-bar">
+  <form method="get" id="filterForm" class="filter-bar-form">
+    <div class="search-input-wrap">
+      <svg class="search-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" name="q" value="{{ q }}" class="search-input-field" placeholder="Search articles..." />
+    </div>
+    <select name="sentiment" class="filter-select" onchange="this.form.submit()">
+      <option value="">All Sentiments</option>
+      {% for val, label in sentiment_choices %}
+      <option value="{{ val }}" {% if selected_sentiment == val %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% if q or selected_sentiment %}
+    <a href="?" class="btn btn-secondary btn-sm">Clear</a>
+    {% endif %}
+  </form>
+</div>
+
+<!-- Media Type Tabs -->
+<div class="comp-tabs-bar">
+  <button class="comp-tab active" data-tab="online" onclick="switchTab('online')">Online ({{ online_count }})</button>
+  <button class="comp-tab" data-tab="broadcast" onclick="switchTab('broadcast')">Broadcast ({{ broadcast_count }})</button>
+  <button class="comp-tab" data-tab="print" onclick="switchTab('print')">Print ({{ print_count }})</button>
+</div>
+
+<!-- Online Tab -->
+<div class="comp-tab-content active" id="tab-online">
+
+  <div class="table-card">
+    <div class="table-card-header">
+      <h3 class="table-section-title">Online Media Coverage</h3>
+      <p class="table-section-sub">Competitor mentions in online news sources</p>
+    </div>
+    {% if online_articles %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Competitor</th>
+          <th>Headline</th>
+          <th>Source</th>
+          <th>Sentiment</th>
+          <th>Reach</th>
+          <th>AVE</th>
+          <th>Date</th>
+          <th>Country</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for art in online_articles %}
+        <tr>
+          <td>
+            <div class="comp-cell">
+              <div class="comp-avatar comp-avatar--sm">{{ art.competitor_name|first|upper }}</div>
+              <span class="comp-cell-name">{{ art.competitor_name }}</span>
+            </div>
+          </td>
+          <td class="headline-cell">
+            {% if art.url %}<a href="{{ art.url }}" target="_blank" class="article-link">{{ art.headline|truncatechars:80 }}</a>
+            {% else %}{{ art.headline|truncatechars:80 }}{% endif %}
+          </td>
+          <td>{{ art.source }}</td>
+          <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
+          <td>{{ art.reach|default:"—" }}</td>
+          <td>{{ art.ave|floatformat:0 }}</td>
+          <td>{{ art.date_published|date:"d/m/Y" }}</td>
+          <td>{{ art.country|default:"—" }}</td>
+          <td>
+            <button class="icon-btn icon-btn--danger" data-type="online" data-id="{{ art.id }}" onclick="deleteArticle(this)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state-inline">No online articles match competitor names.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Broadcast Tab -->
+<div class="comp-tab-content" id="tab-broadcast">
+  <div class="table-card">
+    <div class="table-card-header">
+      <h3 class="table-section-title">Broadcast Coverage</h3>
+      <p class="table-section-sub">Competitor mentions in broadcast media</p>
+    </div>
+    {% if broadcast_articles %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Competitor</th>
+          <th>Headline</th>
+          <th>Source</th>
+          <th>Sentiment</th>
+          <th>AVE</th>
+          <th>Date</th>
+          <th>Country</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for art in broadcast_articles %}
+        <tr>
+          <td>
+            <div class="comp-cell">
+              <div class="comp-avatar comp-avatar--sm">{{ art.competitor_name|first|upper }}</div>
+              <span class="comp-cell-name">{{ art.competitor_name }}</span>
+            </div>
+          </td>
+          <td class="headline-cell">
+            {% if art.url %}<a href="{{ art.url }}" target="_blank" class="article-link">{{ art.headline|truncatechars:80 }}</a>
+            {% else %}{{ art.headline|truncatechars:80 }}{% endif %}
+          </td>
+          <td>{{ art.source }}</td>
+          <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
+          <td>{{ art.ave|floatformat:0 }}</td>
+          <td>{{ art.date_published|date:"d/m/Y" }}</td>
+          <td>{{ art.country|default:"—" }}</td>
+          <td>
+            <button class="icon-btn icon-btn--danger" data-type="broadcast" data-id="{{ art.id }}" onclick="deleteArticle(this)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state-inline">No broadcast articles match competitor names.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Print Tab -->
+<div class="comp-tab-content" id="tab-print">
+  <div class="table-card">
+    <div class="table-card-header">
+      <h3 class="table-section-title">Print Media Coverage</h3>
+      <p class="table-section-sub">Competitor mentions in print media</p>
+    </div>
+    {% if print_articles %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Competitor</th>
+          <th>Headline</th>
+          <th>Source</th>
+          <th>Sentiment</th>
+          <th>AVE</th>
+          <th>Date</th>
+          <th>Country</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for art in print_articles %}
+        <tr>
+          <td>
+            <div class="comp-cell">
+              <div class="comp-avatar comp-avatar--sm">{{ art.competitor_name|first|upper }}</div>
+              <span class="comp-cell-name">{{ art.competitor_name }}</span>
+            </div>
+          </td>
+          <td class="headline-cell">
+            {% if art.url %}<a href="{{ art.url }}" target="_blank" class="article-link">{{ art.headline|truncatechars:80 }}</a>
+            {% else %}{{ art.headline|truncatechars:80 }}{% endif %}
+          </td>
+          <td>{{ art.source }}</td>
+          <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
+          <td>{{ art.ave|floatformat:0 }}</td>
+          <td>{{ art.date_published|date:"d/m/Y" }}</td>
+          <td>{{ art.country|default:"—" }}</td>
+          <td>
+            <button class="icon-btn icon-btn--danger" data-type="print" data-id="{{ art.id }}" onclick="deleteArticle(this)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state-inline">No print articles match competitor names.</div>
+    {% endif %}
+  </div>
+</div>
+
 {% else %}
+<!-- Empty state: no competitors configured -->
 <div class="empty-state-card">
   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
   <h3>No competitors added yet</h3>
@@ -45,6 +249,7 @@
 </div>
 {% endif %}
 
+<!-- Add Competitor Modal -->
 <div class="modal-overlay hidden" id="addCompModal">
   <div class="modal">
     <div class="modal-header">
@@ -74,8 +279,99 @@
 {% endblock %}
 
 {% block extra_js %}
+<script id="compChartData" type="application/json">
+{
+  "monthly":   {{ comp_monthly_json|safe }},
+  "overall":   {{ comp_overall_json|safe }},
+  "months":    {{ months_json|safe }},
+  "onlineY":   {{ online_yearly_json|safe }},
+  "broadcastY":{{ broadcast_yearly_json|safe }},
+  "printY":    {{ print_yearly_json|safe }}
+}
+</script>
 <script>
 const ORG_ID = '{{ org.id }}';
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.comp-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.comp-tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector(`.comp-tab[data-tab="${tab}"]`).classList.add('active');
+  document.getElementById(`tab-${tab}`).classList.add('active');
+}
+
+// ── Donut chart ───────────────────────────────────────────────────────────────
+const _cd = JSON.parse(document.getElementById('compChartData').textContent);
+const MONTHLY_DATA = _cd.monthly;
+const OVERALL_DATA = _cd.overall;
+const MONTHS      = _cd.months;
+const ONLINE_Y    = _cd.onlineY;
+const BROADCAST_Y = _cd.broadcastY;
+const PRINT_Y     = _cd.printY;
+
+const PALETTE = [
+  '#f87171','#fb923c','#fbbf24','#a3e635','#34d399',
+  '#22d3ee','#818cf8','#c084fc','#f472b6','#94a3b8',
+];
+
+let donutChart, lineChart;
+
+function buildDonut(data) {
+  const labels = data.map(d => d.name);
+  const values = data.map(d => d.count);
+  const colors = labels.map((_, i) => PALETTE[i % PALETTE.length]);
+
+  if (donutChart) donutChart.destroy();
+  const ctx = document.getElementById('donutChart').getContext('2d');
+  donutChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+    options: {
+      cutout: '60%',
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 12 }, padding: 12, boxWidth: 12 } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw}` } },
+      },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+function switchDonut(mode) {
+  document.getElementById('btnMonthly').classList.toggle('active', mode === 'monthly');
+  document.getElementById('btnOverall').classList.toggle('active', mode === 'overall');
+  buildDonut(mode === 'monthly' ? MONTHLY_DATA : OVERALL_DATA);
+}
+
+function buildLine() {
+  const ctx = document.getElementById('yearlyLineChart').getContext('2d');
+  lineChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: MONTHS,
+      datasets: [
+        { label: 'Online Articles',    data: ONLINE_Y,    borderColor: '#818cf8', backgroundColor: 'rgba(129,140,248,0.08)', tension: 0.3, pointRadius: 4, fill: true },
+        { label: 'Broadcast Articles', data: BROADCAST_Y, borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.08)',  tension: 0.3, pointRadius: 4, fill: true },
+        { label: 'Print Media Articles', data: PRINT_Y,   borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.08)', tension: 0.3, pointRadius: 4, fill: true },
+      ],
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 11 } } },
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+      },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  buildDonut(MONTHLY_DATA);
+  buildLine();
+});
+
+// ── Competitor CRUD ───────────────────────────────────────────────────────────
 function addComp() {
   const name = document.getElementById('compName').value.trim();
   if (!name) return alert('Name is required');
@@ -85,9 +381,94 @@ function addComp() {
     notes: document.getElementById('compNotes').value.trim(),
   }).then(() => { closeModal('addCompModal'); location.reload(); });
 }
-function deleteComp(id, name) {
-  if (!confirm(`Remove "${name}" from competitors?`)) return;
-  apiRequest(`/api/${ORG_ID}/competitors/${id}/delete/`, 'DELETE').then(() => location.reload());
+
+// ── Article deletion ──────────────────────────────────────────────────────────
+function deleteArticle(btn) {
+  var type = btn.getAttribute('data-type');
+  var id   = btn.getAttribute('data-id');
+  if (!confirm('Remove this article?')) return;
+  apiRequest('/api/' + ORG_ID + '/' + type + '/' + id + '/delete/', 'DELETE').then(function() { location.reload(); });
 }
 </script>
+
+<style>
+/* ── Charts row ───────────────────────────────────────────────────────── */
+.charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+@media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+
+.chart-card-header--flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chart-body--donut {
+  height: 260px;
+  position: relative;
+}
+
+.chart-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px 8px;
+  flex-wrap: wrap;
+}
+.legend-dot  { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.legend-label { font-size: 12px; color: #64748b; }
+
+/* ── Toggle buttons ───────────────────────────────────────────────────── */
+.toggle-group { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; }
+.toggle-btn {
+  padding: 5px 14px; font-size: 13px; font-weight: 500; border: none; cursor: pointer;
+  background: #fff; color: #64748b; transition: background .15s, color .15s;
+}
+.toggle-btn.active { background: #1d4ed8; color: #fff; }
+
+/* ── Filter bar ───────────────────────────────────────────────────────── */
+.filter-bar { margin-bottom: 16px; }
+.filter-bar-form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ── Comp tabs ────────────────────────────────────────────────────────── */
+.comp-tabs-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 20px;
+}
+.comp-tab {
+  padding: 10px 24px; font-size: 14px; font-weight: 500; background: none; border: none;
+  cursor: pointer; color: #64748b; border-bottom: 2px solid transparent; margin-bottom: -2px;
+  transition: color .15s, border-color .15s;
+}
+.comp-tab.active { color: #1d4ed8; border-bottom-color: #1d4ed8; }
+.comp-tab-content { display: none; }
+.comp-tab-content.active { display: block; }
+
+/* ── Table card header ────────────────────────────────────────────────── */
+.table-card-header { padding: 18px 20px 12px; border-bottom: 1px solid #f1f5f9; }
+.table-section-sub { font-size: 13px; color: #94a3b8; margin: 2px 0 0; }
+
+/* ── Competitor cell ──────────────────────────────────────────────────── */
+.comp-cell { display: flex; align-items: center; gap: 8px; }
+.comp-avatar--sm {
+  width: 30px; height: 30px; border-radius: 50%; background: #1d4ed8;
+  color: #fff; font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.comp-cell-name { font-size: 13px; font-weight: 500; white-space: nowrap; }
+
+/* ── Article link ─────────────────────────────────────────────────────── */
+.article-link { color: #1d4ed8; text-decoration: none; }
+.article-link:hover { text-decoration: underline; }
+.headline-cell { max-width: 280px; }
+
+/* ── Empty inline ─────────────────────────────────────────────────────── */
+.empty-state-inline { padding: 40px; text-align: center; color: #94a3b8; font-size: 14px; }
+</style>
 {% endblock %}

@@ -664,6 +664,26 @@ def social_post_create(request, org_id):
 
 
 @login_required
+@require_http_methods(['POST'])
+def social_post_update(request, org_id, post_id):
+    org = get_object_or_404(Organization, id=org_id)
+    post = get_object_or_404(SocialMediaPost, id=post_id, organization=org)
+    data = json.loads(request.body)
+    post.platform = data.get('platform', post.platform)
+    post.page_name = data.get('page_name', post.page_name).strip()
+    post.headline = data.get('headline', post.headline).strip()
+    post.url = data.get('url', post.url).strip()
+    post.date_published = data.get('date_published') or post.date_published
+    post.country = data.get('country', post.country).strip()
+    post.sentiment = data.get('sentiment', post.sentiment)
+    post.ave = float(data.get('ave', post.ave) or 0)
+    post.reach = int(data.get('reach', post.reach) or 0)
+    post.relevancy = float(data.get('relevancy', post.relevancy) or 0)
+    post.save()
+    return JsonResponse({'ok': True})
+
+
+@login_required
 @require_http_methods(['DELETE'])
 def social_post_delete(request, org_id, post_id):
     org = get_object_or_404(Organization, id=org_id)
@@ -740,6 +760,25 @@ def broadcast_create(request, org_id):
 
 
 @login_required
+@require_http_methods(['POST'])
+def broadcast_update(request, org_id, mention_id):
+    org = get_object_or_404(Organization, id=org_id)
+    mention = get_object_or_404(BroadcastMention, id=mention_id, organization=org)
+    data = json.loads(request.body)
+    mention.source = data.get('source', mention.source).strip()
+    mention.headline = data.get('headline', mention.headline).strip()
+    mention.url = data.get('url', mention.url).strip()
+    mention.broadcast_type = data.get('broadcast_type', mention.broadcast_type)
+    mention.duration = data.get('duration', mention.duration).strip()
+    mention.date_published = data.get('date_published') or mention.date_published
+    mention.country = data.get('country', mention.country).strip()
+    mention.sentiment = data.get('sentiment', mention.sentiment)
+    mention.ave = float(data.get('ave', mention.ave) or 0)
+    mention.save()
+    return JsonResponse({'ok': True})
+
+
+@login_required
 @require_http_methods(['DELETE'])
 def broadcast_delete(request, org_id, mention_id):
     org = get_object_or_404(Organization, id=org_id)
@@ -753,11 +792,118 @@ def broadcast_delete(request, org_id, mention_id):
 @login_required
 def competitors_view(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
-    competitors = org.competitors.all()
+    competitors = list(org.competitors.all())
+    today = date.today()
+    month_start = today.replace(day=1)
+
+    q_search = request.GET.get('q', '')
+    sentiment_filter = request.GET.get('sentiment', '')
+
+    comp_monthly_counts = []
+    comp_overall_counts = []
+    online_articles = []
+    broadcast_articles = []
+    print_articles = []
+
+    for comp in competitors:
+        name_q = Q(headline__icontains=comp.name) | Q(summary__icontains=comp.name)
+
+        m_count = (
+            org.online_articles.filter(date_published__gte=month_start).filter(name_q).count() +
+            org.broadcast_mentions.filter(date_published__gte=month_start).filter(name_q).count() +
+            org.print_articles.filter(date_published__gte=month_start).filter(name_q).count()
+        )
+        o_count = (
+            org.online_articles.filter(name_q).count() +
+            org.broadcast_mentions.filter(name_q).count() +
+            org.print_articles.filter(name_q).count()
+        )
+        comp_monthly_counts.append({'name': comp.name, 'count': m_count})
+        comp_overall_counts.append({'name': comp.name, 'count': o_count})
+
+        art_qs = org.online_articles.filter(name_q)
+        bc_qs = org.broadcast_mentions.filter(name_q)
+        pr_qs = org.print_articles.filter(name_q)
+
+        if q_search:
+            sq = Q(headline__icontains=q_search) | Q(source__icontains=q_search)
+            art_qs = art_qs.filter(sq)
+            bc_qs = bc_qs.filter(sq)
+            pr_qs = pr_qs.filter(sq)
+        if sentiment_filter:
+            art_qs = art_qs.filter(sentiment=sentiment_filter)
+            bc_qs = bc_qs.filter(sentiment=sentiment_filter)
+            pr_qs = pr_qs.filter(sentiment=sentiment_filter)
+
+        for art in art_qs.values('id', 'headline', 'source', 'sentiment', 'reach', 'ave', 'date_published', 'country', 'url'):
+            art['competitor_name'] = comp.name
+            online_articles.append(art)
+        for art in bc_qs.values('id', 'headline', 'source', 'sentiment', 'ave', 'date_published', 'country', 'url'):
+            art['reach'] = 0
+            art['competitor_name'] = comp.name
+            broadcast_articles.append(art)
+        for art in pr_qs.values('id', 'headline', 'source', 'sentiment', 'ave', 'date_published', 'country', 'url'):
+            art['reach'] = 0
+            art['competitor_name'] = comp.name
+            print_articles.append(art)
+
+    online_articles.sort(key=lambda x: x['date_published'], reverse=True)
+    broadcast_articles.sort(key=lambda x: x['date_published'], reverse=True)
+    print_articles.sort(key=lambda x: x['date_published'], reverse=True)
+
+    # Deduplicate by article id (first competitor match wins)
+    seen = set()
+    deduped_online = []
+    for a in online_articles:
+        if a['id'] not in seen:
+            seen.add(a['id'])
+            deduped_online.append(a)
+
+    seen = set()
+    deduped_bc = []
+    for a in broadcast_articles:
+        if a['id'] not in seen:
+            seen.add(a['id'])
+            deduped_bc.append(a)
+
+    seen = set()
+    deduped_print = []
+    for a in print_articles:
+        if a['id'] not in seen:
+            seen.add(a['id'])
+            deduped_print.append(a)
+
+    # Yearly line chart
+    months = list(calendar.month_abbr)[1:]
+    if competitors:
+        any_comp_q = Q()
+        for comp in competitors:
+            any_comp_q |= Q(headline__icontains=comp.name) | Q(summary__icontains=comp.name)
+        online_yearly = _monthly_counts(org.online_articles.filter(any_comp_q), today.year)
+        broadcast_yearly = _monthly_counts(org.broadcast_mentions.filter(any_comp_q), today.year)
+        print_yearly = _monthly_counts(org.print_articles.filter(any_comp_q), today.year)
+    else:
+        online_yearly = broadcast_yearly = print_yearly = [0] * 12
+
     return render(request, 'monitor/competitors.html', {
         'org': org,
         'page': 'competitors',
         'competitors': competitors,
+        'comp_monthly_json': json.dumps(comp_monthly_counts),
+        'comp_overall_json': json.dumps(comp_overall_counts),
+        'months_json': json.dumps(months),
+        'online_yearly_json': json.dumps(online_yearly),
+        'broadcast_yearly_json': json.dumps(broadcast_yearly),
+        'print_yearly_json': json.dumps(print_yearly),
+        'online_articles': deduped_online[:200],
+        'broadcast_articles': deduped_bc[:200],
+        'print_articles': deduped_print[:200],
+        'online_count': len(deduped_online),
+        'broadcast_count': len(deduped_bc),
+        'print_count': len(deduped_print),
+        'q': q_search,
+        'selected_sentiment': sentiment_filter,
+        'sentiment_choices': SENTIMENT_CHOICES,
     })
 
 
@@ -1524,6 +1670,81 @@ def media_source_delete(request, org_id, source_id):
     source = get_object_or_404(MediaSource, id=source_id, organization=org)
     source.delete()
     return JsonResponse({'ok': True})
+
+
+# ── Media Monitor Webhook ─────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def media_monitor_webhook(request, org_id):
+    """
+    Receive an article-match webhook from media-monitor and store it as
+    an OnlineArticle for the given organisation.
+
+    Expected payload:
+        {
+          "alert_name": "...",
+          "matched_keywords": ["kw1", ...],
+          "article": {
+            "title": "...", "url": "...", "source_domain": "...",
+            "summary": "...", "published_at": "2024-01-01T...",
+            "sentiment": "positive|neutral|negative", "language": "en"
+          }
+        }
+
+    Security: requests must include X-Webhook-Secret matching
+    settings.MEDIA_MONITOR_WEBHOOK_SECRET (ignored when secret is empty).
+    """
+    from django.conf import settings as _settings
+
+    secret = _settings.MEDIA_MONITOR_WEBHOOK_SECRET
+    if secret and request.headers.get('X-Webhook-Secret') != secret:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    org = get_object_or_404(Organization, id=org_id)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    art = body.get('article', {})
+    title = (art.get('title') or '').strip()
+    if not title:
+        return JsonResponse({'error': 'Missing title'}, status=400)
+
+    url_val       = (art.get('url') or '').strip()
+    source        = (art.get('source_domain') or '').strip()
+    summary       = (art.get('summary') or '').strip()
+    country       = (art.get('country') or '').strip()
+    raw_sentiment = (art.get('sentiment') or 'neutral').lower()
+    sentiment     = raw_sentiment if raw_sentiment in ('positive', 'neutral', 'negative') else 'neutral'
+
+    raw_date = art.get('published_at')
+    pub_date = None
+    if raw_date:
+        try:
+            from datetime import datetime
+            pub_date = datetime.fromisoformat(raw_date).date()
+        except (ValueError, TypeError):
+            pass
+    if pub_date is None:
+        pub_date = date.today()
+
+    if url_val and OnlineArticle.objects.filter(organization=org, url=url_val).exists():
+        return JsonResponse({'ok': True, 'duplicate': True})
+
+    article = OnlineArticle.objects.create(
+        organization  = org,
+        source        = source or 'media-monitor',
+        headline      = title[:500],
+        summary       = summary,
+        url           = url_val,
+        date_published= pub_date,
+        country       = country,
+        sentiment     = sentiment,
+    )
+    return JsonResponse({'ok': True, 'id': article.id})
 
 
 # ── Profile & Password ────────────────────────────────────────────────────────

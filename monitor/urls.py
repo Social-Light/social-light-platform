@@ -43,11 +43,13 @@ urlpatterns = [
     # Media: Social
     path('app/media/social/<uuid:org_id>/', views.media_social, name='media_social'),
     path('api/<uuid:org_id>/social/', views.social_post_create, name='social_create'),
+    path('api/<uuid:org_id>/social/<int:post_id>/', views.social_post_update, name='social_update'),
     path('api/<uuid:org_id>/social/<int:post_id>/delete/', views.social_post_delete, name='social_delete'),
 
     # Media: Broadcast
     path('app/media/broadcast/<uuid:org_id>/', views.media_broadcast, name='media_broadcast'),
     path('api/<uuid:org_id>/broadcast/', views.broadcast_create, name='broadcast_create'),
+    path('api/<uuid:org_id>/broadcast/<int:mention_id>/', views.broadcast_update, name='broadcast_update'),
     path('api/<uuid:org_id>/broadcast/<int:mention_id>/delete/', views.broadcast_delete, name='broadcast_delete'),
 
     # Competitors
@@ -87,4 +89,7 @@ urlpatterns = [
     # Profile & Password
     path('api/<uuid:org_id>/profile/', views.profile_update, name='profile_update'),
     path('api/<uuid:org_id>/profile/password/', views.password_change, name='password_change'),
+
+    # Media Monitor webhook receiver
+    path('api/<uuid:org_id>/webhook/media-monitor/', views.media_monitor_webhook, name='media_monitor_webhook'),
 ]

@@ -100,8 +100,8 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
             </button>
             <div class="row-menu hidden">
-              <button class="row-menu-item" onclick="closeMeAndRun(this, () => editOnline({{ a.id }},'{{ a.source|escapejs }}','{{ a.headline|escapejs }}','{{ a.url|escapejs }}','{{ a.country|escapejs }}','{{ a.sentiment }}',{{ a.ave }},'{{ a.coverage }}',{{ a.reach }},{{ a.relevancy }},'{{ a.date_published|date:"Y-m-d" }}'))">Edit</button>
-              <button class="row-menu-item row-menu-item--danger" onclick="closeMeAndRun(this, () => deleteArticle({{ a.id }}))">Delete</button>
+              <button class="row-menu-item" onclick="closeMeAndRun(this, () => editOnline({{ a.id }},'{{ a.source|escapejs }}','{{ a.headline|escapejs }}','{{ a.url|escapejs }}','{{ a.country|escapejs }}','{{ a.sentiment }}',{{ a.ave }},'{{ a.coverage }}',{{ a.reach }},{{ a.relevancy }},'{{ a.date_published|date:"Y-m-d" }}'))"><i class="bi bi-pencil"></i> Edit</button>
+              <button class="row-menu-item row-menu-item--danger" onclick="closeMeAndRun(this, () => deleteArticle({{ a.id }}))"><i class="bi bi-trash3"></i> Delete</button>
             </div>
           </div>
         </td>
@@ -149,7 +149,10 @@
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Country</label>
-          <input type="text" id="oCountry" class="form-control" value="Botswana" />
+          <div class="cty-wrap">
+            <input type="text" id="oCountry" class="form-control" placeholder="Type to search country..." autocomplete="off" />
+            <ul class="cty-drop" id="oCountry-drop"></ul>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Sentiment</label>
@@ -220,7 +223,10 @@
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Country</label>
-          <input type="text" id="editOCountry" class="form-control" />
+          <div class="cty-wrap">
+            <input type="text" id="editOCountry" class="form-control" placeholder="Type to search country..." autocomplete="off" />
+            <ul class="cty-drop" id="editOCountry-drop"></ul>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Sentiment</label>
@@ -315,5 +321,7 @@ function deleteArticle(id) {
   apiRequest(`/api/${ORG_ID}/online/${id}/delete/`, 'DELETE').then(() => location.reload());
 }
 function toggleDate(id) { document.getElementById(id).showPicker?.() || document.getElementById(id).click(); }
+initCountryInput('oCountry');
+initCountryInput('editOCountry');
 </script>
 {% endblock %}

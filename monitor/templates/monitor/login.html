@@ -1,234 +1,239 @@
 {% load static %}<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Sign In — Social Light</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link rel="stylesheet" href="{% static 'monitor/css/main.css' %}" />
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
   <style>
-    html, body { height: 100%; margin: 0; padding: 0; }
-    body { display: flex; min-height: 100vh; background: #fff; font-family: 'Inter', sans-serif; }
+    *,*::before,*::after{box-sizing:border-box;}
+    html,body{height:100%;margin:0;padding:0;}
+    body{display:flex;min-height:100vh;font-family:'Inter',sans-serif;}
 
-    /* ── Left panel ─────────────────────────── */
-    .login-left {
-      width: 45%;
-      background: linear-gradient(160deg, #0f2459 0%, #1a3d7c 50%, #1d4ed8 100%);
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 40px 48px;
-      position: relative;
-      overflow: hidden;
+    /* ── Left panel ── */
+    .auth-left{
+      width:420px;flex-shrink:0;
+      background:linear-gradient(160deg,#07102a 0%,#0f2459 55%,#0a1a3d 100%);
+      display:flex;flex-direction:column;
+      padding:36px 40px;
+      position:relative;overflow:hidden;
     }
-    .login-left::before {
-      content: '';
-      position: absolute;
-      bottom: -80px; right: -80px;
-      width: 320px; height: 320px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%);
+    /* subtle glow blob */
+    .auth-left::before{
+      content:'';position:absolute;
+      width:320px;height:320px;border-radius:50%;
+      background:radial-gradient(circle,rgba(96,165,250,.18) 0%,transparent 70%);
+      top:-60px;right:-80px;pointer-events:none;
     }
-    .login-left::after {
-      content: '';
-      position: absolute;
-      top: -40px; left: -40px;
-      width: 200px; height: 200px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 70%);
+    .auth-left::after{
+      content:'';position:absolute;
+      width:240px;height:240px;border-radius:50%;
+      background:radial-gradient(circle,rgba(167,139,250,.12) 0%,transparent 70%);
+      bottom:80px;left:-60px;pointer-events:none;
     }
-    .left-logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      position: relative; z-index: 1;
-    }
-    .left-logo img {
-      width: 52px; height: 52px;
-      object-fit: contain;
-      border-radius: 8px;
-      background: rgba(255,255,255,0.1);
-      padding: 4px;
-    }
-    .left-logo-text {
-      font-size: 15px; font-weight: 800;
-      color: #fff; letter-spacing: 0.08em;
-      line-height: 1.1;
-    }
-    .left-logo-sub {
-      font-size: 9px; color: rgba(255,255,255,0.55);
-      letter-spacing: 0.14em; text-transform: uppercase;
-      display: block; margin-top: 2px; font-weight: 500;
-    }
-    .left-hero {
-      position: relative; z-index: 1;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
-    .left-welcome {
-      font-size: clamp(36px, 4vw, 52px);
-      font-weight: 900;
-      color: #fff;
-      line-height: 1.1;
-      letter-spacing: -0.02em;
-      margin-bottom: 18px;
-    }
-    .left-welcome span { color: #93c5fd; }
-    .left-sub {
-      font-size: 16px;
-      color: rgba(255,255,255,0.65);
-      line-height: 1.7;
-      max-width: 360px;
-    }
-    .left-pills {
-      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 32px;
-    }
-    .left-pill {
-      background: rgba(255,255,255,0.1);
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 100px;
-      padding: 6px 14px;
-      font-size: 12px; font-weight: 600;
-      color: rgba(255,255,255,0.85);
-    }
-    .left-bottom {
-      font-size: 12px;
-      color: rgba(255,255,255,0.35);
-      position: relative; z-index: 1;
+    .auth-left>*{position:relative;z-index:1;}
+
+    /* logo */
+    .al-logo{display:flex;align-items:center;gap:12px;text-decoration:none;}
+    .al-logo img{width:44px;height:44px;object-fit:contain;border-radius:8px;background:rgba(255,255,255,.08);padding:4px;}
+    .al-logo-text .name{display:block;font-size:14px;font-weight:800;color:#fff;letter-spacing:.1em;}
+    .al-logo-text .sub{display:block;font-size:9px;color:rgba(255,255,255,.38);letter-spacing:.16em;text-transform:uppercase;margin-top:1px;}
+
+    /* hero */
+    .al-hero{flex:1;display:flex;flex-direction:column;justify-content:center;padding:20px 0;}
+    .al-welcome{font-size:clamp(38px,3.6vw,54px);font-weight:900;color:#fff;line-height:1.08;letter-spacing:-.025em;margin-bottom:16px;}
+    .al-welcome .accent{background:linear-gradient(90deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .al-desc{font-size:14px;color:rgba(255,255,255,.55);line-height:1.75;max-width:300px;margin-bottom:32px;}
+
+    /* pills */
+    .al-pills{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:32px;}
+    .al-pill{
+      background:rgba(255,255,255,.07);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:100px;padding:5px 14px;
+      font-size:12px;font-weight:600;color:rgba(255,255,255,.75);
     }
 
-    /* ── Right panel ────────────────────────── */
-    .login-right {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 40px 48px;
-      background: #fff;
+    /* stats strip */
+    .al-stats{display:flex;gap:8px;flex-wrap:wrap;}
+    .al-stat{
+      background:rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.1);
+      border-radius:10px;padding:12px 16px;flex:1;min-width:80px;
     }
-    .login-form-wrap {
-      width: 100%;
-      max-width: 380px;
-    }
-    .form-heading {
-      font-size: 26px; font-weight: 800;
-      color: #0f172a; margin-bottom: 6px;
-      letter-spacing: -0.02em;
-    }
-    .form-sub {
-      font-size: 14px; color: #64748b; margin-bottom: 32px;
-    }
-    .login-error {
-      background: #fee2e2; border: 1px solid #fecaca;
-      color: #b91c1c; border-radius: 8px;
-      padding: 10px 14px; font-size: 13px; margin-bottom: 18px;
-    }
-    .field-label {
-      display: block; font-size: 13px; font-weight: 600;
-      color: #374151; margin-bottom: 6px;
-    }
-    .field-input {
-      width: 100%; padding: 11px 14px;
-      border: 1.5px solid #e2e8f0; border-radius: 8px;
-      font-size: 14px; font-family: 'Inter', sans-serif;
-      color: #0f172a; background: #fff;
-      transition: border-color 0.2s, box-shadow 0.2s;
-      outline: none;
-    }
-    .field-input:focus {
-      border-color: #1d4ed8;
-      box-shadow: 0 0 0 3px rgba(29,78,216,0.12);
-    }
-    .field-wrap { margin-bottom: 18px; }
-    .btn-login {
-      width: 100%; padding: 13px;
-      background: linear-gradient(135deg, #1d4ed8 0%, #0f2459 100%);
-      color: #fff; border: none; border-radius: 8px;
-      font-size: 15px; font-weight: 700;
-      font-family: 'Inter', sans-serif;
-      cursor: pointer; margin-top: 8px;
-      transition: transform 0.15s, box-shadow 0.15s;
-      box-shadow: 0 4px 16px rgba(29,78,216,0.3);
-    }
-    .btn-login:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(29,78,216,0.38); }
-    .back-link {
-      display: block; text-align: center;
-      margin-top: 22px; font-size: 13px;
-      color: #94a3b8; text-decoration: none;
-    }
-    .back-link:hover { color: #1d4ed8; }
+    .al-stat-val{display:block;font-size:20px;font-weight:900;color:#fff;line-height:1;}
+    .al-stat-lbl{display:block;font-size:10px;color:rgba(255,255,255,.4);margin-top:3px;letter-spacing:.02em;}
 
-    @media (max-width: 768px) {
-      .login-left { display: none; }
-      .login-right { padding: 32px 24px; }
+    /* bottom */
+    .al-bottom{font-size:12px;color:rgba(255,255,255,.25);margin-top:28px;}
+
+    /* ── Right panel ── */
+    .auth-right{
+      flex:1;display:flex;align-items:center;justify-content:center;
+      background:#fff;padding:40px 48px;
+    }
+    .auth-form-wrap{width:100%;max-width:390px;}
+
+    .af-eyebrow{font-size:12px;font-weight:600;color:#1d4ed8;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;}
+    .af-heading{font-size:28px;font-weight:800;color:#0f172a;letter-spacing:-.025em;margin-bottom:6px;}
+    .af-sub{font-size:14px;color:#64748b;margin-bottom:32px;}
+
+    /* divider */
+    .af-divider{display:flex;align-items:center;gap:10px;margin:24px 0;}
+    .af-divider::before,.af-divider::after{content:'';flex:1;height:1px;background:#f1f5f9;}
+
+    /* fields */
+    .af-group{margin-bottom:20px;}
+    .af-label{display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;}
+    .af-input{
+      width:100%;padding:11px 14px;
+      border:1.5px solid #e2e8f0;border-radius:8px;
+      font-size:14px;font-family:'Inter',sans-serif;
+      color:#0f172a;background:#fff;outline:none;
+      transition:border-color .18s,box-shadow .18s;
+    }
+    .af-input:focus{border-color:#1d4ed8;box-shadow:0 0 0 3px rgba(29,78,216,.1);}
+    .af-input::placeholder{color:#94a3b8;}
+
+    .af-pw-wrap{position:relative;}
+    .af-pw-wrap .af-input{padding-right:44px;}
+    .af-pw-toggle{
+      position:absolute;right:12px;top:50%;transform:translateY(-50%);
+      background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;
+      display:flex;align-items:center;
+    }
+    .af-pw-toggle:hover{color:#64748b;}
+
+    .af-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+    .af-forgot{font-size:13px;color:#1d4ed8;text-decoration:none;font-weight:500;}
+    .af-forgot:hover{color:#1e40af;text-decoration:underline;}
+
+    /* error */
+    .af-error{
+      background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;
+      border-radius:8px;padding:11px 14px;font-size:13px;
+      display:flex;align-items:center;gap:8px;margin-bottom:20px;
+    }
+
+    /* submit */
+    .btn-signin{
+      width:100%;padding:13px;
+      background:linear-gradient(135deg,#1d4ed8 0%,#0f2459 100%);
+      color:#fff;border:none;border-radius:8px;
+      font-size:15px;font-weight:700;font-family:'Inter',sans-serif;
+      cursor:pointer;letter-spacing:.01em;
+      transition:transform .15s,box-shadow .15s,opacity .15s;
+      box-shadow:0 4px 16px rgba(29,78,216,.3);
+    }
+    .btn-signin:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(29,78,216,.38);}
+    .btn-signin:active{transform:translateY(0);box-shadow:0 2px 8px rgba(29,78,216,.25);}
+
+    .af-back{display:block;text-align:center;margin-top:22px;font-size:13px;color:#94a3b8;text-decoration:none;}
+    .af-back:hover{color:#1d4ed8;}
+
+    @media(max-width:860px){
+      .auth-left{display:none;}
+      .auth-right{padding:32px 24px;}
     }
   </style>
 </head>
 <body>
 
 <!-- Left panel -->
-<div class="login-left">
-  <div class="left-logo">
-    <img src="{% static 'images/social_lightbw_logo.jpeg' %}" alt="Social Light" />
-    <div>
-      <div class="left-logo-text">SOCIAL LIGHT</div>
-      <span class="left-logo-sub">Globally African</span>
+<div class="auth-left">
+  <a href="{% url 'monitor:home' %}" class="al-logo">
+    <img src="{% static 'images/social_lightbw_logo.jpeg' %}" alt="Social Light"/>
+    <div class="al-logo-text">
+      <span class="name">SOCIAL LIGHT</span>
+      <span class="sub">Globally African</span>
+    </div>
+  </a>
+
+  <div class="al-hero">
+    <h1 class="al-welcome">Welcome<br/><span class="accent">Back.</span></h1>
+    <p class="al-desc">Login to continue monitoring your brand's media presence across every channel — broadcast, print, online and social.</p>
+
+    <div class="al-pills">
+      <span class="al-pill">Media Monitoring</span>
+      <span class="al-pill">Competitor Analytics</span>
+      <span class="al-pill">Brand Mentions</span>
+      <span class="al-pill">Sentiment Analysis</span>
+    </div>
+
+    <div class="al-stats">
+      <div class="al-stat"><span class="al-stat-val">50K+</span><span class="al-stat-lbl">Sources</span></div>
+      <div class="al-stat"><span class="al-stat-val">4</span><span class="al-stat-lbl">Channels</span></div>
+      <div class="al-stat"><span class="al-stat-val">24/7</span><span class="al-stat-lbl">Live monitoring</span></div>
     </div>
   </div>
 
-  <div class="left-hero">
-    <div class="left-welcome">
-      Welcome<br/>
-      <span>Back.</span>
-    </div>
-    <p class="left-sub">
-      Login to continue accessing your account and monitoring your media presence across every channel.
-    </p>
-    <div class="left-pills">
-      <span class="left-pill">Media Monitoring</span>
-      <span class="left-pill">Competitor Analytics</span>
-      <span class="left-pill">Brand Mentions</span>
-      <span class="left-pill">Sentiment Analysis</span>
-    </div>
-  </div>
-
-  <div class="left-bottom">
-    &copy; {% now "Y" %} Social Light. All rights reserved.
-  </div>
+  <div class="al-bottom">&copy; {% now "Y" %} Social Light. All rights reserved.</div>
 </div>
 
 <!-- Right panel -->
-<div class="login-right">
-  <div class="login-form-wrap">
-    <h1 class="form-heading">Sign in</h1>
-    <p class="form-sub">Enter your credentials to access your account</p>
+<div class="auth-right">
+  <div class="auth-form-wrap">
+    <p class="af-eyebrow">Social Light Platform</p>
+    <h2 class="af-heading">Sign in</h2>
+    <p class="af-sub">Enter your credentials to access your dashboard</p>
 
     {% if error %}
-    <div class="login-error">{{ error }}</div>
+    <div class="af-error">
+      <i class="bi bi-exclamation-circle-fill" style="font-size:15px;flex-shrink:0;"></i>
+      {{ error }}
+    </div>
     {% endif %}
 
-    <form method="post" action="{% url 'monitor:login' %}">
+    <form method="post" action="{% url 'monitor:login' %}" novalidate>
       {% csrf_token %}
-      <div class="field-wrap">
-        <label class="field-label" for="username">Username</label>
-        <input type="text" id="username" name="username" class="field-input"
-               placeholder="Enter username" required autofocus />
+
+      <div class="af-group">
+        <label class="af-label" for="id_username">Username</label>
+        <input type="text" id="id_username" name="username"
+               class="af-input" placeholder="Enter your username"
+               required autofocus autocomplete="username"/>
       </div>
-      <div class="field-wrap">
-        <label class="field-label" for="password">Password</label>
-        <input type="password" id="password" name="password" class="field-input"
-               placeholder="Enter password" required />
+
+      <div class="af-group" style="margin-bottom:8px;">
+        <label class="af-label" for="id_password">Password</label>
+        <div class="af-pw-wrap">
+          <input type="password" id="id_password" name="password"
+                 class="af-input" placeholder="Enter your password"
+                 required autocomplete="current-password"/>
+          <button type="button" class="af-pw-toggle" onclick="togglePw()" aria-label="Show/hide password">
+            <i class="bi bi-eye" id="pwIcon" style="font-size:16px;"></i>
+          </button>
+        </div>
       </div>
-      <button type="submit" class="btn-login">Login</button>
+
+      <div class="af-row">
+        <span></span>
+        <a href="{% url 'password_reset' %}" class="af-forgot">Forgot password?</a>
+      </div>
+
+      <button type="submit" class="btn-signin">Sign In</button>
     </form>
 
-    <a href="{% url 'monitor:home' %}" class="back-link">&larr; Back to home</a>
+    <a href="{% url 'monitor:home' %}" class="af-back"><i class="bi bi-arrow-left"></i> Back to home</a>
   </div>
 </div>
+
+<script>
+function togglePw() {
+  var inp = document.getElementById('id_password');
+  var icon = document.getElementById('pwIcon');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    icon.className = 'bi bi-eye-slash';
+  } else {
+    inp.type = 'password';
+    icon.className = 'bi bi-eye';
+  }
+}
+</script>
 
 </body>
 </html>

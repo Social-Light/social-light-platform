@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ subject }}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0f172a;font-family:'Segoe UI',Arial,sans-serif;color:#e2e8f0;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;">
+
+          <!-- Banner / Logo -->
+          <tr>
+            <td align="center" style="padding-bottom:24px;">
+              {% if org.logo %}
+              <img src="{{ org.logo.url }}" alt="{{ org.name }}" style="max-height:60px;max-width:200px;" />
+              {% else %}
+              <div style="background:linear-gradient(135deg,{{ org.gradient_color1 }},{{ org.gradient_color2 }});border-radius:8px;padding:14px 28px;display:inline-block;">
+                <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.5px;">{{ org.name }}</span>
+              </div>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- Intro -->
+          <tr>
+            <td style="padding-bottom:20px;text-align:center;">
+              <p style="margin:0 0 8px;font-size:15px;color:#94a3b8;">Here's a summary of recent media mentions for your organization.</p>
+              <p style="margin:0;font-size:16px;font-weight:600;color:#e2e8f0;">
+                We found {{ online_count }} new article{{ online_count|pluralize }},
+                {{ social_count }} new post{{ social_count|pluralize }},
+                {{ print_count }} print media mention{{ print_count|pluralize }},
+                and {{ broadcast_count }} broadcast media mention{{ broadcast_count|pluralize }} for you today.
+              </p>
+            </td>
+          </tr>
+
+          <!-- ── Recent Articles ──────────────────────────────────────── -->
+          <tr>
+            <td style="padding-top:24px;padding-bottom:8px;">
+              <h2 style="margin:0;font-size:18px;font-weight:700;color:#ffffff;border-left:4px solid #3b82f6;padding-left:10px;">Recent Articles</h2>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              {% if online_articles %}
+              {% for a in online_articles %}
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;background-color:#1e293b;border-radius:8px;overflow:hidden;">
+                <tr>
+                  <td style="padding:14px 16px;">
+                    {% if a.url %}
+                    <a href="{{ a.url }}" style="color:#60a5fa;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</a>
+                    {% else %}
+                    <span style="color:#60a5fa;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</span>
+                    {% endif %}
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="font-size:12px;color:#94a3b8;"><strong style="color:#cbd5e1;">Publication:</strong> {{ a.source }}</td>
+                        <td style="font-size:12px;color:#94a3b8;text-align:right;"><strong style="color:#cbd5e1;">Date:</strong> {{ a.date_published }}</td>
+                      </tr>
+                      <tr>
+                        <td colspan="2" style="padding-top:4px;font-size:12px;color:#94a3b8;">
+                          {% if a.country %}<strong style="color:#cbd5e1;">Country:</strong> {{ a.country }}&nbsp;&nbsp;{% endif %}
+                          <strong style="color:#cbd5e1;">Sentiment:</strong>
+                          {% if a.sentiment == 'positive' %}<span style="color:#4ade80;">Positive</span>
+                          {% elif a.sentiment == 'negative' %}<span style="color:#f87171;">Negative</span>
+                          {% else %}<span style="color:#94a3b8;">Neutral</span>{% endif %}
+                          {% if a.ave %}&nbsp;&nbsp;<strong style="color:#cbd5e1;">AVE:</strong> {{ a.ave|floatformat:2 }}{% endif %}
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              {% endfor %}
+              {% else %}
+              <p style="color:#64748b;font-size:14px;padding:8px 0;">No recent articles available at this time.</p>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- ── Recent Social Media Posts ──────────────────────────────── -->
+          <tr>
+            <td style="padding-top:24px;padding-bottom:8px;">
+              <h2 style="margin:0;font-size:18px;font-weight:700;color:#ffffff;border-left:4px solid #a78bfa;padding-left:10px;">Recent Social Media Posts</h2>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              {% if social_posts %}
+              {% for p in social_posts %}
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;background-color:#1e293b;border-radius:8px;overflow:hidden;">
+                <tr>
+                  <td style="padding:14px 16px;">
+                    {% if p.url %}
+                    <a href="{{ p.url }}" style="color:#c4b5fd;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ p.headline|truncatechars:100 }}</a>
+                    {% else %}
+                    <span style="color:#c4b5fd;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ p.headline|truncatechars:100 }}</span>
+                    {% endif %}
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="font-size:12px;color:#94a3b8;"><strong style="color:#cbd5e1;">Platform:</strong> {{ p.platform }}</td>
+                        <td style="font-size:12px;color:#94a3b8;text-align:right;"><strong style="color:#cbd5e1;">Date:</strong> {{ p.date_published }}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              {% endfor %}
+              {% else %}
+              <p style="color:#64748b;font-size:14px;padding:8px 0;">No recent posts available at this time.</p>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- ── Recent Print Media ──────────────────────────────────────── -->
+          <tr>
+            <td style="padding-top:24px;padding-bottom:8px;">
+              <h2 style="margin:0;font-size:18px;font-weight:700;color:#ffffff;border-left:4px solid #34d399;padding-left:10px;">Recent Print Media Mentions</h2>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              {% if print_articles %}
+              {% for a in print_articles %}
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;background-color:#1e293b;border-radius:8px;overflow:hidden;">
+                <tr>
+                  <td style="padding:14px 16px;">
+                    {% if a.url %}
+                    <a href="{{ a.url }}" style="color:#6ee7b7;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</a>
+                    {% else %}
+                    <span style="color:#6ee7b7;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</span>
+                    {% endif %}
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="font-size:12px;color:#94a3b8;"><strong style="color:#cbd5e1;">Publication:</strong> {{ a.source }}</td>
+                        <td style="font-size:12px;color:#94a3b8;"><strong style="color:#cbd5e1;">Date:</strong> {{ a.date_published }}</td>
+                        <td style="font-size:12px;color:#94a3b8;text-align:right;"><strong style="color:#cbd5e1;">AVE:</strong> {{ a.ave|floatformat:2 }}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              {% endfor %}
+              {% else %}
+              <p style="color:#64748b;font-size:14px;padding:8px 0;">No recent print media available at this time.</p>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- ── Recent Broadcast ───────────────────────────────────────── -->
+          <tr>
+            <td style="padding-top:24px;padding-bottom:8px;">
+              <h2 style="margin:0;font-size:18px;font-weight:700;color:#ffffff;border-left:4px solid #fb923c;padding-left:10px;">Recent Broadcast Mentions</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom:32px;">
+              {% if broadcast_mentions %}
+              {% for b in broadcast_mentions %}
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;background-color:#1e293b;border-radius:8px;overflow:hidden;">
+                <tr>
+                  <td style="padding:14px 16px;">
+                    {% if b.url %}
+                    <a href="{{ b.url }}" style="color:#fdba74;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ b.headline|truncatechars:100 }}</a>
+                    {% else %}
+                    <span style="color:#fdba74;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ b.headline|truncatechars:100 }}</span>
+                    {% endif %}
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="font-size:12px;color:#94a3b8;"><strong style="color:#cbd5e1;">Source:</strong> {{ b.source }}</td>
+                        <td style="font-size:12px;color:#94a3b8;"><strong style="color:#cbd5e1;">Type:</strong> {{ b.broadcast_type }}</td>
+                        <td style="font-size:12px;color:#94a3b8;text-align:right;"><strong style="color:#cbd5e1;">Date:</strong> {{ b.date_published }}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              {% endfor %}
+              {% else %}
+              <p style="color:#64748b;font-size:14px;padding:8px 0;">No recent broadcast mentions available at this time.</p>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="border-top:1px solid #1e293b;padding-top:20px;text-align:center;">
+              <p style="margin:0;font-size:11px;color:#475569;">
+                You're receiving this because you have a media alert configured on Social Light.<br/>
+                © Social Light &mdash; {{ org.name }}
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

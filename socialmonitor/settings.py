@@ -15,8 +15,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'crispy_forms',
+    'crispy_bootstrap5',
+    'widget_tweaks',
     'monitor',
 ]
+
+CRISPY_ALLOWED_TEMPLATE_PACKS = 'bootstrap5'
+CRISPY_TEMPLATE_PACK = 'bootstrap5'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -71,3 +77,13 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+
+DEFAULT_FROM_EMAIL  = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <noreply@sociallightbw.com>')
+EMAIL_BACKEND       = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST          = os.getenv('EMAIL_HOST', '')
+EMAIL_PORT          = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER     = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS       = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+
+MEDIA_MONITOR_WEBHOOK_SECRET = os.getenv('MEDIA_MONITOR_WEBHOOK_SECRET', '')
