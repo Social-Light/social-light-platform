@@ -14,6 +14,10 @@ async function apiRequest(url, method, data) {
   };
   if (data && method !== 'DELETE') opts.body = JSON.stringify(data);
   const res = await fetch(url, opts);
+  if (res.redirected || res.url.includes('/login/')) {
+    window.location.href = '/login/';
+    return;
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Request failed: ${res.status}`);

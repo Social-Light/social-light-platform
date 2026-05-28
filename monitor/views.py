@@ -101,9 +101,14 @@ def login_view(request):
         return redirect('monitor:organizations')
     error = None
     if request.method == 'POST':
-        username = request.POST.get('username', '').strip()
+        email = request.POST.get('email', '').strip().lower()
         password = request.POST.get('password', '')
-        user = authenticate(request, username=username, password=password)
+        user = None
+        try:
+            db_user = User.objects.get(email__iexact=email)
+            user = authenticate(request, username=db_user.username, password=password)
+        except User.DoesNotExist:
+            pass
         if user:
             login(request, user)
             next_url = request.GET.get('next', '')
@@ -112,7 +117,7 @@ def login_view(request):
             if user.role == 'platform_admin':
                 return redirect('/app/organizations/?select=1')
             return redirect('/app/organizations/')
-        error = 'Invalid username or password.'
+        error = 'Invalid email or password.'
     return render(request, 'monitor/login.html', {'error': error})
 
 
@@ -1628,19 +1633,17 @@ def user_create(request, org_id):
     email = data.get('email', '').strip()
     first_name = data.get('first_name', '').strip()
     last_name = data.get('last_name', '').strip()
-    username = email.split('@')[0] if email else first_name.lower()
-    base_username = username
-    i = 1
-    while User.objects.filter(username=username).exists():
-        username = f"{base_username}{i}"
-        i += 1
+    username = email.lower() if email else first_name.lower()
+    if User.objects.filter(username=username).exists():
+        return JsonResponse({'error': 'A user with this email already exists.'}, status=400)
+    role = data.get('role', 'viewer')
     user = User.objects.create_user(
         username=username,
         email=email,
         first_name=first_name,
         last_name=last_name,
-        organization=org,
-        role=data.get('role', 'viewer'),
+        organization=None if role == 'platform_admin' else org,
+        role=role,
     )
     user.set_unusable_password()
     user.save()

@@ -14,6 +14,10 @@ async function apiRequest(url, method, data) {
   };
   if (data && method !== 'DELETE') opts.body = JSON.stringify(data);
   const res = await fetch(url, opts);
+  if (res.redirected || res.url.includes('/login/')) {
+    window.location.href = '/login/';
+    return;
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Request failed: ${res.status}`);
@@ -83,8 +87,9 @@ function toggleDarkMode(checkbox) {
 
 (function () {
   const dark = localStorage.getItem('darkMode') === 'true';
+  if (dark) { document.body.classList.add('dark-mode'); }
   const toggle = document.getElementById('darkModeToggle');
-  if (dark && toggle) { toggle.checked = true; document.body.classList.add('dark-mode'); }
+  if (toggle) toggle.checked = dark;
 })();
 
 // ── Media Channels submenu ──────────────────────────

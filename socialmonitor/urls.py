@@ -3,6 +3,16 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib.auth import views as auth_views
+from django.contrib.auth import logout as auth_logout
+
+class PasswordSetConfirmView(auth_views.PasswordResetConfirmView):
+    template_name = 'monitor/password_reset_confirm.html'
+    success_url = '/reset/complete/'
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        auth_logout(self.request)
+        return response
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -20,10 +30,7 @@ urlpatterns = [
         template_name='monitor/password_reset_done.html',
     ), name='password_reset_done'),
 
-    path('reset/<uidb64>/<token>/', auth_views.PasswordResetConfirmView.as_view(
-        template_name='monitor/password_reset_confirm.html',
-        success_url='/reset/complete/',
-    ), name='password_reset_confirm'),
+    path('reset/<uidb64>/<token>/', PasswordSetConfirmView.as_view(), name='password_reset_confirm'),
 
     path('reset/complete/', auth_views.PasswordResetCompleteView.as_view(
         template_name='monitor/password_reset_complete.html',
