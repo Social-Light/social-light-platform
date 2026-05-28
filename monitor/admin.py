@@ -1,21 +1,24 @@
 from django.contrib import admin
-from .models import Organisation, User
+from .models import Organization, User
 
-@admin.register(Organisation)
-class OrganisationAdmin(admin.ModelAdmin):
+@admin.register(Organization)
+class OrganizationAdmin(admin.ModelAdmin):
     list_display = ('name', 'industry', 'country', 'status', 'created_at')
     list_filter = ('status', 'industry', 'country', 'created_at')
     search_fields = ('name', 'email', 'country')
-    readonly_fields = ('id', 'created_at', 'updated_at')
+    readonly_fields = ('id', 'created_at')
     fieldsets = (
         ('Organization Info', {
-            'fields': ('id', 'name', 'address', 'country', 'email', 'phone')
+            'fields': ('id', 'name', 'address', 'country', 'email', 'phone', 'website')
         }),
-        ('Details', {
-            'fields': ('industry', 'status', 'facebook_url', 'twitter_url', 'instagram_url')
+        ('Social Media', {
+            'fields': ('facebook_url', 'linkedin_url', 'x_handle')
+        }),
+        ('Branding', {
+            'fields': ('gradient_color1', 'gradient_color2', 'logo')
         }),
         ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
+            'fields': ('created_at',),
             'classes': ('collapse',)
         }),
     )
