@@ -303,6 +303,7 @@ def dashboard(request, org_id):
     latest_online = org.online_articles.all()[:8]
     latest_print = org.print_articles.all()[:8]
     latest_social = org.social_posts.all()[:8]
+    latest_broadcast = org.broadcast_mentions.all()[:8]
 
     # Media types present
     media_types = []
@@ -331,6 +332,7 @@ def dashboard(request, org_id):
         'latest_online': latest_online,
         'latest_print': latest_print,
         'latest_social': latest_social,
+        'latest_broadcast': latest_broadcast,
         'current_year': today.year,
     })
 
@@ -1615,6 +1617,12 @@ def users_view(request, org_id):
 @login_required
 @require_http_methods(['POST'])
 def user_create(request, org_id):
+    from django.contrib.auth.tokens import default_token_generator
+    from django.utils.http import urlsafe_base64_encode
+    from django.utils.encoding import force_bytes
+    from django.core.mail import send_mail
+    from django.template.loader import render_to_string
+
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
     email = data.get('email', '').strip()
@@ -1631,10 +1639,32 @@ def user_create(request, org_id):
         email=email,
         first_name=first_name,
         last_name=last_name,
-        password=data.get('password', 'changeme123'),
         organization=org,
         role=data.get('role', 'viewer'),
     )
+    user.set_unusable_password()
+    user.save()
+
+    if email:
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        protocol = 'https' if request.is_secure() else 'http'
+        domain = request.get_host()
+        body = render_to_string('monitor/welcome_email.txt', {
+            'full_name': user.get_full_name() or username,
+            'uid': uid,
+            'token': token,
+            'protocol': protocol,
+            'domain': domain,
+        })
+        send_mail(
+            subject='Welcome to Social Light — Set Your Password',
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            fail_silently=True,
+        )
+
     return JsonResponse({'id': user.id, 'name': user.get_full_name()})
 
 

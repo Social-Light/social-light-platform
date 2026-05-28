@@ -1,0 +1,13 @@
+Hi {{ full_name }},
+
+Welcome to Social Light! Your account has been created.
+
+To get started, set your password by clicking the link below:
+{{ protocol }}://{{ domain }}{% url 'password_reset_confirm' uidb64=uid token=token %}
+
+This link expires in 24 hours. Once you've set your password, you can sign in at:
+{{ protocol }}://{{ domain }}{% url 'monitor:login' %}
+
+If you have any questions, reply to this email.
+
+— The Social Light Team
