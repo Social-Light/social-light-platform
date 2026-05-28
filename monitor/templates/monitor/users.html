@@ -82,10 +82,6 @@
         <input type="email" id="uEmail" class="form-control" placeholder="user@example.com" />
       </div>
       <div class="form-group">
-        <label class="form-label">Password</label>
-        <input type="password" id="uPassword" class="form-control" placeholder="Temporary password" />
-      </div>
-      <div class="form-group">
         <label class="form-label">Role</label>
         <select id="uRole" class="form-select">
           {% for val, label in role_choices %}
@@ -153,7 +149,6 @@ function createUser() {
     first_name: first,
     last_name: document.getElementById('uLast').value.trim(),
     email,
-    password: document.getElementById('uPassword').value || 'changeme123',
     role: document.getElementById('uRole').value,
   }).then(() => { closeModal('addUserModal'); location.reload(); });
 }
