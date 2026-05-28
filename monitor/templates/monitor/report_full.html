@@ -1,0 +1,342 @@
+{% extends 'monitor/base.html' %}
+{% load static %}
+{% block title %}Media Insights Report{% endblock %}
+
+{% block extra_head %}
+<style>
+:root { --teal:#00A99D; --teal-dk:#006B7A; --teal-deep:#003D4A; }
+
+.rf-shell { max-width:940px; margin:0 auto; }
+
+/* Module bar */
+.rf-mod-bar {
+  background:#fff; border:1px solid #e5e7eb; border-radius:10px;
+  padding:13px 18px; display:flex; align-items:flex-start; gap:14px; margin-bottom:16px;
+  font-size:.78rem; color:#374151; line-height:1.65;
+}
+.rf-mod-bar-text { flex:1; overflow:hidden; max-height:3.5em; transition:max-height .3s; }
+.rf-mod-bar-text.expanded { max-height:none; }
+.rf-mod-bar button {
+  flex-shrink:0; display:flex; align-items:center; gap:5px;
+  background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;
+  padding:6px 12px; font-size:.78rem; cursor:pointer; color:#374151; white-space:nowrap;
+}
+.mod-excl { color:#9ca3af; }
+
+/* Controls */
+.rf-controls {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:16px; flex-wrap:wrap; gap:10px;
+}
+.rf-page-label { font-size:.84rem; color:#6b7280; }
+
+/* Slide wrapper */
+.rf-slide-wrap { background:#fff; border-radius:14px; box-shadow:0 4px 28px rgba(0,0,0,.09); overflow:hidden; margin-bottom:22px; }
+.slide { display:none; }
+.slide.active { display:block; }
+
+/* Cover */
+.slide-cover {
+  background:linear-gradient(155deg,#004D58 0%,#006B7A 45%,#003240 100%);
+  min-height:520px; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; padding:56px 48px; position:relative; overflow:hidden; text-align:center;
+}
+.slide-cover::before {
+  content:''; position:absolute; inset:0;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='520'%3E%3Cpath d='M0,320 Q200,260 460,300 T920,280' fill='none' stroke='rgba(255,255,255,.05)' stroke-width='70'/%3E%3Cpath d='M0,390 Q280,330 520,370 T920,350' fill='none' stroke='rgba(255,255,255,.035)' stroke-width='90'/%3E%3C/svg%3E") center/cover;
+  pointer-events:none;
+}
+.cover-logo { width:68px; margin-bottom:56px; border-radius:50%; opacity:.95; }
+.cover-title { font-size:2.5rem; font-weight:800; color:#fff; margin:0 0 12px; letter-spacing:-.5px; }
+.cover-sub   { font-size:1rem; color:rgba(255,255,255,.75); margin:0; }
+.cover-date  { position:absolute; bottom:42px; left:48px; font-size:.85rem; font-weight:700; color:#fff; }
+.slide-footer { position:absolute; bottom:18px; left:48px; right:48px; display:flex; justify-content:space-between; font-size:.7rem; color:rgba(255,255,255,.4); }
+
+/* Section cover (per media type) */
+.section-cover {
+  padding:56px 48px; position:relative; overflow:hidden;
+  min-height:520px; display:flex; align-items:center; justify-content:flex-start;
+}
+.section-cover::before {
+  content:''; position:absolute; inset:0;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='180'%3E%3Cpath d='M0,100 Q400,60 900,90' fill='none' stroke='rgba(255,255,255,.07)' stroke-width='60'/%3E%3C/svg%3E") center/cover;
+}
+.section-cover-inner { position:relative; z-index:1; }
+.section-cover-label { font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:rgba(255,255,255,.65); margin-bottom:6px; }
+.section-cover-title { font-size:2rem; font-weight:800; color:#fff; margin:0; }
+.section-cover-sub { font-size:.9rem; color:rgba(255,255,255,.7); margin-top:6px; }
+
+/* Content slide */
+.slide-content { background:#fff; min-height:520px; display:flex; flex-direction:column; }
+.slide-hdr { display:flex; align-items:center; padding:14px 36px 12px; border-bottom:1px solid #f3f4f6; gap:12px; }
+.slide-hdr-logo { width:26px; border-radius:50%; flex-shrink:0; }
+.slide-hdr-title { flex:1; text-align:center; font-size:.76rem; color:#9ca3af; }
+.slide-hdr-title strong { color:#374151; }
+.slide-body { flex:1; padding:24px 36px 18px; }
+.slide-type-label { font-size:.7rem; color:#9ca3af; text-transform:uppercase; letter-spacing:.07em; margin-bottom:4px; }
+.slide-heading { font-size:1.6rem; font-weight:800; color:var(--teal); margin:0 0 18px; }
+.slide-ftr { display:flex; justify-content:space-between; padding:9px 36px 12px; font-size:.68rem; color:#d1d5db; border-top:1px solid #f3f4f6; }
+
+/* KPI cards */
+.kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px; }
+.kpi-card { border:1.5px solid #e5e7eb; border-radius:10px; padding:18px; }
+.kpi-lbl { font-size:.7rem; color:#9ca3af; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+.kpi-val { font-size:1.9rem; font-weight:800; color:var(--teal); line-height:1.1; }
+.kpi-sub { font-size:.73rem; color:#9ca3af; margin-top:3px; }
+
+/* Sentiment badges */
+.sent-row { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:14px; }
+.sent-card { border-radius:8px; padding:14px; text-align:center; }
+.sent-val { font-size:1.5rem; font-weight:800; line-height:1.1; }
+.sent-sub { font-size:.72rem; color:#6b7280; margin-top:3px; }
+
+/* Executive summary boxes */
+.exec-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.issue-box { border-radius:8px; padding:14px 16px; }
+.issue-box.pos { border:1.5px solid #bbf7d0; background:#f0fdf4; }
+.issue-box.neg { border:1.5px solid #fecaca; background:#fef2f2; }
+.issue-box-hdr { font-size:.78rem; font-weight:700; display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+.issue-box.pos .issue-box-hdr { color:#15803d; }
+.issue-box.neg .issue-box-hdr { color:#dc2626; }
+.issue-item { font-size:.78rem; color:#374151; margin-bottom:6px; line-height:1.5; }
+
+/* Rep cards */
+.rep-card { border-radius:8px; padding:13px 15px; margin-bottom:9px; display:grid; grid-template-columns:1fr auto; gap:14px; align-items:start; }
+.rep-card.risk { border:1.5px dashed #fca5a5; }
+.rep-card.oppty { border:1.5px dashed #86efac; }
+.rep-card-title { font-size:.8rem; font-weight:700; margin-bottom:4px; }
+.rep-card.risk  .rep-card-title { color:#dc2626; }
+.rep-card.oppty .rep-card-title { color:#16a34a; }
+.rep-card-desc { font-size:.76rem; color:#374151; line-height:1.5; }
+.rep-card-meta { text-align:right; }
+.rep-card-ave { font-size:.76rem; font-weight:700; }
+.rep-card.risk  .rep-card-ave { color:#dc2626; }
+.rep-card.oppty .rep-card-ave { color:#16a34a; }
+.rep-card-src { font-size:.68rem; color:#9ca3af; }
+
+/* Journalists */
+.journ-table { width:100%; border-collapse:collapse; font-size:.8rem; }
+.journ-table th { text-align:left; padding:8px 10px; background:#f9fafb; color:#6b7280; font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid #e5e7eb; }
+.journ-table td { padding:8px 10px; border-bottom:1px solid #f3f4f6; }
+
+/* Word cloud */
+.word-cloud { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px; background:#f9fafb; border-radius:10px; min-height:160px; }
+
+/* Pagination */
+.rf-pagination { display:flex; align-items:center; justify-content:space-between; padding:6px 0 2px; flex-wrap:wrap; gap:10px; }
+.rf-pagination .pages { display:flex; align-items:center; gap:5px; }
+.pg-btn { width:34px; height:34px; border-radius:50%; border:1.5px solid #e5e7eb; background:#fff; font-size:.8rem; font-weight:600; color:#374151; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.pg-btn:hover { background:#f3f4f6; }
+.pg-btn.active { background:var(--teal); border-color:var(--teal); color:#fff; }
+.pg-btn.ellipsis { border:none; background:none; cursor:default; color:#9ca3af; }
+.pg-nav { display:flex; align-items:center; gap:5px; background:#fff; border:1.5px solid #e5e7eb; border-radius:8px; padding:6px 14px; font-size:.82rem; font-weight:500; color:#374151; cursor:pointer; }
+.pg-nav:hover { background:#f3f4f6; }
+.pg-nav:disabled { opacity:.4; cursor:not-allowed; }
+
+@media print {
+  .rf-mod-bar, .rf-controls, .rf-pagination, .no-print, .sidebar, .topheader { display:none !important; }
+  .slide.active { display:block !important; }
+  .rf-slide-wrap { box-shadow:none; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rf-shell">
+
+  <!-- Module bar -->
+  <div class="rf-mod-bar">
+    <div class="rf-mod-bar-text" id="modBarText">
+      {% for item in mod_bar_items %}
+        {% if item.has_data %}<span>{{ item.name }}</span>{% else %}<span class="mod-excl">{{ item.name }} (no data)</span>{% endif %}{% if not forloop.last %}, {% endif %}
+      {% empty %}All modules selected.
+      {% endfor %}
+    </div>
+    <button onclick="document.getElementById('modBarText').classList.toggle('expanded');this.textContent=document.getElementById('modBarText').classList.contains('expanded')?'Show Less':'Show All Modules'">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+      Show All Modules
+    </button>
+  </div>
+
+  <!-- Controls -->
+  <div class="rf-controls no-print">
+    <a href="{% url 'monitor:reports' org.id %}" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:6px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+      Back to Reports
+    </a>
+    <span class="rf-page-label" id="pageLabel">Page 1 of <span id="totalPages"></span></span>
+    <a href="{% url 'monitor:report_competitor' org.id %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"
+       class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:6px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export Report
+    </a>
+  </div>
+
+  <!-- Slides -->
+  <div class="rf-slide-wrap" id="slideWrap">
+
+    <!-- ── SLIDE: Cover ──────────────────────────────────────── -->
+    <div class="slide" id="s-cover">
+      <div class="slide-cover">
+        <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="cover-logo" alt="Social Light"/>
+        <h1 class="cover-title">Media Insights Report</h1>
+        <p class="cover-sub">Prepared for {{ org.name }}</p>
+        <div class="cover-date">{{ month_label }}</div>
+        <div class="slide-footer">
+          <span>© Social Light Botswana | {% now "Y" %}</span>
+          <span>Unauthorized Reproduction is Prohibited</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SLIDE: Executive Summary ─────────────────────────── -->
+    <div class="slide" id="s-exec">
+      <div class="slide-content">
+        <div class="slide-hdr">
+          <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+          <div class="slide-hdr-title">Monthly Insight Report: <strong>Executive Summary</strong></div>
+        </div>
+        <div class="slide-body">
+          <div class="slide-type-label">All Media</div>
+          <h2 class="slide-heading">Executive Summary</h2>
+          <p style="font-size:.86rem;color:#374151;line-height:1.7;margin-bottom:18px;">{{ exec_narrative }}</p>
+          <div class="exec-grid">
+            <div class="issue-box pos">
+              <div class="issue-box-hdr">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Positive Issues
+                <span style="margin-left:auto;font-size:.68rem;color:#9ca3af;font-weight:400;">Sentiment impact*</span>
+              </div>
+              {% for s in sections.social.opps|slice:":2" %}
+              <div class="issue-item"><span style="font-weight:700;margin-right:3px;">{{ forloop.counter }}</span>
+                <strong style="color:#15803d;">{{ s.headline|truncatechars:75 }}</strong>
+                <span style="color:#9ca3af;"> — {{ s.source }}</span></div>
+              {% empty %}<div class="issue-item" style="color:#9ca3af;">No positive mentions.</div>
+              {% endfor %}
+            </div>
+            <div class="issue-box neg">
+              <div class="issue-box-hdr">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                Negative Issues
+                <span style="margin-left:auto;font-size:.68rem;color:#9ca3af;font-weight:400;">Sentiment impact*</span>
+              </div>
+              {% for s in sections.social.risks|slice:":2" %}
+              <div class="issue-item"><span style="font-weight:700;margin-right:3px;">{{ forloop.counter }}</span>
+                <strong style="color:#dc2626;">{{ s.headline|truncatechars:75 }}</strong>
+                <span style="color:#9ca3af;"> — {{ s.source }}</span></div>
+              {% empty %}<div class="issue-item" style="color:#9ca3af;">No negative mentions.</div>
+              {% endfor %}
+            </div>
+          </div>
+          <p style="font-size:.68rem;color:#9ca3af;margin-top:12px;">*Impact refers to the total effect that a particular issue has on total sentiment.</p>
+        </div>
+        <div class="slide-ftr">
+          <span>© Social Light Botswana | {% now "Y" %}</span><span>2</span>
+          <span>Unauthorized Reproduction is Prohibited</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         MEDIA TYPE SECTIONS
+         ════════════════════════════════════════════════════ -->
+    {% with td=sections.social %}
+    {% include "monitor/partials/report_section.html" with td=td type_key="social" journalists=None %}
+    {% endwith %}
+    {% with td=sections.online %}
+    {% include "monitor/partials/report_section.html" with td=td type_key="online" journalists=None %}
+    {% endwith %}
+    {% with td=sections.broadcast %}
+    {% include "monitor/partials/report_section.html" with td=td type_key="broadcast" journalists=None %}
+    {% endwith %}
+    {% with td=sections.print %}
+    {% include "monitor/partials/report_section.html" with td=td type_key="print" journalists=journalists %}
+    {% endwith %}
+
+  </div><!-- /rf-slide-wrap -->
+
+  <!-- Pagination -->
+  <div class="rf-pagination no-print">
+    <button class="pg-nav" id="prevBtn" onclick="changePage(-1)" disabled>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Previous
+    </button>
+    <div class="pages" id="pageButtons"></div>
+    <button class="pg-nav" id="nextBtn" onclick="changePage(1)">
+      Next<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Collect all slide IDs in DOM order
+var ALL_SLIDES = Array.from(document.querySelectorAll('#slideWrap .slide')).map(function(el){return el.id;});
+var TOTAL = ALL_SLIDES.length;
+var cur = 0;
+
+document.getElementById('totalPages').textContent = TOTAL;
+
+function showSlide(idx) {
+  document.querySelectorAll('#slideWrap .slide').forEach(function(s){s.classList.remove('active');});
+  var slideId = ALL_SLIDES[idx];
+  document.getElementById(slideId).classList.add('active');
+  cur = idx;
+  document.getElementById('pageLabel').innerHTML = 'Page ' + (idx+1) + ' of ' + TOTAL;
+  document.getElementById('prevBtn').disabled = idx === 0;
+  document.getElementById('nextBtn').disabled = idx === TOTAL-1;
+  buildPager();
+  window.scrollTo({top:0,behavior:'smooth'});
+  document.dispatchEvent(new CustomEvent('slide:show', {detail:{slideId:slideId}}));
+  if (window._reportFullBuildSectionCharts) {
+    window._reportFullBuildSectionCharts(slideId);
+  }
+}
+function changePage(d){ if(cur+d>=0 && cur+d<TOTAL) showSlide(cur+d); }
+
+function buildPager(){
+  var c = document.getElementById('pageButtons');
+  c.innerHTML = '';
+  var pages = pRange(cur+1, TOTAL);
+  pages.forEach(function(p){
+    var b = document.createElement('button');
+    b.className = 'pg-btn'+(p===cur+1?' active':'')+(p==='...'?' ellipsis':'');
+    b.textContent = p;
+    if(p!=='...') b.onclick=(function(i){return function(){showSlide(i-1);};})(p);
+    c.appendChild(b);
+  });
+}
+function pRange(cur,tot){
+  if(tot<=7){var r=[];for(var i=1;i<=tot;i++)r.push(i);return r;}
+  var p=[1];
+  if(cur>3)p.push('...');
+  for(var i=Math.max(2,cur-1);i<=Math.min(tot-1,cur+1);i++)p.push(i);
+  if(cur<tot-2)p.push('...');
+  p.push(tot);
+  return p;
+}
+
+// Charts — built lazily when slide becomes visible
+var chartsBuilt = {};
+function buildChartForSlide(slideId) {
+  if (chartsBuilt[slideId]) return;
+  chartsBuilt[slideId] = true;
+  var el = document.getElementById(slideId);
+  if (!el) return;
+  el.querySelectorAll('[data-chart]').forEach(function(canvas) {
+    var cfg = JSON.parse(canvas.dataset.chart);
+    new Chart(canvas, cfg);
+  });
+}
+
+// Init
+showSlide(0);
+
+// Observe slide visibility to build charts lazily
+var io = new IntersectionObserver(function(entries){
+  entries.forEach(function(e){if(e.isIntersecting) buildChartForSlide(e.target.id);});
+},{threshold:0.1});
+document.querySelectorAll('#slideWrap .slide').forEach(function(s){io.observe(s);});
+</script>
+{% endblock %}

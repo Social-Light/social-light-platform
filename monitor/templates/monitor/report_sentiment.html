@@ -1,0 +1,449 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Sentiment Report{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Screen layout ───────────────────────────────────────────── */
+.sr-page { padding: 1.5rem 2rem; }
+
+.sr-header {
+  background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%);
+  border-radius: 14px;
+  padding: 1.4rem 1.8rem;
+  margin-bottom: 1.5rem;
+  color: #fff;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.sr-header-left { flex: 1; min-width: 0; }
+.sr-header-title { font-size: 1.25rem; font-weight: 700; margin: 0 0 .2rem; }
+.sr-header-sub   { font-size: .82rem; color: rgba(255,255,255,.6); margin: 0 0 1rem; }
+
+.sr-date-form { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.sr-date-input {
+  padding: .4rem .85rem;
+  border: 1.5px solid rgba(255,255,255,.3);
+  border-radius: 8px;
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  font-size: .82rem;
+  outline: none;
+  transition: border-color .15s;
+  color-scheme: dark;
+}
+.sr-date-input:focus { border-color: rgba(255,255,255,.7); }
+.sr-date-sep { font-size: .8rem; color: rgba(255,255,255,.5); }
+.sr-apply-btn {
+  padding: .4rem 1.1rem;
+  background: rgba(255,255,255,.18);
+  border: 1.5px solid rgba(255,255,255,.35);
+  border-radius: 8px;
+  color: #fff;
+  font-size: .82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.sr-apply-btn:hover { background: rgba(255,255,255,.28); }
+
+.sr-period-shortcuts { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; }
+.sr-shortcut {
+  padding: .28rem .8rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255,255,255,.25);
+  background: transparent;
+  color: rgba(255,255,255,.65);
+  font-size: .75rem;
+  cursor: pointer;
+  transition: all .15s;
+}
+.sr-shortcut:hover { background: rgba(255,255,255,.12); color: #fff; }
+
+.sr-pdf-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .55rem 1.25rem;
+  background: #fff;
+  color: #1d4ed8;
+  border: none;
+  border-radius: 9px;
+  font-size: .84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .15s;
+  align-self: flex-start;
+  margin-top: .25rem;
+}
+.sr-pdf-btn:hover { opacity: .88; }
+
+/* ── Cards ───────────────────────────────────────────────────── */
+.sr-top-row { display: grid; grid-template-columns: 1fr 1fr 300px; gap: 1.25rem; margin-bottom: 1.25rem; }
+
+.sr-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 1.4rem;
+}
+.sr-card-title {
+  font-size: .78rem; font-weight: 600; color: #6b7280;
+  text-transform: uppercase; letter-spacing: .05em; margin: 0 0 1rem;
+}
+
+/* Gauge */
+.gauge-canvas-wrap { position: relative; height: 155px; }
+.gauge-labels {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  display: flex; justify-content: space-between;
+  font-size: .68rem; color: #9ca3af; padding: 0 .5rem;
+}
+.gauge-center {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  text-align: center; pointer-events: none;
+}
+.gauge-score { font-size: 2rem; font-weight: 800; color: #111827; line-height: 1; }
+.gauge-out   { font-size: .72rem; color: #9ca3af; }
+.gauge-label { font-size: .95rem; font-weight: 700; margin-top: .2rem; }
+
+/* Donut */
+.donut-wrap { position: relative; height: 165px; display: flex; align-items: center; justify-content: center; }
+.donut-center { position: absolute; text-align: center; pointer-events: none; }
+.donut-center-lbl { font-size: .7rem; color: #6b7280; font-weight: 500; line-height: 1.3; }
+.sentiment-legend { display: flex; flex-direction: column; gap: .5rem; margin-top: .9rem; }
+.sl-item { display: flex; align-items: center; gap: .55rem; font-size: .83rem; }
+.sl-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.sl-label { color: #374151; flex: 1; }
+.sl-pct  { font-weight: 700; }
+
+/* Right stat cards */
+.sr-right { display: flex; flex-direction: column; gap: .8rem; }
+.sr-stat-card {
+  border-radius: 11px; padding: .9rem 1.1rem;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sr-stat-label { font-size: .7rem; color: rgba(255,255,255,.7); margin: 0 0 .15rem; }
+.sr-stat-value { font-size: 1.5rem; font-weight: 800; color: #fff; line-height: 1; }
+.sr-stat-change { font-size: .76rem; font-weight: 600; color: rgba(255,255,255,.9); display: flex; align-items: center; gap: .2rem; }
+
+/* Timeline */
+.sr-timeline-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 1.4rem; }
+.sr-timeline-legend { display: flex; gap: 1.2rem; flex-wrap: wrap; margin-bottom: .8rem; }
+.tl-leg { display: flex; align-items: center; gap: .35rem; font-size: .76rem; color: #374151; }
+.tl-leg-box  { width: 12px; height: 10px; border-radius: 2px; }
+.tl-leg-line { width: 20px; height: 2.5px; border-radius: 1px; }
+
+/* Mention tables */
+.sr-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 1.25rem; }
+.sr-table-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 1.2rem; }
+.sr-table-hdr { font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 .9rem; display: flex; align-items: center; gap: .45rem; }
+.sr-table-hdr.pos { color: #16a34a; }
+.sr-table-hdr.neg { color: #dc2626; }
+.sr-mention-row { padding: .6rem 0; border-bottom: 1px solid #f3f4f6; }
+.sr-mention-row:last-child { border-bottom: none; }
+.sr-mention-headline { font-size: .83rem; font-weight: 500; color: #111827; line-height: 1.35; margin: 0 0 .25rem; }
+.sr-mention-meta { font-size: .74rem; color: #9ca3af; display: flex; gap: .75rem; flex-wrap: wrap; }
+.sr-mention-ave { font-weight: 600; color: #374151; }
+
+/* ── Print / PDF ─────────────────────────────────────────────── */
+@media print {
+  @page { size: A4; margin: 12mm 14mm; }
+
+  body, html { background: #fff !important; }
+
+  /* hide everything except the report content */
+  .sidebar, .topbar, .sr-header .sr-pdf-btn,
+  .sr-date-form, .sr-period-shortcuts, nav,
+  .sr-header-sub { display: none !important; }
+
+  .main-content, .sr-page { padding: 0 !important; margin: 0 !important; }
+
+  .sr-header {
+    background: #1d4ed8 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    border-radius: 8px !important;
+    padding: 1rem 1.2rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .sr-top-row { grid-template-columns: 1fr 1fr 240px; gap: .8rem; margin-bottom: .8rem; }
+  .sr-card, .sr-timeline-card, .sr-table-card { border-radius: 8px !important; page-break-inside: avoid; }
+  .sr-tables { margin-top: .8rem; }
+
+  .sr-stat-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  canvas { max-width: 100% !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sr-page" id="srPage">
+
+  <!-- Header -->
+  <div class="sr-header">
+    <div class="sr-header-left">
+      <h1 class="sr-header-title">Sentiment Analysis Report — {{ org.name }}</h1>
+      <p class="sr-header-sub">Track the tone of media coverage across all channels</p>
+
+      <form class="sr-date-form" method="get" id="dateForm">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <input type="date" name="date_from" id="inputFrom" class="sr-date-input" value="{{ date_from_str }}"/>
+        <span class="sr-date-sep">to</span>
+        <input type="date" name="date_to"   id="inputTo"   class="sr-date-input" value="{{ date_to_str }}"/>
+        <button type="submit" class="sr-apply-btn">Apply</button>
+      </form>
+
+      <div class="sr-period-shortcuts">
+        <button type="button" class="sr-shortcut" onclick="setShortcut(7)">Past 7 days</button>
+        <button type="button" class="sr-shortcut" onclick="setShortcut(30)">Past 30 days</button>
+        <button type="button" class="sr-shortcut" onclick="setShortcut(90)">Past 3 months</button>
+        <span style="margin-left:.5rem;font-size:.75rem;color:rgba(255,255,255,.45);">{{ period_label }} · {{ total }} mentions</span>
+      </div>
+    </div>
+
+    <button class="sr-pdf-btn" onclick="downloadPDF()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download PDF
+    </button>
+  </div>
+
+  <!-- Top row -->
+  <div class="sr-top-row">
+
+    <!-- Gauge -->
+    <div class="sr-card">
+      <p class="sr-card-title">Overall Sentiment Level</p>
+      <div class="gauge-canvas-wrap">
+        <canvas id="gaugeChart"></canvas>
+        <div class="gauge-labels">
+          <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+        </div>
+        <div class="gauge-center">
+          <div class="gauge-score">{{ score }}</div>
+          <div class="gauge-out">Out of 5</div>
+          <div class="gauge-label" style="color:{{ sentiment_color }};">{{ sentiment_label }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Donut -->
+    <div class="sr-card">
+      <p class="sr-card-title">Sentiment Breakdown</p>
+      <div class="donut-wrap">
+        <canvas id="donutChart"></canvas>
+        <div class="donut-center">
+          <div class="donut-center-lbl">Sentiment<br>breakdown</div>
+        </div>
+      </div>
+      <div class="sentiment-legend">
+        <div class="sl-item">
+          <span class="sl-dot" style="background:#22c55e;"></span>
+          <span class="sl-label">Positive</span>
+          <span class="sl-pct" style="color:#16a34a;">{{ pos_pct }}%</span>
+        </div>
+        <div class="sl-item">
+          <span class="sl-dot" style="background:#ef4444;"></span>
+          <span class="sl-label">Negative</span>
+          <span class="sl-pct" style="color:#dc2626;">{{ neg_pct }}%</span>
+        </div>
+        <div class="sl-item">
+          <span class="sl-dot" style="background:#f59e0b;"></span>
+          <span class="sl-label">Neutral</span>
+          <span class="sl-pct" style="color:#d97706;">{{ neu_pct }}%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="sr-right">
+      <div class="sr-stat-card" style="background:#1d4ed8;">
+        <div>
+          <p class="sr-stat-label">Total Mentions</p>
+          <div class="sr-stat-value">{{ total }}</div>
+        </div>
+        <div class="sr-stat-change">
+          {% if mentions_change >= 0 %}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>+{{ mentions_change }}%
+          {% else %}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>{{ mentions_change }}%
+          {% endif %}
+        </div>
+      </div>
+      <div class="sr-stat-card" style="background:#16a34a;">
+        <div>
+          <p class="sr-stat-label">Positive Mentions</p>
+          <div class="sr-stat-value">{{ pos }}</div>
+        </div>
+        <div class="sr-stat-change">{{ pos_pct }}% of total</div>
+      </div>
+      <div class="sr-stat-card" style="background:#dc2626;">
+        <div>
+          <p class="sr-stat-label">Negative Mentions</p>
+          <div class="sr-stat-value">{{ neg }}</div>
+        </div>
+        <div class="sr-stat-change">{{ neg_pct }}% of total</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="sr-timeline-card">
+    <p class="sr-card-title">Analysis Timeline</p>
+    <div class="sr-timeline-legend">
+      <span class="tl-leg"><span class="tl-leg-box" style="background:#22c55e;"></span>Positive</span>
+      <span class="tl-leg"><span class="tl-leg-box" style="background:#f59e0b;"></span>Neutral</span>
+      <span class="tl-leg"><span class="tl-leg-box" style="background:#ef4444;"></span>Negative</span>
+      <span class="tl-leg"><span class="tl-leg-line" style="background:#1d4ed8;"></span>Sentiment Score</span>
+    </div>
+    <div style="position:relative;height:260px;">
+      <canvas id="timelineChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Top mentions tables -->
+  <div class="sr-tables">
+    <div class="sr-table-card">
+      <div class="sr-table-hdr pos">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+        Top Positive Mentions
+      </div>
+      {% for item in top_positive %}
+      <div class="sr-mention-row">
+        <p class="sr-mention-headline">{{ item.headline }}</p>
+        <div class="sr-mention-meta">
+          <span>{{ item.source }}</span>
+          <span>{{ item.date }}</span>
+          <span class="sr-mention-ave">BWP {{ item.ave|floatformat:0 }} AVE</span>
+        </div>
+      </div>
+      {% empty %}
+      <p style="color:#9ca3af;font-size:.83rem;margin:0;">No positive mentions in this period.</p>
+      {% endfor %}
+    </div>
+
+    <div class="sr-table-card">
+      <div class="sr-table-hdr neg">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>
+        Top Negative Mentions
+      </div>
+      {% for item in top_negative %}
+      <div class="sr-mention-row">
+        <p class="sr-mention-headline">{{ item.headline }}</p>
+        <div class="sr-mention-meta">
+          <span>{{ item.source }}</span>
+          <span>{{ item.date }}</span>
+          <span class="sr-mention-ave">BWP {{ item.ave|floatformat:0 }} AVE</span>
+        </div>
+      </div>
+      {% empty %}
+      <p style="color:#9ca3af;font-size:.83rem;margin:0;">No negative mentions in this period.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+</div><!-- /sr-page -->
+
+<script>
+const TL = {{ timeline_json|safe }};
+const SCORE = {{ score }};
+const SENTIMENT_COLOR = '{{ sentiment_color }}';
+
+/* ── Gauge ──────────────────────────────────────────────────── */
+new Chart(document.getElementById('gaugeChart').getContext('2d'), {
+  type: 'doughnut',
+  data: { datasets: [{
+    data: [Math.max(0, Math.min(5, SCORE)), 5 - Math.max(0, Math.min(5, SCORE))],
+    backgroundColor: [SENTIMENT_COLOR, '#f3f4f6'],
+    borderWidth: 0,
+    circumference: 180,
+    rotation: 270,
+  }]},
+  options: {
+    responsive: true, maintainAspectRatio: false, cutout: '68%',
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    animation: { duration: 900, easing: 'easeOutQuart' },
+  }
+});
+
+/* ── Donut ──────────────────────────────────────────────────── */
+new Chart(document.getElementById('donutChart').getContext('2d'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Positive','Negative','Neutral'],
+    datasets: [{
+      data: [{{ pos_pct }}, {{ neg_pct }}, {{ neu_pct }}],
+      backgroundColor: ['#22c55e','#ef4444','#f59e0b'],
+      borderWidth: 2, borderColor: '#fff',
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, cutout: '65%',
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: function(c){ return ' ' + c.label + ': ' + c.parsed + '%'; }}}
+    },
+    animation: { duration: 900 },
+  }
+});
+
+/* ── Timeline ───────────────────────────────────────────────── */
+new Chart(document.getElementById('timelineChart').getContext('2d'), {
+  data: {
+    labels: TL.labels,
+    datasets: [
+      { type:'bar',  label:'Positive', data:TL.pos, backgroundColor:'#22c55e', stack:'s', yAxisID:'y', borderRadius:2 },
+      { type:'bar',  label:'Neutral',  data:TL.neu, backgroundColor:'#f59e0b', stack:'s', yAxisID:'y', borderRadius:2 },
+      { type:'bar',  label:'Negative', data:TL.neg, backgroundColor:'#ef4444', stack:'s', yAxisID:'y', borderRadius:2 },
+      { type:'line', label:'Sentiment Score', data:TL.score,
+        borderColor:'#1d4ed8', backgroundColor:'rgba(29,78,216,.07)',
+        borderWidth:2.5, pointRadius:3, pointBackgroundColor:'#1d4ed8',
+        tension:0.4, fill:true, yAxisID:'y2' },
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    interaction:{ mode:'index', intersect:false },
+    plugins:{
+      legend:{ display:false },
+      tooltip:{ callbacks:{ label:function(c){
+        return c.dataset.label === 'Sentiment Score'
+          ? ' Score: ' + c.parsed.y.toFixed(2)
+          : ' ' + c.dataset.label + ': ' + c.parsed.y;
+      }}}
+    },
+    scales:{
+      x:{ grid:{ display:false }, ticks:{ font:{size:10}, maxTicksLimit:16,
+          callback:function(v){ var d=this.getLabelForValue(v); return d ? d.slice(5) : ''; }}},
+      y:{ stacked:true, position:'left', grid:{color:'#f3f4f6'}, ticks:{font:{size:10}},
+          title:{display:true, text:'No. of Mentions', font:{size:10}, color:'#9ca3af'}},
+      y2:{ stacked:false, position:'right', min:0, max:5,
+           grid:{drawOnChartArea:false}, ticks:{font:{size:10}},
+           title:{display:true, text:'Avg. Sentiment Score', font:{size:10}, color:'#9ca3af'}},
+    }
+  }
+});
+
+/* ── Shortcut buttons ────────────────────────────────────────── */
+function setShortcut(days) {
+  var to   = new Date();
+  var from = new Date(to);
+  from.setDate(from.getDate() - days);
+  document.getElementById('inputFrom').value = from.toISOString().slice(0,10);
+  document.getElementById('inputTo').value   = to.toISOString().slice(0,10);
+  document.getElementById('dateForm').submit();
+}
+
+/* ── PDF download ────────────────────────────────────────────── */
+function downloadPDF() {
+  var params = new URLSearchParams(window.location.search);
+  params.set('format', 'pdf');
+  window.open(window.location.pathname + '?' + params.toString(), '_blank');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,350 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Source Analysis{% endblock %}
+
+{% block extra_head %}
+<style>
+.rsa-page { padding: 1.5rem 2rem; }
+
+/* ── Page header ─────────────────────────────────────────── */
+.rsa-page-hdr {
+  background: linear-gradient(135deg, #0f172a 0%, #4f46e5 100%);
+  border-radius: 14px;
+  padding: 1.4rem 1.8rem;
+  margin-bottom: 1.6rem;
+  color: #fff;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.rsa-page-hdr-left { flex: 1; min-width: 0; }
+.rsa-page-title { font-size: 1.25rem; font-weight: 700; margin: 0 0 .2rem; }
+.rsa-page-sub   { font-size: .82rem; color: rgba(255,255,255,.6); margin: 0 0 1rem; }
+
+.rsa-date-form { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.rsa-date-input {
+  padding: .4rem .85rem;
+  border: 1.5px solid rgba(255,255,255,.3);
+  border-radius: 8px;
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  font-size: .82rem;
+  outline: none;
+  color-scheme: dark;
+  transition: border-color .15s;
+}
+.rsa-date-input:focus { border-color: rgba(255,255,255,.7); }
+.rsa-date-sep  { font-size: .8rem; color: rgba(255,255,255,.5); }
+.rsa-apply-btn {
+  padding: .4rem 1.1rem;
+  background: rgba(255,255,255,.18);
+  border: 1.5px solid rgba(255,255,255,.35);
+  border-radius: 8px;
+  color: #fff;
+  font-size: .82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.rsa-apply-btn:hover { background: rgba(255,255,255,.28); }
+
+.rsa-shortcuts { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; }
+.rsa-shortcut {
+  padding: .28rem .8rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255,255,255,.25);
+  background: transparent;
+  color: rgba(255,255,255,.65);
+  font-size: .75rem;
+  cursor: pointer;
+  transition: all .15s;
+}
+.rsa-shortcut:hover { background: rgba(255,255,255,.12); color: #fff; }
+
+/* ── Section card ────────────────────────────────────────── */
+.rsa-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 1.4rem;
+}
+
+.rsa-section-top {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.rsa-hdr-box {
+  flex-shrink: 0;
+  width: 180px;
+  padding: 1.1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.rsa-hdr-title { font-size: .95rem; font-weight: 800; color: #fff; margin: 0 0 .2rem; }
+.rsa-hdr-sub   { font-size: .73rem; color: rgba(255,255,255,.75); margin: 0; }
+
+.rsa-section-desc {
+  flex: 1;
+  padding: 1rem 1.4rem;
+  font-size: .83rem;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.rsa-section-total {
+  flex-shrink: 0;
+  padding: 1rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid #f3f4f6;
+  border-left: 1px solid #f3f4f6;
+}
+.rsa-total-label { font-size: .72rem; color: #9ca3af; text-transform: uppercase; letter-spacing: .05em; }
+.rsa-total-value { font-size: 1.5rem; font-weight: 800; color: #111827; line-height: 1; }
+
+/* ── Chart + table row ───────────────────────────────────── */
+.rsa-body { display: flex; align-items: center; padding: 1.2rem 1.4rem; gap: 2rem; }
+
+.rsa-chart-wrap {
+  flex-shrink: 0;
+  width: 280px;
+  height: 280px;
+  position: relative;
+}
+.rsa-chart-total {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+.rsa-chart-total-n { font-size: 1.5rem; font-weight: 800; color: #111827; line-height: 1; }
+.rsa-chart-total-l { font-size: .7rem; color: #9ca3af; margin-top: 2px; }
+
+/* ── Source table ────────────────────────────────────────── */
+.rsa-table {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 2rem;
+  align-content: start;
+}
+.rsa-src-row {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  padding: .42rem 0;
+  border-bottom: 1px solid #f9fafb;
+}
+.rsa-src-row:last-child { border-bottom: none; }
+.rsa-src-count {
+  font-size: .92rem;
+  font-weight: 700;
+  color: #111827;
+  min-width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.rsa-src-name {
+  font-size: .84rem;
+  font-weight: 500;
+}
+.rsa-src-pct {
+  font-size: .72rem;
+  color: #9ca3af;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── Date footer ─────────────────────────────────────────── */
+.rsa-section-footer {
+  padding: .55rem 1.4rem;
+  font-size: .74rem;
+  color: #9ca3af;
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+/* No data */
+.rsa-empty {
+  padding: 2rem;
+  text-align: center;
+  color: #9ca3af;
+  font-size: .85rem;
+}
+
+.rsa-pdf-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .55rem 1.25rem;
+  background: #fff;
+  color: #4f46e5;
+  border: none;
+  border-radius: 9px;
+  font-size: .84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .15s;
+  align-self: flex-start;
+  margin-top: .25rem;
+}
+.rsa-pdf-btn:hover { opacity: .88; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rsa-page">
+
+  <!-- Page header -->
+  <div class="rsa-page-hdr">
+    <div class="rsa-page-hdr-left">
+      <h1 class="rsa-page-title">Source Analysis — {{ org.name }}</h1>
+      <p class="rsa-page-sub">Share of media mentions per source across all channels</p>
+
+      <form class="rsa-date-form" method="get" id="dateForm">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <input type="date" name="date_from" id="inputFrom" class="rsa-date-input" value="{{ date_from_str }}"/>
+        <span class="rsa-date-sep">to</span>
+        <input type="date" name="date_to"   id="inputTo"   class="rsa-date-input" value="{{ date_to_str }}"/>
+        <button type="submit" class="rsa-apply-btn">Apply</button>
+      </form>
+
+      <div class="rsa-shortcuts">
+        <button type="button" class="rsa-shortcut" onclick="setShortcut(7)">Past 7 days</button>
+        <button type="button" class="rsa-shortcut" onclick="setShortcut(30)">Past 30 days</button>
+        <button type="button" class="rsa-shortcut" onclick="setShortcut(90)">Past 3 months</button>
+        <span style="margin-left:.5rem;font-size:.75rem;color:rgba(255,255,255,.45);">{{ period_label }}</span>
+      </div>
+    </div>
+
+    <button class="rsa-pdf-btn" onclick="downloadPDF()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download PDF
+    </button>
+  </div>
+
+  <!-- One section per media type -->
+  {% for section in sections %}
+  <div class="rsa-section">
+
+    <div class="rsa-section-top">
+      <div class="rsa-hdr-box" style="background:{{ section.accent }};">
+        <div class="rsa-hdr-title">Media Share</div>
+        <div class="rsa-hdr-sub">{{ section.label }}</div>
+      </div>
+      <div class="rsa-section-desc">
+        Share of mentions per source for <strong>{{ section.label }}</strong> during the selected period
+      </div>
+      <div class="rsa-section-total">
+        <div class="rsa-total-label">Total mentions</div>
+        <div class="rsa-total-value">{{ section.total }}</div>
+      </div>
+    </div>
+
+    {% if section.sources %}
+    <div class="rsa-body">
+      <!-- Donut -->
+      <div class="rsa-chart-wrap">
+        <canvas id="chart-{{ forloop.counter }}" style="width:100%;height:100%;"></canvas>
+        <div class="rsa-chart-total">
+          <div class="rsa-chart-total-n">{{ section.total }}</div>
+          <div class="rsa-chart-total-l">mentions</div>
+        </div>
+      </div>
+
+      <!-- Source table — two columns -->
+      <div class="rsa-table">
+        {% for src in section.sources %}
+        <div class="rsa-src-row">
+          <span class="rsa-src-count">{{ src.count }}</span>
+          <span class="rsa-src-name" style="color:{{ src.color }};">{{ src.name }}</span>
+          <span class="rsa-src-pct">{{ src.pct }}%</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="rsa-empty">No {{ section.label|lower }} data for this period.</div>
+    {% endif %}
+
+    <div class="rsa-section-footer">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      {{ period_label }}
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+
+<script>
+var SECTIONS = [
+  {% for section in sections %}
+  { label: "{{ section.label|escapejs }}", data: {{ section.chart_json|safe }} }{% if not forloop.last %},{% endif %}
+  {% endfor %}
+];
+
+SECTIONS.forEach(function(sec, idx) {
+  var el = document.getElementById('chart-' + (idx + 1));
+  if (!el || !sec.data.labels.length) return;
+  new Chart(el.getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: sec.data.labels,
+      datasets: [{
+        data: sec.data.counts,
+        backgroundColor: sec.data.colors,
+        borderWidth: 2,
+        borderColor: '#fff',
+        hoverOffset: 8,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '62%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              var total = ctx.dataset.data.reduce(function(a,b){ return a+b; }, 0);
+              var pct = total ? (ctx.parsed / total * 100).toFixed(1) : 0;
+              return ' ' + ctx.label + ': ' + ctx.parsed + ' (' + pct + ' %)';
+            }
+          }
+        }
+      },
+      animation: { duration: 800, easing: 'easeOutQuart' },
+    }
+  });
+});
+
+function downloadPDF() {
+  var params = new URLSearchParams(window.location.search);
+  params.set('format', 'pdf');
+  window.open(window.location.pathname + '?' + params.toString(), '_blank');
+}
+
+function setShortcut(days) {
+  var to   = new Date();
+  var from = new Date(to);
+  from.setDate(from.getDate() - days);
+  document.getElementById('inputFrom').value = from.toISOString().slice(0, 10);
+  document.getElementById('inputTo').value   = to.toISOString().slice(0, 10);
+  document.getElementById('dateForm').submit();
+}
+</script>
+{% endblock %}

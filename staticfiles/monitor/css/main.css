@@ -485,7 +485,7 @@ body.sidebar-collapsed .main-content { margin-left: 0; }
   border-top: 1px solid var(--card-border);
 }
 
-.chart-legend-item {
+..chart-legend-item {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -499,6 +499,52 @@ body.sidebar-collapsed .main-content { margin-left: 0; }
   height: 10px;
   border-radius: 2px;
   background: var(--c, #3b82f6);
+}
+.geo-map-wrapper {
+  display: grid;
+  grid-template-columns: 1.8fr 1fr;
+  gap: 24px;
+  align-items: flex-start;
+}
+.geo-map {
+  min-height: 340px;
+  border-radius: 18px;
+  background: rgba(240, 249, 255, 0.85);
+  overflow: hidden;
+  position: relative;
+}
+.country-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.country-count-list {
+  display: grid;
+  gap: 10px;
+}
+.country-count-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: rgba(240, 248, 255, 0.9);
+  border-radius: 14px;
+}
+.count-pill {
+  min-width: 48px;
+  text-align: center;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+@media (max-width: 960px) {
+  .geo-map-wrapper {
+    grid-template-columns: 1fr;
+  }
+  .geo-map {
+    min-height: 280px;
+  }
 }
 
 /* ── Tables ───────────────────────────────────────── */
@@ -649,6 +695,7 @@ body.sidebar-collapsed .main-content { margin-left: 0; }
   cursor: pointer;
 }
 .filter-select:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
+select[name="sentiment"],select[id$="Sentiment"] { font-size: 12px; }
 
 .filter-count { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
 

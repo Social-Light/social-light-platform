@@ -1,0 +1,620 @@
+{% load static %}
+<style>
+.ke-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; margin-bottom:10px; }
+.ke-card-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.ke-sent-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; margin-right:7px; }
+.ke-label { font-size:.8rem; font-weight:700; }
+.ke-date { font-size:.75rem; color:#9ca3af; }
+.ke-desc { font-size:.78rem; color:#374151; line-height:1.55; }
+.div-chart { width:100%; }
+.div-chart-row { display:grid; grid-template-columns:1fr 220px 1fr; align-items:center; margin-bottom:7px; gap:6px; }
+.div-bar-cell { display:flex; }
+.div-bar-cell.left { justify-content:flex-end; }
+.div-bar-cell.right { justify-content:flex-start; }
+.div-bar { height:26px; border-radius:3px; display:flex; align-items:center; padding:0 7px; font-size:.74rem; font-weight:700; color:#fff; min-width:28px; justify-content:center; }
+.div-bar.pos { background:#22c55e; }
+.div-bar.neg { background:#ef4444; }
+.div-label { font-size:.74rem; font-weight:600; color:#374151; text-align:center; line-height:1.3; padding:0 2px; }
+.div-x-axis { display:grid; grid-template-columns:1fr 220px 1fr; font-size:.68rem; color:#9ca3af; margin-top:4px; }
+.div-x-left { text-align:right; padding-right:8px; }
+.div-x-right { text-align:left; padding-left:8px; }
+.src-subtitle { font-size:.8rem; font-weight:600; color:#374151; margin:0 0 14px; }
+.trend-wrap { display:grid; grid-template-rows:auto auto; gap:6px; }
+.trend-note { font-size:.67rem; color:#9ca3af; margin:2px 0 0; text-align:right; }
+.trend-note-bot { font-size:.67rem; color:#9ca3af; margin:4px 0 0; }
+</style>
+
+{% if td.sel_mods %}
+
+{# ── SECTION COVER ──────────────────────────────────────────────────── #}
+<div class="slide" id="s-{{ type_key }}-cover">
+  <div class="section-cover" style="background:linear-gradient(135deg,{{ td.color }} 0%,#003240 100%);">
+    <div class="section-cover-inner">
+      <div class="section-cover-label">Media Insights Report</div>
+      <h2 class="section-cover-title">{{ td.label }}</h2>
+      <p class="section-cover-sub">
+        {{ td.vol }} mention{{ td.vol|pluralize }}
+        &nbsp;·&nbsp;
+        BWP {{ td.ave|floatformat:0 }} AVE
+        {% if td.reach %}&nbsp;·&nbsp; {{ td.reach|floatformat:0 }} Reach{% endif %}
+      </p>
+    </div>
+    <div class="slide-footer">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+
+{# ── MEDIA SUMMARY ───────────────────────────────────────────────────── #}
+{% if 'media_summary' in td.sel_mods %}
+<div class="slide" id="s-{{ type_key }}-media-summary">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>Media Summary</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">Media Summary</h2>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-lbl">Total Mentions</div>
+          <div class="kpi-val">{{ td.vol }}</div>
+          <div class="kpi-sub">Media mentions</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-lbl">Total AVE</div>
+          <div class="kpi-val">BWP {{ td.ave|floatformat:0 }}</div>
+          <div class="kpi-sub">Advertising Value Equivalency</div>
+        </div>
+        {% if td.reach %}
+        <div class="kpi-card">
+          <div class="kpi-lbl">Total Reach</div>
+          <div class="kpi-val">{{ td.reach|floatformat:0 }}</div>
+          <div class="kpi-sub">Estimated audience</div>
+        </div>
+        {% else %}
+        <div class="kpi-card">
+          <div class="kpi-lbl">Positive Rate</div>
+          <div class="kpi-val">{{ td.pos_pct }}%</div>
+          <div class="kpi-sub">Of all mentions</div>
+        </div>
+        {% endif %}
+      </div>
+      <div class="sent-row">
+        <div class="sent-card" style="background:#f0fdf4;border:1.5px solid #bbf7d0;">
+          <div class="sent-val" style="color:#15803d;">{{ td.pos_pct }}%</div>
+          <div class="sent-sub">Positive &middot; {{ td.pos }} mention{{ td.pos|pluralize }}</div>
+        </div>
+        <div class="sent-card" style="background:#f9fafb;border:1.5px solid #e5e7eb;">
+          <div class="sent-val" style="color:#6b7280;">{{ td.neu_pct }}%</div>
+          <div class="sent-sub">Neutral &middot; {{ td.neu }} mention{{ td.neu|pluralize }}</div>
+        </div>
+        <div class="sent-card" style="background:#fef2f2;border:1.5px solid #fecaca;">
+          <div class="sent-val" style="color:#dc2626;">{{ td.neg_pct }}%</div>
+          <div class="sent-sub">Negative &middot; {{ td.neg }} mention{{ td.neg|pluralize }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── SENTIMENT TREND ─────────────────────────────────────────────────── #}
+{% if 'sentiment_trend' in td.sel_mods %}
+<div class="slide" id="s-{{ type_key }}-sentiment-trend">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>Sentiment Trend</strong></div>
+    </div>
+    <div class="slide-body" style="padding-bottom:12px;">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">Sentiment Trend</h2>
+      <div class="trend-wrap">
+        <div>
+          <div style="position:relative;height:190px;">
+            <canvas id="chart-trend-line-{{ type_key }}" data-trend-line="{{ td.trend|escape }}"></canvas>
+          </div>
+          <p class="trend-note">*Scale -100 to 100 (0 = neutral).</p>
+        </div>
+        <div style="margin-top:10px;">
+          <div style="display:flex;gap:14px;font-size:.72rem;color:#6b7280;margin-bottom:5px;align-items:center;">
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#22c55e;display:inline-block;"></span>Positive</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#9ca3af;display:inline-block;"></span>Neutral</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block;"></span>Negative</span>
+          </div>
+          <div style="position:relative;height:120px;">
+            <canvas id="chart-trend-bar-{{ type_key }}" data-trend-bar="{{ td.trend|escape }}"></canvas>
+          </div>
+          <p class="trend-note-bot">*Sentiment is measured on a scale of -100–100 (0 = neutral). Sentiment trend is a rolling average of the sentiment score.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+
+{# ── KEY EVENTS & SPIKES ─────────────────────────────────────────────── #}
+<div class="slide" id="s-{{ type_key }}-key-events">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>Key Events &amp; Spikes</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">Key Events &amp; Spikes</h2>
+      <div id="ke-list-{{ type_key }}" data-events="{{ td.key_events_json|default:'[]'|escape }}">
+        <p style="color:#9ca3af;font-size:.86rem;">Loading events…</p>
+      </div>
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── ISSUE IMPACT ────────────────────────────────────────────────────── #}
+{% if 'issue_impact' in td.sel_mods %}
+<div class="slide" id="s-{{ type_key }}-issue-impact">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>Issue Impact</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">Issue Impact</h2>
+      <div id="div-chart-{{ type_key }}" class="div-chart" data-issues="{{ td.issues_json|escape }}">
+        <p style="color:#9ca3af;font-size:.86rem;">Loading chart…</p>
+      </div>
+      <p style="font-size:.67rem;color:#9ca3af;margin-top:10px;">*Impact refers to the total effect that a particular issue has on total sentiment.</p>
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── TOP MEDIA SOURCES ───────────────────────────────────────────────── #}
+{% if 'top_sources' in td.sel_mods %}
+<div class="slide" id="s-{{ type_key }}-top-sources">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>Top Sources</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">Top Sources</h2>
+      <p class="src-subtitle">Volume &amp; Tonality of Top Media Sources</p>
+      <div style="position:relative;height:300px;">
+        <canvas id="chart-sources-{{ type_key }}" data-sources="{{ td.sources_json|escape }}"></canvas>
+      </div>
+      <div style="display:flex;gap:16px;font-size:.72rem;color:#6b7280;margin-top:8px;justify-content:center;align-items:center;">
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#22c55e;display:inline-block;"></span>Positive</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#9ca3af;display:inline-block;"></span>Neutral</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block;"></span>Negative</span>
+      </div>
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── REPUTATIONAL RISKS ──────────────────────────────────────────────── #}
+{% if 'reputational_risks' in td.sel_mods %}
+<div class="slide" id="s-{{ type_key }}-risks">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>Reputational Risks</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading" style="color:#dc2626;">Reputational Risks</h2>
+      {% for r in td.risks %}
+      <div class="rep-card risk">
+        <div>
+          <div class="rep-card-title">{{ r.headline }}</div>
+          <div class="rep-card-desc">{{ r.source }} &mdash; {{ r.date }}</div>
+        </div>
+        <div class="rep-card-meta">
+          <div class="rep-card-ave">BWP {{ r.ave|floatformat:0 }}</div>
+          <div class="rep-card-src">AVE</div>
+        </div>
+      </div>
+      {% empty %}
+      <p style="color:#9ca3af;font-size:.86rem;">No negative mentions recorded for this period.</p>
+      {% endfor %}
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── REPUTATIONAL OPPORTUNITIES ──────────────────────────────────────── #}
+{% if 'reputational_opportunities' in td.sel_mods %}
+<div class="slide" id="s-{{ type_key }}-opps">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>Reputational Opportunities</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading" style="color:#16a34a;">Reputational Opportunities</h2>
+      {% for o in td.opps %}
+      <div class="rep-card oppty">
+        <div>
+          <div class="rep-card-title">{{ o.headline }}</div>
+          <div class="rep-card-desc">{{ o.source }} &mdash; {{ o.date }}</div>
+        </div>
+        <div class="rep-card-meta">
+          <div class="rep-card-ave">BWP {{ o.ave|floatformat:0 }}</div>
+          <div class="rep-card-src">AVE</div>
+        </div>
+      </div>
+      {% empty %}
+      <p style="color:#9ca3af;font-size:.86rem;">No positive mentions recorded for this period.</p>
+      {% endfor %}
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── WORD CLOUD ──────────────────────────────────────────────────────── #}
+{% if 'word_cloud' in td.sel_mods %}
+<div class="slide" id="s-{{ type_key }}-word-cloud">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>Word Cloud</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">Word Cloud</h2>
+      <p style="font-size:.8rem;font-weight:600;color:#374151;margin:0 0 10px;">Trending Keywords in Media Coverage</p>
+      <div class="word-cloud" id="wc-{{ type_key }}"
+           data-words="{{ td.words_json|escape }}"
+           data-maxfreq="{{ td.max_freq }}">
+      </div>
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── KPI PERFORMANCE ─────────────────────────────────────────────────── #}
+{% if 'kpi_performance' in td.sel_mods %}
+<div class="slide" id="s-{{ type_key }}-kpi">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>KPI Performance</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">KPI Performance</h2>
+      <div class="kpi-grid" style="margin-bottom:24px;">
+        <div class="kpi-card">
+          <div class="kpi-lbl">Volume</div>
+          <div class="kpi-val" style="color:{{ td.color }};">{{ td.vol }}</div>
+          <div class="kpi-sub">Total mentions</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-lbl">AVE</div>
+          <div class="kpi-val" style="color:{{ td.color }};">BWP {{ td.ave|floatformat:0 }}</div>
+          <div class="kpi-sub">Advertising value</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-lbl">Positive Rate</div>
+          <div class="kpi-val" style="color:{{ td.color }};">{{ td.pos_pct }}%</div>
+          <div class="kpi-sub">Positive sentiment</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="background:#f9fafb;border-radius:8px;padding:14px;">
+          <div class="kpi-lbl" style="margin-bottom:8px;">Sentiment Breakdown</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;align-items:center;gap:8px;font-size:.8rem;">
+              <div style="width:10px;height:10px;border-radius:50%;background:#16a34a;flex-shrink:0;"></div>
+              <span style="flex:1;">Positive</span><span style="font-weight:700;color:#16a34a;">{{ td.pos_pct }}%</span>
+            </div>
+            <div style="height:6px;background:#e5e7eb;border-radius:3px;"><div style="height:6px;background:#16a34a;border-radius:3px;width:{{ td.pos_pct }}%;"></div></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:.8rem;">
+              <div style="width:10px;height:10px;border-radius:50%;background:#9ca3af;flex-shrink:0;"></div>
+              <span style="flex:1;">Neutral</span><span style="font-weight:700;color:#6b7280;">{{ td.neu_pct }}%</span>
+            </div>
+            <div style="height:6px;background:#e5e7eb;border-radius:3px;"><div style="height:6px;background:#9ca3af;border-radius:3px;width:{{ td.neu_pct }}%;"></div></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:.8rem;">
+              <div style="width:10px;height:10px;border-radius:50%;background:#dc2626;flex-shrink:0;"></div>
+              <span style="flex:1;">Negative</span><span style="font-weight:700;color:#dc2626;">{{ td.neg_pct }}%</span>
+            </div>
+            <div style="height:6px;background:#e5e7eb;border-radius:3px;"><div style="height:6px;background:#dc2626;border-radius:3px;width:{{ td.neg_pct }}%;"></div></div>
+          </div>
+        </div>
+        <div style="background:#f9fafb;border-radius:8px;padding:14px;">
+          <div class="kpi-lbl" style="margin-bottom:8px;">Coverage Volume</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div style="text-align:center;">
+              <div style="font-size:1.4rem;font-weight:800;color:#16a34a;">{{ td.pos }}</div>
+              <div style="font-size:.68rem;color:#9ca3af;">Positive</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:1.4rem;font-weight:800;color:#6b7280;">{{ td.neu }}</div>
+              <div style="font-size:.68rem;color:#9ca3af;">Neutral</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:1.4rem;font-weight:800;color:#dc2626;">{{ td.neg }}</div>
+              <div style="font-size:.68rem;color:#9ca3af;">Negative</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:1.4rem;font-weight:800;color:#374151;">{{ td.vol }}</div>
+              <div style="font-size:.68rem;color:#9ca3af;">Total</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% if type_key == 'print' and journalists %}
+      <div style="margin-top:18px;">
+        <div class="kpi-lbl" style="margin-bottom:8px;">Top Journalists</div>
+        <table class="journ-table">
+          <thead><tr><th>Author</th><th>Articles</th><th>Positive</th><th>Neutral</th><th>Negative</th><th>AVE</th></tr></thead>
+          <tbody>
+            {% for j in journalists|slice:":6" %}
+            <tr>
+              <td>{{ j.author }}</td>
+              <td>{{ j.total }}</td>
+              <td style="color:#16a34a;">{{ j.pos }}</td>
+              <td style="color:#6b7280;">{{ j.neu }}</td>
+              <td style="color:#dc2626;">{{ j.neg }}</td>
+              <td>BWP {{ j.ave_total|floatformat:0 }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}
+
+<script>
+(function(){
+  if (window._reportSectionScriptLoaded) return;
+  window._reportSectionScriptLoaded = true;
+  var WC_COLORS = ['#00A99D','#1d4ed8','#e67e22','#9b59b6','#e74c3c','#27ae60','#2980b9','#c0392b','#8e44ad','#16a085'];
+
+  function buildSectionCharts(slideId) {
+    var el = document.getElementById(slideId);
+    if (!el) return;
+
+    function buildCanvasChart(selector, builder) {
+      var canvas = el.querySelector(selector);
+      if (!canvas || canvas._built) return;
+      canvas._built = true;
+      builder(canvas);
+    }
+
+    function parseData(raw, fallback) {
+      if (!raw) return fallback;
+      try { return JSON.parse(raw); } catch (e) { console.warn('parse-json', e); return fallback; }
+    }
+
+    /* ── Sentiment trend: line (score) ── */
+    buildCanvasChart('canvas[data-trend-line]', function(lineCanvas) {
+      try {
+        var td = parseData(lineCanvas.dataset.trendLine, {labels:[], pos:[], neu:[], neg:[]});
+        var labels = td.labels;
+        var scores = labels.map(function(d, i) {
+          var p = td.pos[i]||0, nu = td.neu[i]||0, ne = td.neg[i]||0, t = p+nu+ne;
+          return t ? Math.round((p - ne) / t * 100) : 0;
+        });
+        var win = 3;
+        var avg = scores.map(function(v, i) {
+          var sl = scores.slice(Math.max(0, i - Math.floor(win/2)), Math.min(scores.length, i + Math.ceil(win/2)));
+          return Math.round(sl.reduce(function(a,b){return a+b;},0) / sl.length);
+        });
+        var ptColors = scores.map(function(s){ return s>0?'#22c55e':s<0?'#ef4444':'#9ca3af'; });
+        new Chart(lineCanvas, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              { label:'Sentiment Trend', data:avg, borderColor:'#eab308', backgroundColor:'transparent', tension:0.4, pointRadius:2, borderWidth:2.5, order:2 },
+              { label:'Sentiment', data:scores, borderColor:'transparent', pointBackgroundColor:ptColors, pointBorderColor:ptColors, pointRadius:5, borderWidth:0, order:1, showLine:true, tension:0.15,
+                segment:{ borderColor:function(ctx){ var v=ctx.p0.parsed.y; return v>0?'#22c55e':v<0?'#ef4444':'#9ca3af'; }, borderWidth:function(){ return 1.5; } }
+              }
+            ]
+          },
+          options: {
+            responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{ position:'top', labels:{ boxWidth:14, font:{size:10} } } },
+            scales:{
+              y:{ min:-100, max:100, title:{display:true,text:'Sentiment*',font:{size:9},color:'#6b7280'}, ticks:{font:{size:9}}, grid:{color:'rgba(0,0,0,.05)'} },
+              x:{ ticks:{maxRotation:45,font:{size:9}}, grid:{display:false} }
+            }
+          }
+        });
+      } catch(e){ console.warn('trend-line',e); }
+    });
+
+    /* ── Sentiment trend: volume bar ── */
+    buildCanvasChart('canvas[data-trend-bar]', function(barCanvas) {
+      try {
+        var td2 = parseData(barCanvas.dataset.trendBar, {labels:[], pos:[], neu:[], neg:[]});
+        new Chart(barCanvas, {
+          type:'bar',
+          data:{
+            labels:td2.labels,
+            datasets:[
+              {label:'Positive', data:td2.pos, backgroundColor:'#22c55e', stack:'s'},
+              {label:'Neutral',  data:td2.neu, backgroundColor:'#9ca3af', stack:'s'},
+              {label:'Negative', data:td2.neg, backgroundColor:'#ef4444', stack:'s'},
+            ]
+          },
+          options:{
+            responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{display:false} },
+            scales:{
+              x:{stacked:true, ticks:{maxRotation:45,font:{size:9}}, grid:{display:false}},
+              y:{stacked:true, beginAtZero:true, title:{display:true,text:'Volume',font:{size:9},color:'#6b7280'}, ticks:{font:{size:9}}}
+            }
+          }
+        });
+      } catch(e){ console.warn('trend-bar',e); }
+    });
+
+    /* ── Key events ── */
+    var keList = el.querySelector('[data-events]');
+    if (keList && !keList._built) {
+      keList._built = true;
+      try {
+        var events = parseData(keList.dataset.events, []);
+        keList.innerHTML = '';
+        if (!events.length) {
+          keList.innerHTML = '<p style="color:#9ca3af;font-size:.86rem;">No events recorded for this period.</p>';
+          return;
+        }
+        events.forEach(function(ev) {
+          var sent = ev.sentiment;
+          var dotColor = sent==='positive'?'#22c55e':sent==='negative'?'#ef4444':'#9ca3af';
+          var lblColor = sent==='positive'?'#16a34a':sent==='negative'?'#dc2626':'#6b7280';
+          var lblText = sent.charAt(0).toUpperCase()+sent.slice(1);
+          var d = ev.date ? ev.date.split('T')[0] : '';
+          var card = document.createElement('div');
+          card.className = 'ke-card';
+          card.innerHTML =
+            '<div class="ke-card-top">'+
+              '<div style="display:flex;align-items:center;">'+
+                '<div class="ke-sent-dot" style="background:'+dotColor+'"></div>'+ 
+                '<span class="ke-label" style="color:'+lblColor+'">'+lblText+'</span>'+ 
+              '</div>'+ 
+              '<span class="ke-date">'+d+'</span>'+ 
+            '</div>'+ 
+            (ev.summary ? '<div class="ke-desc">*'+ev.summary+'</div>' : '<div class="ke-desc" style="color:#9ca3af;">'+ev.headline+'</div>');
+          keList.appendChild(card);
+        });
+      } catch(e){ console.warn('key-events',e); }
+    }
+
+    /* ── Issue impact diverging chart ── */
+    var divChart = el.querySelector('[data-issues]');
+    if (divChart && !divChart._built) {
+      divChart._built = true;
+      try {
+        var items = parseData(divChart.dataset.issues, []);
+        divChart.innerHTML = '';
+        if (!items.length) {
+          divChart.innerHTML = '<p style="color:#9ca3af;font-size:.86rem;">No issue data available.</p>';
+        } else {
+          var maxAve = Math.max.apply(null, items.map(function(i){ return i.ave; })) || 1;
+          items.forEach(function(item) {
+            var isNeg = item.sentiment === 'negative';
+            var pct = Math.round(item.ave / maxAve * 100);
+            var valLabel = item.ave >= 1000 ? (item.ave/1000).toFixed(1)+'K' : Math.round(item.ave).toString();
+            var row = document.createElement('div');
+            row.className = 'div-chart-row';
+            var leftCell = '<div class="div-bar-cell left">' + (isNeg ? '<div class="div-bar neg" style="width:'+pct+'%;">'+valLabel+'</div>' : '') + '</div>';
+            var label = '<div class="div-label">'+item.label+'</div>';
+            var rightCell = '<div class="div-bar-cell right">' + (!isNeg ? '<div class="div-bar pos" style="width:'+pct+'%;">'+valLabel+'</div>' : '') + '</div>';
+            row.innerHTML = leftCell + label + rightCell;
+            divChart.appendChild(row);
+          });
+          var axis = document.createElement('div');
+          axis.className = 'div-x-axis';
+          axis.innerHTML = '<div class="div-x-left">Negative Impact</div><div style="text-align:center;font-size:.68rem;color:#9ca3af;">Impact*</div><div class="div-x-right">Positive Impact</div>';
+          divChart.appendChild(axis);
+        }
+      } catch(e){ console.warn('div-chart',e); }
+    }
+
+    /* ── Top sources ── */
+    buildCanvasChart('canvas[data-sources]', function(srcCanvas) {
+      try {
+        var srcs = parseData(srcCanvas.dataset.sources, []);
+        new Chart(srcCanvas, {
+          type:'bar',
+          data:{
+            labels:srcs.map(function(s){return s.name;}),
+            datasets:[
+              {label:'Positive', data:srcs.map(function(s){return s.pos;}), backgroundColor:'#22c55e', stack:'s', borderRadius:0},
+              {label:'Neutral',  data:srcs.map(function(s){return s.neu;}), backgroundColor:'#9ca3af', stack:'s', borderRadius:0},
+              {label:'Negative', data:srcs.map(function(s){return s.neg;}), backgroundColor:'#ef4444', stack:'s', borderRadius:0},
+            ]
+          },
+          options:{
+            indexAxis:'y', responsive:true, maintainAspectRatio:false,
+            plugins:{
+              legend:{display:false}
+            },
+            scales:{
+              x:{stacked:true, beginAtZero:true, ticks:{font:{size:9}}, grid:{color:'rgba(0,0,0,.05)'}},
+              y:{stacked:true, ticks:{font:{size:10}}}
+            }
+          }
+        });
+      } catch(e){ console.warn('sources',e); }
+    });
+
+    /* ── Word cloud ── */
+    var wcEl = el.querySelector('[data-words]');
+    if (wcEl && !wcEl._built) {
+      wcEl._built = true;
+      try {
+        var words = parseData(wcEl.dataset.words, []);
+        var maxF = parseInt(wcEl.dataset.maxfreq) || 1;
+        wcEl.innerHTML = '';
+        words.forEach(function(pair, idx) {
+          var w = pair[0], f = pair[1];
+          var size = 0.75 + (f / maxF) * 1.65;
+          var weight = f/maxF > 0.5 ? '700' : '500';
+          var color = WC_COLORS[idx % WC_COLORS.length];
+          var span = document.createElement('span');
+          span.textContent = w;
+          span.title = w + ' (' + f + ')';
+          span.style.cssText = 'font-size:'+size+'rem;font-weight:'+weight+';color:'+color+';padding:3px 5px;cursor:default;line-height:1.3;';
+          wcEl.appendChild(span);
+        });
+      } catch(e){ console.warn('word-cloud',e); }
+    }
+  }
+
+  window._reportFullBuildSectionCharts = buildSectionCharts;
+  document.addEventListener('slide:show', function(e){ buildSectionCharts(e.detail.slideId); });
+})();
+</script>

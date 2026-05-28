@@ -1,5 +1,10 @@
 {% extends 'monitor/base.html' %}
+{% load static %}
 {% block title %}Analytics{% endblock %}
+
+{% block extra_head %}
+<link href="https://unpkg.com/maplibre-gl@3.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+{% endblock %}
 
 {% block content %}
 <div class="page-header page-header--flex">
@@ -91,13 +96,25 @@
 
 <!-- Overview Tab -->
 <div class="tab-content active" id="tab-overview">
-  <div class="chart-card">
-    <div class="chart-card-header">
-      <h3 class="chart-title">{{ title }} Over the Years</h3>
-      <p class="chart-subtitle">Historical trend of mentions over the past years</p>
+  <div class="overview-grid">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3 class="chart-title">{{ title }} Over the Years</h3>
+        <p class="chart-subtitle">Historical trend of mentions over the past years</p>
+      </div>
+      <div class="chart-body">
+        <canvas id="yearlyTrendChart"></canvas>
+      </div>
     </div>
-    <div class="chart-body">
-      <canvas id="yearlyTrendChart"></canvas>
+
+    <div class="chart-card source-chart-card">
+      <div class="chart-card-header">
+        <h3 class="chart-title">Mentions Composition by Source</h3>
+        <p class="chart-subtitle">Distribution of mentions across different sources</p>
+      </div>
+      <div class="chart-body">
+        <canvas id="sourcesDoughnutChart"></canvas>
+      </div>
     </div>
   </div>
 
@@ -139,13 +156,14 @@
 <!-- Keywords Tab -->
 <div class="tab-content hidden" id="tab-keywords">
   <div class="chart-card">
-    <h3 class="chart-title" style="margin-bottom:16px;">Active Keywords</h3>
+    <div class="chart-card-header">
+      <h3 class="chart-title">Word Cloud</h3>
+      <p class="chart-subtitle">Most frequently mentioned keywords</p>
+    </div>
     {% if active_topics %}
-    <div class="keyword-list">
+    <div class="keyword-cloud">
       {% for t in active_topics %}
-      <div class="keyword-row">
-        <span class="keyword-label">{{ t }}</span>
-      </div>
+      <span class="keyword-chip {% if forloop.counter|divisibleby:3 %}keyword-chip--large{% elif forloop.counter|divisibleby:2 %}keyword-chip--medium{% else %}keyword-chip--small{% endif %}">{{ t }}</span>
       {% endfor %}
     </div>
     {% else %}
@@ -157,7 +175,17 @@
 <!-- Sources Tab -->
 <div class="tab-content hidden" id="tab-sources">
   <div class="chart-card">
-    <h3 class="chart-title" style="margin-bottom:16px;">Top Sources</h3>
+    <div class="chart-card-header">
+      <h3 class="chart-title">Top Sources</h3>
+      <p class="chart-subtitle">Most mentioned sources for selected media type</p>
+    </div>
+    <div class="chart-body">
+      <canvas id="topSourcesChart"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3 class="chart-title" style="margin-bottom:16px;">Source details</h3>
     {% if top_sources %}
     <table class="data-table table table-hover">
       <thead>
@@ -169,7 +197,13 @@
       <tbody>
         {% for s in top_sources %}
         <tr>
-          <td>{{ s.source|default:s.platform|default:"Unknown" }}</td>
+          <td>
+            {% if source_field == 'source' %}
+              {{ s.source|default:"Unknown" }}
+            {% else %}
+              {{ s.platform|default:"Unknown" }}
+            {% endif %}
+          </td>
           <td>{{ s.c }}</td>
         </tr>
         {% endfor %}
@@ -186,22 +220,20 @@
   <div class="chart-card">
     <h3 class="chart-title" style="margin-bottom:16px;">Coverage by Country</h3>
     {% if top_countries %}
-    <table class="data-table table table-hover">
-      <thead>
-        <tr>
-          <th>Country</th>
-          <th>Mentions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for c in top_countries %}
-        <tr>
-          <td>{{ c.country }}</td>
-          <td>{{ c.c }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="geo-map-wrapper">
+      <div id="geoMap" class="geo-map"></div>
+      <div class="country-panel">
+        <p class="chart-subtitle" style="margin-bottom:16px;">Countries are shaded by mention volume. Hover a region for details.</p>
+        <div class="country-count-list">
+          {% for c in top_countries %}
+          <div class="country-count-row">
+            <span>{{ c.country }}</span>
+            <span class="count-pill" style="background: {{ c.color }}20; color: {{ c.color }};">{{ c.c }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
     {% else %}
     <p class="text-muted">No geographic data yet.</p>
     {% endif %}
@@ -210,17 +242,136 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://unpkg.com/maplibre-gl@3.4.0/dist/maplibre-gl.js"></script>
 <script>
-// Tab switching
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(p => { p.classList.add('hidden'); p.classList.remove('active'); });
-    btn.classList.add('active');
-    const panel = document.getElementById('tab-' + btn.dataset.tab);
-    if (panel) { panel.classList.remove('hidden'); panel.classList.add('active'); }
+
+const geoMapData = {{ top_countries_json|safe }};
+const countryCounts = geoMapData.reduce((acc, row) => { acc[row.country] = row.c; return acc; }, {});
+const worldGeoJsonUrl = '{% static "monitor/js/world.geo.json" %}';
+const mapStyle = 'https://demotiles.maplibre.org/style.json';
+
+function buildFillColorExpression() {
+  const maxValue = Math.max(...Object.values(countryCounts), 1);
+  const expression = ['match', ['get', 'name']];
+  Object.entries(countryCounts).forEach(([country, count]) => {
+    const ratio = count / maxValue;
+    const color = ratio > 0.75 ? '#ef4444'
+      : ratio > 0.5 ? '#3b82f6'
+      : ratio > 0.25 ? '#93c5fd'
+      : '#fef08a';
+    expression.push(country, color);
   });
+  expression.push('#e5e7eb');
+  return expression;
+}
+
+function initGeoMap() {
+  const geoMapEl = document.getElementById('geoMap');
+  if (!geoMapEl || window.geoMapInitialized) {
+    return;
+  }
+  if (!window.maplibregl) {
+    console.warn('MapLibre GL JS is not loaded');
+    return;
+  }
+  window.geoMap = new maplibregl.Map({
+    container: geoMapEl,
+    style: mapStyle,
+    center: [0, 20],
+    zoom: 1.2,
+    minZoom: 1,
+    maxZoom: 4,
+    interactive: true,
+  });
+  window.geoMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+  const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+
+  window.geoMap.on('load', () => {
+    window.geoMap.addSource('countries', {
+      type: 'geojson',
+      data: worldGeoJsonUrl,
+    });
+    window.geoMap.addLayer({
+      id: 'country-fills',
+      type: 'fill',
+      source: 'countries',
+      paint: {
+        'fill-color': buildFillColorExpression(),
+        'fill-outline-color': '#cbd5e1',
+        'fill-opacity': 0.8,
+      }
+    });
+    window.geoMap.addLayer({
+      id: 'country-borders',
+      type: 'line',
+      source: 'countries',
+      paint: {
+        'line-color': '#ffffff',
+        'line-width': 0.8,
+        'line-opacity': 0.6,
+      }
+    });
+
+    window.geoMap.on('mousemove', 'country-fills', (e) => {
+      if (!e.features || !e.features.length) {
+        return;
+      }
+      const name = e.features[0].properties.name;
+      const count = countryCounts[name] || 0;
+      popup.setLngLat(e.lngLat)
+        .setHTML(`<strong>${name}</strong><br/>${count} mention(s)`)
+        .addTo(window.geoMap);
+    });
+
+    window.geoMap.on('mouseleave', 'country-fills', () => {
+      popup.remove();
+    });
+  });
+
+  window.geoMapInitialized = true;
+}
+window.addEventListener('resize', () => {
+  if (window.geoMap) {
+    window.geoMap.resize();
+  }
 });
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    if (document.querySelector('.tab-btn.active')?.dataset.tab === 'geography') {
+      initGeoMap();
+    }
+  });
+} else {
+  if (document.querySelector('.tab-btn.active')?.dataset.tab === 'geography') {
+    initGeoMap();
+  }
+}
+
+// Tab switching
+const tabButtons = document.querySelectorAll('.tab-btn');
+if (tabButtons.length) {
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabButtons.forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(p => { p.classList.add('hidden'); p.classList.remove('active'); });
+      btn.classList.add('active');
+      const panel = document.getElementById('tab-' + btn.dataset.tab);
+      if (panel) {
+        panel.classList.remove('hidden');
+        panel.classList.add('active');
+        if (btn.dataset.tab === 'geography') {
+          setTimeout(() => {
+            initGeoMap();
+            if (window.geoMap) {
+              window.geoMap.resize();
+            }
+          }, 100);
+        }
+      }
+    });
+  });
+}
 
 // Yearly trend chart
 const ctx = document.getElementById('yearlyTrendChart');
@@ -252,5 +403,58 @@ if (ctx) {
     }
   });
 }
+
+const sourcesCtx = document.getElementById('sourcesDoughnutChart');
+if (sourcesCtx) {
+  new Chart(sourcesCtx, {
+    type: 'doughnut',
+    data: {
+      labels: {{ top_sources_labels_json|safe }},
+      datasets: [{
+        data: {{ top_sources_values_json|safe }},
+        backgroundColor: ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#eab308','#ec4899','#22c55e'],
+        borderWidth: 2,
+        borderColor: '#fff',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { font: { size: 11, family: 'Inter' }, color: '#6b7280', padding: 12 }
+        }
+      }
+    }
+  });
+}
+
+const topSourcesCtx = document.getElementById('topSourcesChart');
+if (topSourcesCtx) {
+  new Chart(topSourcesCtx, {
+    type: 'doughnut',
+    data: {
+      labels: {{ top_sources_labels_json|safe }},
+      datasets: [{
+        data: {{ top_sources_values_json|safe }},
+        backgroundColor: ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#eab308','#ec4899','#22c55e'],
+        borderWidth: 2,
+        borderColor: '#fff',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { font: { size: 11, family: 'Inter' }, color: '#6b7280', padding: 12 }
+        }
+      }
+    }
+  });
+}
+
 </script>
 {% endblock %}

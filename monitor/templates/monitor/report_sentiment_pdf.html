@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{{ org.name }} – Sentiment Report {{ date_from|date:"d M Y" }} to {{ date_to|date:"d M Y" }}</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    @page { size: A4 portrait; margin: 13mm 14mm; }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10pt;
+      color: #111827;
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    .hdr {
+      background: #1d4ed8;
+      color: #fff;
+      border-radius: 9px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 13px;
+    }
+    .hdr-org   { font-size: 13pt; font-weight: 800; }
+    .hdr-type  { font-size: 9pt; color: rgba(255,255,255,.7); margin-top: 2px; }
+    .hdr-right { text-align: right; }
+    .hdr-period-lbl  { font-size: 8pt; color: rgba(255,255,255,.6); }
+    .hdr-period-date { font-size: 10.5pt; font-weight: 700; margin-top: 2px; }
+    .hdr-branding    { font-size: 7.5pt; color: rgba(255,255,255,.45); margin-top: 4px; }
+
+    /* ── Top row (gauge · donut · stats) ───────────────────── */
+    .top-row {
+      display: flex;
+      gap: 11px;
+      margin-bottom: 12px;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 11px 13px;
+      page-break-inside: avoid;
+    }
+    .card-title {
+      font-size: 7pt;
+      font-weight: 700;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 9px;
+    }
+
+    /* Gauge */
+    .gauge-outer { flex: 1.05; }
+    .gauge-canvas-wrap { position: relative; height: 125px; }
+    .gauge-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 6.5pt;
+      color: #9ca3af;
+      padding: 0 3px;
+    }
+    .gauge-center {
+      position: absolute;
+      bottom: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      white-space: nowrap;
+    }
+    .gauge-score { font-size: 22pt; font-weight: 800; line-height: 1; }
+    .gauge-out   { font-size: 6.5pt; color: #9ca3af; }
+    .gauge-label { font-size: 9.5pt; font-weight: 700; margin-top: 2px; }
+
+    /* Donut */
+    .donut-outer { flex: 1.05; }
+    .donut-wrap { position: relative; height: 135px; display: flex; align-items: center; justify-content: center; }
+    .donut-center { position: absolute; text-align: center; pointer-events: none; }
+    .donut-center-lbl { font-size: 6.5pt; color: #6b7280; line-height: 1.35; }
+    .legend { margin-top: 9px; display: flex; flex-direction: column; gap: 5px; }
+    .leg-row { display: flex; align-items: center; gap: 6px; font-size: 8.5pt; }
+    .leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .leg-pct { font-weight: 700; margin-left: auto; }
+
+    /* Stats */
+    .stats-outer { flex: 0 0 200px; }
+    .stat-cards  { display: flex; flex-direction: column; gap: 7px; }
+    .stat-card {
+      border-radius: 7px;
+      padding: 7px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .stat-lbl { font-size: 7pt; color: rgba(255,255,255,.72); margin-bottom: 1px; }
+    .stat-val { font-size: 16pt; font-weight: 800; color: #fff; line-height: 1; }
+    .stat-chg { font-size: 8pt; font-weight: 700; color: rgba(255,255,255,.88); }
+
+    /* ── Timeline ───────────────────────────────────────────── */
+    .timeline-card { margin-bottom: 12px; page-break-inside: avoid; }
+    .tl-legend { display: flex; gap: 11px; flex-wrap: wrap; margin-bottom: 6px; }
+    .tl-leg { display: flex; align-items: center; gap: 4px; font-size: 7.5pt; color: #374151; }
+    .tl-box  { width: 11px; height: 9px; border-radius: 2px; }
+    .tl-line { width: 16px; height: 2px; border-radius: 1px; }
+
+    /* ── Mention tables ─────────────────────────────────────── */
+    .mention-grid { display: flex; gap: 11px; page-break-inside: avoid; }
+    .mention-col  { flex: 1; }
+    .mention-hdr {
+      font-size: 7.5pt; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .05em;
+      margin-bottom: 8px;
+      padding-bottom: 5px;
+      border-bottom: 2px solid currentColor;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .mention-hdr.pos { color: #16a34a; }
+    .mention-hdr.neg { color: #dc2626; }
+    .mention-row { padding: 5px 0; border-bottom: 1px solid #f3f4f6; }
+    .mention-row:last-child { border-bottom: none; }
+    .mention-headline { font-size: 8.5pt; font-weight: 600; color: #111827; line-height: 1.35; margin-bottom: 2px; }
+    .mention-meta { font-size: 7.5pt; color: #9ca3af; display: flex; gap: 8px; flex-wrap: wrap; }
+    .mention-ave { font-weight: 700; color: #374151; }
+
+    /* ── Footer ─────────────────────────────────────────────── */
+    .pdf-footer {
+      margin-top: 14px;
+      padding-top: 9px;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 7pt;
+      color: #9ca3af;
+    }
+
+    /* ── Back bar (screen only) ──────────────────────────────── */
+    .back-bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: #0f172a;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 20px;
+      font-size: 9pt;
+      z-index: 1000;
+      gap: 1rem;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: #93c5fd;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 9pt;
+      transition: color .15s;
+    }
+    .back-link:hover { color: #fff; }
+    .back-bar-title { font-size: 9pt; color: rgba(255,255,255,.6); }
+    .back-bar-print {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 14px;
+      background: #1d4ed8;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      font-size: 9pt;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .15s;
+    }
+    .back-bar-print:hover { background: #2563eb; }
+
+    body { padding-top: 40px; }
+
+    @media print {
+      .back-bar { display: none !important; }
+      body { padding-top: 0 !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Back bar (hidden on print) -->
+  <div class="back-bar">
+    <a href="/app/reports/{{ org.id }}/sentiment/?date_from={{ date_from_str }}&date_to={{ date_to_str }}" class="back-link">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+      Back to platform
+    </a>
+    <span class="back-bar-title">{{ org.name }} — Sentiment Report · {{ period_label }}</span>
+    <button class="back-bar-print" onclick="window.print()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Save as PDF
+    </button>
+  </div>
+
+  <!-- Header -->
+  <div class="hdr">
+    <div>
+      <div class="hdr-org">{{ org.name }}</div>
+      <div class="hdr-type">Sentiment Analysis Report</div>
+    </div>
+    <div class="hdr-right">
+      <div class="hdr-period-lbl">Reporting Period</div>
+      <div class="hdr-period-date">{{ date_from|date:"d M Y" }} – {{ date_to|date:"d M Y" }}</div>
+      <div class="hdr-branding">Generated by Social Light</div>
+    </div>
+  </div>
+
+  <!-- Top row -->
+  <div class="top-row">
+
+    <!-- Gauge -->
+    <div class="card gauge-outer">
+      <div class="card-title">Overall Sentiment Level</div>
+      <div class="gauge-canvas-wrap">
+        <canvas id="gaugeChart"></canvas>
+        <div class="gauge-labels">
+          <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+        </div>
+        <div class="gauge-center">
+          <div class="gauge-score">{{ score }}</div>
+          <div class="gauge-out">Out of 5</div>
+          <div class="gauge-label" style="color:{{ sentiment_color }};">{{ sentiment_label }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Donut -->
+    <div class="card donut-outer">
+      <div class="card-title">Sentiment Breakdown</div>
+      <div class="donut-wrap">
+        <canvas id="donutChart"></canvas>
+        <div class="donut-center">
+          <div class="donut-center-lbl">Sentiment<br>breakdown</div>
+        </div>
+      </div>
+      <div class="legend">
+        <div class="leg-row">
+          <span class="leg-dot" style="background:#22c55e;"></span>
+          <span>Positive</span>
+          <span class="leg-pct" style="color:#16a34a;">{{ pos_pct }}%</span>
+        </div>
+        <div class="leg-row">
+          <span class="leg-dot" style="background:#ef4444;"></span>
+          <span>Negative</span>
+          <span class="leg-pct" style="color:#dc2626;">{{ neg_pct }}%</span>
+        </div>
+        <div class="leg-row">
+          <span class="leg-dot" style="background:#f59e0b;"></span>
+          <span>Neutral</span>
+          <span class="leg-pct" style="color:#d97706;">{{ neu_pct }}%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="card stats-outer">
+      <div class="card-title">Summary</div>
+      <div class="stat-cards">
+        <div class="stat-card" style="background:#1d4ed8;">
+          <div>
+            <div class="stat-lbl">Total Mentions</div>
+            <div class="stat-val">{{ total }}</div>
+          </div>
+          <div class="stat-chg">{% if mentions_change >= 0 %}+{% endif %}{{ mentions_change }}%</div>
+        </div>
+        <div class="stat-card" style="background:#16a34a;">
+          <div>
+            <div class="stat-lbl">Positive Mentions</div>
+            <div class="stat-val">{{ pos }}</div>
+          </div>
+          <div class="stat-chg">{{ pos_pct }}% of total</div>
+        </div>
+        <div class="stat-card" style="background:#dc2626;">
+          <div>
+            <div class="stat-lbl">Negative Mentions</div>
+            <div class="stat-val">{{ neg }}</div>
+          </div>
+          <div class="stat-chg">{{ neg_pct }}% of total</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="card timeline-card">
+    <div class="card-title">Analysis Timeline</div>
+    <div class="tl-legend">
+      <span class="tl-leg"><span class="tl-box" style="background:#22c55e;"></span>Positive</span>
+      <span class="tl-leg"><span class="tl-box" style="background:#f59e0b;"></span>Neutral</span>
+      <span class="tl-leg"><span class="tl-box" style="background:#ef4444;"></span>Negative</span>
+      <span class="tl-leg"><span class="tl-line" style="background:#1d4ed8;display:inline-block;"></span>Sentiment Score</span>
+    </div>
+    <div style="position:relative;height:195px;">
+      <canvas id="timelineChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Mention tables -->
+  <div class="mention-grid">
+    <div class="mention-col">
+      <div class="mention-hdr pos">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/></svg>
+        Top Positive Mentions
+      </div>
+      {% for item in top_positive %}
+      <div class="mention-row">
+        <div class="mention-headline">{{ item.headline }}</div>
+        <div class="mention-meta">
+          <span>{{ item.source }}</span>
+          <span>{{ item.date }}</span>
+          <span class="mention-ave">BWP {{ item.ave|floatformat:0 }} AVE</span>
+        </div>
+      </div>
+      {% empty %}
+      <p style="color:#9ca3af;font-size:8pt;">No positive mentions in this period.</p>
+      {% endfor %}
+    </div>
+
+    <div class="mention-col">
+      <div class="mention-hdr neg">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/></svg>
+        Top Negative Mentions
+      </div>
+      {% for item in top_negative %}
+      <div class="mention-row">
+        <div class="mention-headline">{{ item.headline }}</div>
+        <div class="mention-meta">
+          <span>{{ item.source }}</span>
+          <span>{{ item.date }}</span>
+          <span class="mention-ave">BWP {{ item.ave|floatformat:0 }} AVE</span>
+        </div>
+      </div>
+      {% empty %}
+      <p style="color:#9ca3af;font-size:8pt;">No negative mentions in this period.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="pdf-footer">
+    <span>{{ org.name }} · Sentiment Analysis Report</span>
+    <span>{{ date_from|date:"d M Y" }} – {{ date_to|date:"d M Y" }}</span>
+    <span>Social Light</span>
+  </div>
+
+<script>
+var TL = {{ timeline_json|safe }};
+var SCORE = {{ score }};
+var SENTIMENT_COLOR = '{{ sentiment_color }}';
+
+var chartsReady = 0;
+var printFired = false;
+
+function canvasesToImages() {
+  document.querySelectorAll('canvas').forEach(function(c) {
+    var img = new Image();
+    img.src = c.toDataURL('image/png');
+    img.style.width  = c.offsetWidth  + 'px';
+    img.style.height = c.offsetHeight + 'px';
+    img.style.display = 'block';
+    c.parentNode.replaceChild(img, c);
+  });
+}
+
+function triggerPrint() {
+  if (printFired) return;
+  printFired = true;
+  canvasesToImages();
+  setTimeout(window.print, 350);
+}
+
+function onChartDone() {
+  chartsReady++;
+  if (chartsReady >= 3) triggerPrint();
+}
+
+/* fallback — if a chart has no data its animation never fires */
+setTimeout(triggerPrint, 3500);
+
+/* ── Gauge ────────────────────────────────────────────────── */
+new Chart(document.getElementById('gaugeChart'), {
+  type: 'doughnut',
+  data: { datasets: [{
+    data: [Math.max(0, Math.min(5, SCORE)), 5 - Math.max(0, Math.min(5, SCORE))],
+    backgroundColor: [SENTIMENT_COLOR, '#f3f4f6'],
+    borderWidth: 0, circumference: 180, rotation: 270,
+  }]},
+  options: {
+    responsive: true, maintainAspectRatio: false, cutout: '68%',
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    animation: { duration: 600, onComplete: onChartDone },
+  }
+});
+
+/* ── Donut ────────────────────────────────────────────────── */
+new Chart(document.getElementById('donutChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Positive','Negative','Neutral'],
+    datasets: [{
+      data: [{{ pos_pct }}, {{ neg_pct }}, {{ neu_pct }}],
+      backgroundColor: ['#22c55e','#ef4444','#f59e0b'],
+      borderWidth: 2, borderColor: '#fff',
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, cutout: '65%',
+    plugins: { legend: { display: false } },
+    animation: { duration: 600, onComplete: onChartDone },
+  }
+});
+
+/* ── Timeline ─────────────────────────────────────────────── */
+new Chart(document.getElementById('timelineChart'), {
+  data: {
+    labels: TL.labels,
+    datasets: [
+      { type:'bar',  label:'Positive', data:TL.pos, backgroundColor:'#22c55e', stack:'s', yAxisID:'y', borderRadius:2 },
+      { type:'bar',  label:'Neutral',  data:TL.neu, backgroundColor:'#f59e0b', stack:'s', yAxisID:'y', borderRadius:2 },
+      { type:'bar',  label:'Negative', data:TL.neg, backgroundColor:'#ef4444', stack:'s', yAxisID:'y', borderRadius:2 },
+      { type:'line', label:'Score', data:TL.score,
+        borderColor:'#1d4ed8', backgroundColor:'rgba(29,78,216,.07)',
+        borderWidth:2.5, pointRadius:2, pointBackgroundColor:'#1d4ed8',
+        tension:0.4, fill:true, yAxisID:'y2' },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x:  { grid: { display: false }, ticks: { font: { size: 7.5 }, maxTicksLimit: 16,
+             callback: function(v){ var d=this.getLabelForValue(v); return d?d.slice(5):''; }}},
+      y:  { stacked: true, grid: { color: '#f5f5f5' }, ticks: { font: { size: 8 }},
+             title: { display: true, text: 'No. of Mentions', font: { size: 7.5 }, color: '#9ca3af' }},
+      y2: { stacked: false, position: 'right', min: 0, max: 5,
+             grid: { drawOnChartArea: false }, ticks: { font: { size: 8 }},
+             title: { display: true, text: 'Avg. Sentiment Score', font: { size: 7.5 }, color: '#9ca3af' }},
+    },
+    animation: { duration: 600, onComplete: onChartDone },
+  }
+});
+</script>
+</body>
+</html>

@@ -63,12 +63,9 @@
   <div class="stat-card">
     <div class="stat-card-inner">
       <div class="stat-label">Media Types</div>
-      <div class="stat-value-tags">
-        {% for mt in media_types %}
-        <span class="media-type-tag">{{ mt }}</span>
-        {% empty %}
-        <span class="text-muted" style="font-size:13px;">None yet</span>
-        {% endfor %}
+      <div class="stat-value">{{ media_types|length }}</div>
+      <div class="stat-trend trend-flat">
+        Media types ready for analysis
       </div>
     </div>
     <a href="{% url 'monitor:analytics' org.id %}" class="stat-card-link">
@@ -127,56 +124,67 @@
 
     {% if latest_online %}
     <div class="filter-bar">
-      <select class="filter-select" onchange="filterTable(this,'online-table','sentiment')">
+      <select class="filter-select" data-field="sentiment" onchange="filterTable(this,'online-table','sentiment')">
         <option value="">All Sentiment</option>
         <option value="positive">Positive</option>
         <option value="neutral">Neutral</option>
         <option value="negative">Negative</option>
       </select>
-      <select class="filter-select" onchange="filterTable(this,'online-table','country')">
+      <select class="filter-select" data-field="country" onchange="filterTable(this,'online-table','country')">
         <option value="">All Countries</option>
+      </select>
+      <select class="filter-select" data-field="coverage" onchange="filterTable(this,'online-table','coverage')">
+        <option value="">All Coverage</option>
+        <option value="Earned">Earned</option>
+        <option value="Paid">Paid</option>
+        <option value="Owned">Owned</option>
       </select>
       <span class="filter-count">Showing {{ latest_online|length }} of {{ latest_online|length }} articles</span>
     </div>
-    <table class="data-table table table-hover" id="online-table">
-      <thead>
-        <tr>
-          <th>Source</th>
-          <th>Summary</th>
-          <th>Date Published <span class="sort-icon">↑↓</span></th>
-          <th>Country</th>
-          <th>Sentiment</th>
-          <th>AVE <span class="sort-icon">↑↓</span></th>
-          <th>Coverage</th>
-          <th>Reach <span class="sort-icon">↑↓</span></th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for a in latest_online %}
-        <tr data-sentiment="{{ a.sentiment }}" data-country="{{ a.country }}">
-          <td>
-            <div class="source-cell">
-              <div class="source-icon">{{ a.source|first|upper }}</div>
-              <span>{{ a.source }}</span>
-            </div>
-          </td>
-          <td><a href="{{ a.url }}" target="_blank" class="table-link">*{{ a.headline|truncatechars:50 }}</a></td>
-          <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
-          <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
-          <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
-          <td class="text-muted">{{ a.ave|floatformat:2 }}</td>
-          <td class="text-muted">{{ a.coverage|default:"Not Set" }}</td>
-          <td class="text-muted">{{ a.reach|default:0 }}</td>
-          <td>
-            <button class="icon-btn icon-btn--danger" onclick="deleteOnline('{{ org.id }}',{{ a.id }})">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-            </button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="table-card">
+      <table class="data-table table-hover" id="online-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Summary</th>
+            <th>Date Published <span class="sort-icon">↑↓</span></th>
+            <th>Country</th>
+            <th>Sentiment</th>
+            <th>AVE <span class="sort-icon">↑↓</span></th>
+            <th>Coverage</th>
+            <th>Reach <span class="sort-icon">↑↓</span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in latest_online %}
+          <tr data-sentiment="{{ a.sentiment }}" data-country="{{ a.country }}" data-coverage="{{ a.coverage|default:'Unknown' }}">
+            <td>
+              <div class="source-cell">
+                <div class="source-icon">{{ a.source|first|upper }}</div>
+                <div>
+                  <div class="source-name">{{ a.source }}</div>
+                  <div class="source-domain">{{ a.url|default:'#'|slice:':30' }}</div>
+                </div>
+              </div>
+            </td>
+            <td class="headline-cell"><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:50 }}</a></td>
+            <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
+            <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
+            <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
+            <td class="text-muted">{{ a.ave|floatformat:2 }}</td>
+            <td><span class="badge badge--blue">{{ a.coverage|default:"Earned" }}</span></td>
+            <td class="text-muted">{{ a.reach|default:0 }}</td>
+            <td>
+              <button class="icon-btn icon-btn--danger" onclick="deleteOnline('{{ org.id }}',{{ a.id }})">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
     <div class="empty-table">No online articles yet. <a href="{% url 'monitor:media_online' org.id %}">Add the first one.</a></div>
     {% endif %}
@@ -195,38 +203,40 @@
       </a>
     </div>
     {% if latest_print %}
-    <table class="data-table table table-hover">
-      <thead>
-        <tr>
-          <th>Source</th>
-          <th>Summary</th>
-          <th>Date Published <span class="sort-icon">↑↓</span></th>
-          <th>Country</th>
-          <th>Sentiment</th>
-          <th>AVE <span class="sort-icon">↑↓</span></th>
-          <th>Section</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for a in latest_print %}
-        <tr>
-          <td class="text-muted">{{ a.source }}</td>
-          <td><a href="{{ a.url }}" target="_blank" class="table-link">*{{ a.headline|truncatechars:50 }}</a></td>
-          <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
-          <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
-          <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
-          <td class="text-muted">{{ a.ave|floatformat:2 }}</td>
-          <td class="text-muted">{{ a.section|default:"Main" }}</td>
-          <td>
-            <button class="icon-btn icon-btn--danger" onclick="deletePrint('{{ org.id }}',{{ a.id }})">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-            </button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="table-card">
+      <table class="data-table table-hover">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Summary</th>
+            <th>Date Published</th>
+            <th>Country</th>
+            <th>Sentiment</th>
+            <th>AVE</th>
+            <th>Section</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in latest_print %}
+          <tr>
+            <td class="text-muted">{{ a.source }}</td>
+            <td><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:50 }}</a></td>
+            <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
+            <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
+            <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
+            <td class="text-muted">{{ a.ave|floatformat:2 }}</td>
+            <td class="text-muted">{{ a.section|default:"Main" }}</td>
+            <td>
+              <button class="icon-btn icon-btn--danger" onclick="deletePrint('{{ org.id }}',{{ a.id }})">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
     <div class="empty-table">No print articles yet. <a href="{% url 'monitor:media_print' org.id %}">Add the first one.</a></div>
     {% endif %}
@@ -245,55 +255,52 @@
       </a>
     </div>
     {% if latest_social %}
-    <table class="data-table table table-hover">
-      <thead>
-        <tr>
-          <th>Source</th>
-          <th>Summary</th>
-          <th>Page Name</th>
-          <th>Date Published <span class="sort-icon">↑↓</span></th>
-          <th>Country</th>
-          <th>Sentiment</th>
-          <th>AVE <span class="sort-icon">↑↓</span></th>
-          <th>Rank <span class="sort-icon">↑↓</span></th>
-          <th>Reach <span class="sort-icon">↑↓</span></th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for p in latest_social %}
-        <tr>
-          <td>
-            <div class="source-cell">
-              <div class="platform-icon platform-icon--{{ p.platform|lower }}">
-                {% if p.platform == 'Facebook' %}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                {% elif p.platform == 'Twitter' %}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="#1da1f2"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                {% else %}
-                <span style="font-size:10px;font-weight:700;color:#6b7280;">{{ p.platform|first }}</span>
-                {% endif %}
+    <div class="table-card">
+      <table class="data-table table-hover">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Summary</th>
+            <th>Page Name</th>
+            <th>Date Published</th>
+            <th>Country</th>
+            <th>Sentiment</th>
+            <th>AVE</th>
+            <th>Rank</th>
+            <th>Reach</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in latest_social %}
+          <tr>
+            <td>
+              <div class="source-cell">
+                <div class="source-icon">{{ p.platform|first|upper }}</div>
+                <div>
+                  <div class="source-name">{{ p.source }}</div>
+                  <div class="source-domain">{{ p.platform }}</div>
+                </div>
               </div>
-              <span class="text-muted">{{ p.platform }}</span>
-            </div>
-          </td>
-          <td><a href="{{ p.url }}" target="_blank" class="table-link">*{{ p.headline|truncatechars:45 }}</a></td>
-          <td class="text-muted">{{ p.page_name|default:"—" }}</td>
-          <td class="text-muted">{{ p.date_published|date:"M j, Y" }}</td>
-          <td class="text-muted">{{ p.country|default:"Unknown" }}</td>
-          <td><span class="badge badge--{{ p.sentiment }}">{{ p.get_sentiment_display }}</span></td>
-          <td class="text-muted">{{ p.ave|floatformat:2 }}</td>
-          <td class="text-muted">{{ p.rank|floatformat:2 }}</td>
-          <td class="text-muted">{{ p.reach|default:0 }}</td>
-          <td>
-            <button class="icon-btn icon-btn--danger" onclick="deleteSocial('{{ org.id }}',{{ p.id }})">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-            </button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            </td>
+            <td><a href="{{ p.url }}" target="_blank" class="table-link">{{ p.headline|truncatechars:50 }}</a></td>
+            <td class="text-muted">{{ p.page_name|default:"—" }}</td>
+            <td class="text-muted">{{ p.date_published|date:"M j, Y" }}</td>
+            <td class="text-muted">{{ p.country|default:"Unknown" }}</td>
+            <td><span class="badge badge--{{ p.sentiment }}">{{ p.get_sentiment_display }}</span></td>
+            <td class="text-muted">{{ p.ave|floatformat:2 }}</td>
+            <td class="text-muted">{{ p.rank|floatformat:2 }}</td>
+            <td class="text-muted">{{ p.reach|default:0 }}</td>
+            <td>
+              <button class="icon-btn icon-btn--danger" onclick="deleteSocial('{{ org.id }}',{{ p.id }})">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
     <div class="empty-table">No social posts yet. <a href="{% url 'monitor:media_social' org.id %}">Add the first one.</a></div>
     {% endif %}
@@ -381,6 +388,32 @@ function deletePrint(orgId, id) {
 function deleteSocial(orgId, id) {
   if (!confirm('Delete this post?')) return;
   apiRequest(`/api/${orgId}/social/${id}/delete/`, 'DELETE').then(() => location.reload());
+}
+function filterTable(select, tableId, field) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const filterBar = select.closest('.filter-bar');
+  const selects = filterBar ? filterBar.querySelectorAll('.filter-select') : [select];
+  const rows = table.querySelectorAll('tbody tr');
+  let visible = 0;
+
+  rows.forEach(row => {
+    let show = true;
+    selects.forEach(s => {
+      const key = s.dataset.field;
+      const value = s.value.trim().toLowerCase();
+      if (!key || !value) return;
+      const rowValue = (row.dataset[key] || 'unknown').toLowerCase();
+      if (rowValue !== value) show = false;
+    });
+    row.style.display = show ? '' : 'none';
+    if (show) visible += 1;
+  });
+
+  const countEl = filterBar ? filterBar.querySelector('.filter-count') : null;
+  if (countEl) {
+    countEl.textContent = `Showing ${visible} of ${rows.length} articles`;
+  }
 }
 </script>
 {% endblock %}

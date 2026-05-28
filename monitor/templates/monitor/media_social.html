@@ -116,10 +116,17 @@
       {% endfor %}
     </tbody>
   </table>
+  {% if total > 30 %}
+  <div class="table-footer">
+    <div class="table-footer-info">Viewing {{ current_count }} out of {{ total }} posts</div>
+    {% if has_more %}
+    <a href="{{ next_page_url }}" class="btn btn-secondary btn-sm table-footer-btn">Load More</a>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 
 <!-- Edit Modal -->
-<div class="modal-overlay hidden" id="editSocialModal">
   <div class="modal modal--lg">
     <div class="modal-header">
       <div>
@@ -200,15 +207,25 @@
   <div class="modal modal--lg">
     <div class="modal-header">
       <div>
-        <h2 class="modal-title">Add Social Media Post</h2>
-        <p class="modal-subtitle">Add a new social media mention</p>
+        <h2 class="modal-title">Add New Post</h2>
+        <p class="modal-subtitle">Fill in the details for the new post</p>
       </div>
       <button class="modal-close" onclick="closeModal('addSocialModal')">&times;</button>
     </div>
     <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Page Name</label>
+          <input type="text" id="sPageName" class="form-control" placeholder="Page or account name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Post URL *</label>
+          <input type="url" id="sUrl" class="form-control" placeholder="https://..." />
+        </div>
+      </div>
       <div class="form-group">
-        <label class="form-label">Headline / Content</label>
-        <input type="text" id="sHeadline" class="form-control" placeholder="Post content or headline" />
+        <label class="form-label">Message</label>
+        <textarea id="sHeadline" class="form-control" rows="5" placeholder="Post content..."></textarea>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -220,22 +237,18 @@
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Page Name</label>
-          <input type="text" id="sPageName" class="form-control" placeholder="Page or account name" />
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">URL</label>
-        <input type="url" id="sUrl" class="form-control" placeholder="https://..." />
-      </div>
-      <div class="form-row">
-        <div class="form-group">
           <label class="form-label">Country</label>
           <div class="cty-wrap">
-            <input type="text" id="sCountry" class="form-control" placeholder="Type to search country..." autocomplete="off" />
+            <input type="text" id="sCountry" class="form-control" placeholder="Country" autocomplete="off" />
             <ul class="cty-drop" id="sCountry-drop"></ul>
           </div>
         </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Group (Optional)</label>
+        <input type="text" id="sGroup" class="form-control" placeholder="Group name" />
+      </div>
+      <div class="form-row">
         <div class="form-group">
           <label class="form-label">Sentiment</label>
           <select id="sSentiment" class="form-select">
@@ -245,23 +258,13 @@
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">AVE</label>
-          <input type="number" id="sAve" class="form-control" placeholder="0" step="0.01" />
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Reach</label>
+          <label class="form-label">Post Reach</label>
           <input type="number" id="sReach" class="form-control" placeholder="0" />
         </div>
-        <div class="form-group">
-          <label class="form-label">Relevancy</label>
-          <input type="number" id="sRelevancy" class="form-control" placeholder="0.00" step="0.01" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Date Published</label>
-          <input type="date" id="sDate" class="form-control" />
-        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date Posted</label>
+        <input type="date" id="sDate" class="form-control" />
       </div>
     </div>
     <div class="modal-footer">
@@ -278,17 +281,18 @@ const ORG_ID = '{{ org.id }}';
 
 function addPost() {
   const headline = document.getElementById('sHeadline').value.trim();
-  if (!headline) return alert('Headline is required');
+  if (!headline) return alert('Message is required');
   apiRequest(`/api/${ORG_ID}/social/`, 'POST', {
     platform: document.getElementById('sPlatform').value,
     page_name: document.getElementById('sPageName').value.trim(),
     headline,
+    summary: document.getElementById('sGroup').value.trim(),
     url: document.getElementById('sUrl').value.trim(),
     country: document.getElementById('sCountry').value.trim(),
     sentiment: document.getElementById('sSentiment').value,
-    ave: document.getElementById('sAve').value || 0,
     reach: document.getElementById('sReach').value || 0,
-    relevancy: document.getElementById('sRelevancy').value || 0,
+    ave: 0,
+    relevancy: 0,
     date_published: document.getElementById('sDate').value,
   }).then(() => { closeModal('addSocialModal'); location.reload(); });
 }

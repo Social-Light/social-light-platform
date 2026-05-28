@@ -64,10 +64,10 @@
           <svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </a>
         <div class="nav-sub {% if page == 'media' %}open{% endif %}" id="mediaSubMenu">
-          <a href="{% url 'monitor:media_social' org.id %}" class="nav-subitem">Social</a>
-          <a href="{% url 'monitor:media_online' org.id %}" class="nav-subitem">Online</a>
-          <a href="{% url 'monitor:media_broadcast' org.id %}" class="nav-subitem">Broadcast</a>
-          <a href="{% url 'monitor:media_print' org.id %}" class="nav-subitem">Print</a>
+          <a href="{% url 'monitor:media_social' org.id %}" class="nav-subitem">Social Media</a>
+          <a href="{% url 'monitor:media_online' org.id %}" class="nav-subitem">Online Media</a>
+          <a href="{% url 'monitor:media_broadcast' org.id %}" class="nav-subitem">Broadcast Media</a>
+          <a href="{% url 'monitor:media_print' org.id %}" class="nav-subitem">Print Media</a>
         </div>
       </div>
       <a href="{% url 'monitor:media_sources' org.id %}" class="nav-item {% if page == 'media_sources' %}active{% endif %}">

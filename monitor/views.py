@@ -1,12 +1,14 @@
 import json
+import re
 import calendar
 from datetime import date, timedelta
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.conf import settings
+from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.db.models import Count, Sum, Q
@@ -15,6 +17,7 @@ from django.utils import timezone
 from .models import (
     Organization, User, Keyword, Competitor,
     OnlineArticle, PrintArticle, SocialMediaPost, BroadcastMention, Alert, MediaSource,
+    GeneratedReport,
     SENTIMENT_CHOICES, COVERAGE_CHOICES, PLATFORM_CHOICES, INDUSTRY_CHOICES, ROLE_CHOICES,
     SOURCE_TYPE_CHOICES,
 )
@@ -60,6 +63,27 @@ COMPETITOR_SUGGESTIONS = {
         'BPC (Botswana Power Corporation)', 'BERA', 'Orion Energy', 'Kgale Hill Utilities',
     ],
 }
+
+MEDIA_PAGE_SIZE = 30
+
+def paginate_media(request, qs, page_size=MEDIA_PAGE_SIZE):
+    page = request.GET.get('page', '1')
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 1
+    page = max(page, 1)
+    offset = (page - 1) * page_size
+    total = qs.count()
+    page_qs = qs[offset:offset + page_size]
+    current_loaded = offset + page_qs.count()
+    if current_loaded > total:
+        current_loaded = total
+    has_more = offset + page_size < total
+    next_params = request.GET.copy()
+    next_params['page'] = page + 1
+    next_page_url = f"{request.path}?{next_params.urlencode()}"
+    return page_qs, total, current_loaded, has_more, next_page_url
 
 
 # ── Public ───────────────────────────────────────────────────────────────────
@@ -294,6 +318,10 @@ def dashboard(request, org_id):
         'monthly_mentions': monthly_mentions,
         'total_keyphrases': keywords.count(),
         'media_types': media_types,
+        'total_online': total_online,
+        'total_print': total_print,
+        'total_social': total_social,
+        'total_broadcast': total_broadcast,
         'months_json': json.dumps(months),
         'online_monthly_json': json.dumps(online_monthly),
         'print_monthly_json': json.dumps(print_monthly),
@@ -373,11 +401,16 @@ def analytics(request, org_id):
     top_sources = list(
         qs.values(source_field).annotate(c=Count('id')).order_by('-c')[:10]
     )
+    top_sources_labels = [row.get(source_field) or 'Unknown' for row in top_sources]
+    top_sources_values = [row['c'] for row in top_sources]
 
     # Countries
     top_countries = list(
         qs.exclude(country='').values('country').annotate(c=Count('id')).order_by('-c')[:10]
     )
+    color_palette = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#06b6d4', '#a855f7', '#f43f5e', '#eab308', '#22c55e']
+    for idx, row in enumerate(top_countries):
+        row['color'] = color_palette[idx % len(color_palette)]
 
     return render(request, 'monitor/analytics.html', {
         'org': org,
@@ -394,8 +427,12 @@ def analytics(request, org_id):
         'neu': neu,
         'neg': neg,
         'top_sources': top_sources,
+        'top_sources_labels_json': json.dumps(top_sources_labels),
+        'top_sources_values_json': json.dumps(top_sources_values),
         'top_countries': top_countries,
+        'top_countries_json': json.dumps([{'country': row['country'], 'c': row['c']} for row in top_countries]),
         'source_field': source_field,
+        'mapbox_access_token': settings.MAPBOX_ACCESS_TOKEN,
     })
 
 
@@ -427,13 +464,16 @@ def media_online(request, org_id):
         qs = qs.filter(date_published__lte=date_to)
 
     countries = list(org.online_articles.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
-    total = qs.count()
+    articles, total, current_count, has_more, next_page_url = paginate_media(request, qs)
 
     return render(request, 'monitor/media_online.html', {
         'org': org,
         'page': 'media',
-        'articles': qs[:200],
+        'articles': articles,
         'total': total,
+        'current_count': current_count,
+        'has_more': has_more,
+        'next_page_url': next_page_url,
         'q': q,
         'sentiment_choices': SENTIMENT_CHOICES,
         'coverage_choices': COVERAGE_CHOICES,
@@ -527,13 +567,16 @@ def media_print(request, org_id):
 
     countries = list(org.print_articles.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
     sections = list(org.print_articles.exclude(section='').values_list('section', flat=True).distinct().order_by('section'))
-    total = qs.count()
+    articles, total, current_count, has_more, next_page_url = paginate_media(request, qs)
 
     return render(request, 'monitor/media_print.html', {
         'org': org,
         'page': 'media',
-        'articles': qs[:200],
+        'articles': articles,
         'total': total,
+        'current_count': current_count,
+        'has_more': has_more,
+        'next_page_url': next_page_url,
         'q': q,
         'sentiment_choices': SENTIMENT_CHOICES,
         'countries': countries,
@@ -621,13 +664,16 @@ def media_social(request, org_id):
         qs = qs.filter(date_published__lte=date_to)
 
     countries = list(org.social_posts.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
-    total = qs.count()
+    posts, total, current_count, has_more, next_page_url = paginate_media(request, qs)
 
     return render(request, 'monitor/media_social.html', {
         'org': org,
         'page': 'media',
-        'posts': qs[:200],
+        'posts': posts,
         'total': total,
+        'current_count': current_count,
+        'has_more': has_more,
+        'next_page_url': next_page_url,
         'q': q,
         'sentiment_choices': SENTIMENT_CHOICES,
         'platform_choices': PLATFORM_CHOICES,
@@ -720,13 +766,16 @@ def media_broadcast(request, org_id):
         qs = qs.filter(date_published__lte=date_to)
 
     countries = list(org.broadcast_mentions.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
-    total = qs.count()
+    mentions, total, current_count, has_more, next_page_url = paginate_media(request, qs)
 
     return render(request, 'monitor/media_broadcast.html', {
         'org': org,
         'page': 'media',
-        'mentions': qs[:200],
+        'mentions': mentions,
         'total': total,
+        'current_count': current_count,
+        'has_more': has_more,
+        'next_page_url': next_page_url,
         'q': q,
         'sentiment_choices': SENTIMENT_CHOICES,
         'countries': countries,
@@ -932,13 +981,581 @@ def competitor_delete(request, org_id, comp_id):
 
 # ── Reports ───────────────────────────────────────────────────────────────────
 
+def _fmt_date(d):
+    return d.strftime('%B') + ' ' + str(d.day) + ', ' + str(d.year)
+
+
+def _type_stats(qs, src_field, has_reach=True):
+    import re as _re
+    from collections import defaultdict, Counter
+    vol = qs.count()
+    ave = float(qs.aggregate(s=Sum('ave'))['s'] or 0)
+    reach = float(qs.aggregate(s=Sum('reach'))['s'] or 0) if has_reach else 0
+    pos = qs.filter(sentiment='positive').count()
+    neu = qs.filter(sentiment='neutral').count()
+    neg = qs.filter(sentiment='negative').count()
+    total_s = pos + neu + neg
+    pos_pct = round(pos / total_s * 100) if total_s else 0
+    neu_pct = round(neu / total_s * 100) if total_s else 0
+    neg_pct = 100 - pos_pct - neu_pct if total_s else 0
+
+    daily = defaultdict(lambda: {'pos': 0, 'neu': 0, 'neg': 0})
+    for row in qs.values('date_published', 'sentiment'):
+        d = str(row['date_published'])
+        s = row['sentiment']
+        if s == 'positive': daily[d]['pos'] += 1
+        elif s == 'negative': daily[d]['neg'] += 1
+        else: daily[d]['neu'] += 1
+    dates = sorted(daily.keys())
+
+    src_map = {}
+    if src_field:
+        for row in qs.exclude(**{src_field: ''}).values(src_field).annotate(
+            total=Count('id'),
+            pos=Count('id', filter=Q(sentiment='positive')),
+            neu=Count('id', filter=Q(sentiment='neutral')),
+            neg=Count('id', filter=Q(sentiment='negative')),
+        ).order_by('-total')[:8]:
+            src_map[row[src_field]] = {k: row[k] for k in ('total', 'pos', 'neu', 'neg')}
+
+    risks = [{'headline': i.headline[:100], 'source': getattr(i, src_field, '') if src_field else '',
+              'ave': float(i.ave), 'date': i.date_published.strftime('%d %b %Y')}
+             for i in qs.filter(sentiment='negative').order_by('-ave')[:5]]
+    opps  = [{'headline': i.headline[:100], 'source': getattr(i, src_field, '') if src_field else '',
+              'ave': float(i.ave), 'date': i.date_published.strftime('%d %b %Y')}
+             for i in qs.filter(sentiment='positive').order_by('-ave')[:5]]
+    issues = [{'label': i.headline[:55], 'ave': float(i.ave), 'sentiment': i.sentiment}
+              for i in qs.order_by('-ave')[:8]]
+
+    STOP = {'the','a','an','and','or','but','in','on','at','to','for','of','with','by','from',
+            'is','was','are','were','be','been','have','has','had','do','does','did','will',
+            'would','could','should','may','might','that','this','it','its','not','no','as',
+            'up','out','so','if','after','over','about','into','than','more','also','said',
+            'new','says','their','they','who','what','when','where','how'}
+    counter = Counter()
+    for h in qs.values_list('headline', flat=True):
+        counter.update(w for w in _re.findall(r'\b[a-zA-Z]{4,}\b', h.lower()) if w not in STOP)
+    words = counter.most_common(30)
+
+    return {
+        'vol': vol, 'ave': ave, 'reach': reach,
+        'pos': pos, 'neu': neu, 'neg': neg,
+        'pos_pct': pos_pct, 'neu_pct': neu_pct, 'neg_pct': neg_pct,
+        'trend': json.dumps({'labels': dates,
+                             'pos': [daily[d]['pos'] for d in dates],
+                             'neu': [daily[d]['neu'] for d in dates],
+                             'neg': [daily[d]['neg'] for d in dates]}),
+        'sources_json': json.dumps([{'name': n, **v} for n, v in src_map.items()]),
+        'key_events_json': json.dumps([]),
+        'risks': risks,
+        'opps': opps,
+        'issues_json': json.dumps(issues),
+        'words_json': json.dumps(words),
+        'max_freq': words[0][1] if words else 1,
+    }
+
+
+@login_required
+def report_full(request, org_id):
+    import re as _re
+    from collections import defaultdict, Counter
+    org = get_object_or_404(Organization, id=org_id)
+    today = date.today()
+
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str = request.GET.get('date_to', '')
+    try:
+        date_from = date.fromisoformat(date_from_str) if date_from_str else today.replace(day=1)
+    except ValueError:
+        date_from = today.replace(day=1)
+    try:
+        date_to = date.fromisoformat(date_to_str) if date_to_str else today
+    except ValueError:
+        date_to = today
+
+    month_label = f"{_fmt_date(date_from)} – {_fmt_date(date_to)}"
+    kw = dict(date_published__gte=date_from, date_published__lte=date_to)
+
+    oa = org.online_articles.filter(**kw)
+    pa = org.print_articles.filter(**kw)
+    sp = org.social_posts.filter(**kw)
+    bm = org.broadcast_mentions.filter(**kw)
+
+    oa_c, pa_c, sp_c, bm_c = oa.count(), pa.count(), sp.count(), bm.count()
+    total_vol = oa_c + pa_c + sp_c + bm_c
+
+    def _sum(qs, field):
+        return float(qs.aggregate(s=Sum(field))['s'] or 0)
+
+    total_ave = _sum(oa, 'ave') + _sum(pa, 'ave') + _sum(sp, 'ave') + _sum(bm, 'ave')
+    total_reach = _sum(oa, 'reach') + _sum(sp, 'reach')
+
+    def _sc(qs):
+        return (
+            qs.filter(sentiment='positive').count(),
+            qs.filter(sentiment='neutral').count(),
+            qs.filter(sentiment='negative').count(),
+        )
+
+    counts = [_sc(q) for q in [oa, pa, sp, bm]]
+    pos_total = sum(c[0] for c in counts)
+    neu_total = sum(c[1] for c in counts)
+    neg_total = sum(c[2] for c in counts)
+    total_sent = pos_total + neu_total + neg_total
+    pos_pct = round(pos_total / total_sent * 100) if total_sent else 0
+    neu_pct = round(neu_total / total_sent * 100) if total_sent else 0
+    neg_pct = 100 - pos_pct - neu_pct
+
+    # Sentiment trend by date
+    daily = defaultdict(lambda: {'pos': 0, 'neu': 0, 'neg': 0})
+    for q in [oa, pa, sp, bm]:
+        for row in q.values('date_published', 'sentiment'):
+            d = str(row['date_published'])
+            s = row['sentiment']
+            if s == 'positive':
+                daily[d]['pos'] += 1
+            elif s == 'negative':
+                daily[d]['neg'] += 1
+            else:
+                daily[d]['neu'] += 1
+    sorted_dates = sorted(daily.keys())
+    trend_data = json.dumps({
+        'labels': sorted_dates,
+        'pos': [daily[d]['pos'] for d in sorted_dates],
+        'neu': [daily[d]['neu'] for d in sorted_dates],
+        'neg': [daily[d]['neg'] for d in sorted_dates],
+    })
+
+    # Top sources
+    src_map = {}
+    for qs, key_field in [(sp, 'platform'), (oa, 'source'), (pa, 'source'), (bm, 'source')]:
+        for row in qs.exclude(**{key_field: ''}).values(key_field).annotate(
+            total=Count('id'),
+            pos=Count('id', filter=Q(sentiment='positive')),
+            neu=Count('id', filter=Q(sentiment='neutral')),
+            neg=Count('id', filter=Q(sentiment='negative')),
+        ).order_by('-total'):
+            name = row[key_field]
+            if name in src_map:
+                for k in ('total', 'pos', 'neu', 'neg'):
+                    src_map[name][k] += row[k]
+            else:
+                src_map[name] = {k: row[k] for k in ('total', 'pos', 'neu', 'neg')}
+    top_sources = sorted(src_map.items(), key=lambda x: x[1]['total'], reverse=True)[:10]
+    top_sources_json = json.dumps([{'name': n, **v} for n, v in top_sources])
+
+    # Risks (top negative) and opportunities (top positive)
+    risks, opportunities = [], []
+    for q, media_type, src_field in [
+        (sp, 'Social Media', 'platform'),
+        (oa, 'Online', 'source'),
+        (pa, 'Print', 'source'),
+        (bm, 'Broadcast', 'source'),
+    ]:
+        for item in q.filter(sentiment='negative').order_by('-ave')[:4]:
+            risks.append({'headline': item.headline[:110], 'source': getattr(item, src_field, '') or media_type,
+                          'ave': float(item.ave), 'media_type': media_type, 'date': item.date_published})
+        for item in q.filter(sentiment='positive').order_by('-ave')[:4]:
+            opportunities.append({'headline': item.headline[:110], 'source': getattr(item, src_field, '') or media_type,
+                                   'ave': float(item.ave), 'media_type': media_type, 'date': item.date_published})
+    risks = sorted(risks, key=lambda x: x['ave'], reverse=True)[:6]
+    opportunities = sorted(opportunities, key=lambda x: x['ave'], reverse=True)[:6]
+
+    # Top journalists
+    journalists = list(pa.exclude(author='').values('author').annotate(
+        total=Count('id'),
+        pos=Count('id', filter=Q(sentiment='positive')),
+        neu=Count('id', filter=Q(sentiment='neutral')),
+        neg=Count('id', filter=Q(sentiment='negative')),
+        ave_total=Sum('ave'),
+    ).order_by('-total')[:10])
+
+    # Word cloud
+    STOP = {'the','a','an','and','or','but','in','on','at','to','for','of','with','by','from',
+            'is','was','are','were','be','been','have','has','had','do','does','did','will',
+            'would','could','should','may','might','that','this','it','its','not','no','as',
+            'up','out','so','if','after','over','about','into','than','more','also','said',
+            'new','says','their','they','who','what','when','where','how','been','just'}
+    counter = Counter()
+    for q in [oa, pa, sp, bm]:
+        for h in q.values_list('headline', flat=True):
+            words = _re.findall(r'\b[a-zA-Z]{4,}\b', h.lower())
+            counter.update(w for w in words if w not in STOP)
+    top_words = counter.most_common(40)
+    max_freq = top_words[0][1] if top_words else 1
+
+    # Issue impact — top stories by AVE with sentiment
+    issue_items = []
+    for q, media_type, src_field in [(sp, 'Social', 'platform'), (oa, 'Online', 'source'),
+                                      (pa, 'Print', 'source'), (bm, 'Broadcast', 'source')]:
+        for item in q.order_by('-ave')[:5]:
+            issue_items.append({
+                'label': item.headline[:60],
+                'ave': float(item.ave),
+                'sentiment': item.sentiment,
+                'media_type': media_type,
+            })
+    issue_items = sorted(issue_items, key=lambda x: x['ave'], reverse=True)[:10]
+
+    # Executive narrative
+    if total_vol == 0:
+        exec_narrative = (f"No media mentions were recorded for {org.name} during "
+                          f"{_fmt_date(date_from)} to {_fmt_date(date_to)}.")
+    else:
+        tone = ('predominantly positive' if pos_pct >= 50 else
+                'predominantly negative' if neg_pct >= 50 else 'mixed in sentiment')
+        exec_narrative = (
+            f"Media coverage of {org.name} during the reporting period was {tone}. "
+            f"The organisation recorded a total of {total_vol:,} media mentions across all channels, "
+            f"generating an estimated BWP {total_ave:,.0f} in Advertising Value Equivalency (AVE) "
+            f"and a potential audience reach of {int(total_reach):,}. "
+            f"Positive sentiment accounted for {pos_pct}% of total coverage, "
+            f"with {neu_pct}% neutral and {neg_pct}% negative mentions."
+        )
+
+    # ── Parse selected modules from query param ──────────────────────────────
+    modules_param = request.GET.get('modules', '')
+    report_mode   = request.GET.get('type', 'full')
+    ALL_MOD_IDS = ['media_summary', 'sentiment_trend', 'reputational_risks',
+                   'reputational_opportunities', 'issue_impact', 'top_sources',
+                   'word_cloud', 'kpi_performance']
+
+    VALID_TYPES = {'social', 'online', 'broadcast', 'print'}
+    if report_mode == 'custom' and modules_param:
+        selected_set = set()
+        for item in modules_param.split(','):
+            item = item.strip()
+            if ':' in item:
+                selected_set.add(item)
+            elif item in VALID_TYPES:
+                for m in ALL_MOD_IDS:
+                    selected_set.add(f'{item}:{m}')
+    else:
+        selected_set = {f'{t}:{m}' for t in ('social', 'online', 'broadcast', 'print')
+                        for m in ALL_MOD_IDS}
+
+    def _sel(type_key, mod_id):
+        return f'{type_key}:{mod_id}' in selected_set
+
+    # ── Per-media-type stats ──────────────────────────────────────────────────
+    type_map = {
+        'social':    {'qs': sp, 'src': 'platform', 'reach': True,  'label': 'Social Media',    'color': '#1d4ed8'},
+        'online':    {'qs': oa, 'src': 'source',   'reach': True,  'label': 'Online Media',    'color': '#0f766e'},
+        'broadcast': {'qs': bm, 'src': 'source',   'reach': False, 'label': 'Broadcast Media', 'color': '#9333ea'},
+        'print':     {'qs': pa, 'src': 'source',   'reach': False, 'label': 'Print Media',     'color': '#c2410c'},
+    }
+    sections = {}
+    for key, cfg in type_map.items():
+        stats = _type_stats(cfg['qs'], cfg['src'], cfg['reach'])
+        stats.update({'label': cfg['label'], 'color': cfg['color'], 'key': key})
+        # Which modules are selected for this type
+        stats['sel_mods'] = [m for m in ALL_MOD_IDS if _sel(key, m)]
+        sections[key] = stats
+
+    # Journalists (print only)
+    journalists = list(pa.exclude(author='').values('author').annotate(
+        total=Count('id'),
+        pos=Count('id', filter=Q(sentiment='positive')),
+        neu=Count('id', filter=Q(sentiment='neutral')),
+        neg=Count('id', filter=Q(sentiment='negative')),
+        ave_total=Sum('ave'),
+    ).order_by('-total')[:10])
+
+    # Module bar text (all selected modules, flagging those with no data)
+    mod_bar_items = []
+    for key in ('social', 'online', 'broadcast', 'print'):
+        s = sections[key]
+        for m in s['sel_mods']:
+            label = next((x['label'] for x in _MODULE_LIST if x['id'] == m), m)
+            has_data = s['vol'] > 0
+            mod_bar_items.append({'name': f'{s["label"]}: {label}', 'has_data': has_data})
+
+    return render(request, 'monitor/report_full.html', {
+        'org': org,
+        'page': 'reports',
+        'date_from': date_from,
+        'date_to': date_to,
+        'month_label': month_label,
+        'total_vol': total_vol,
+        'total_ave': total_ave,
+        'total_reach': total_reach,
+        'oa_c': oa_c, 'pa_c': pa_c, 'sp_c': sp_c, 'bm_c': bm_c,
+        'pos_total': pos_total, 'neu_total': neu_total, 'neg_total': neg_total,
+        'pos_pct': pos_pct, 'neu_pct': neu_pct, 'neg_pct': neg_pct,
+        'exec_narrative': exec_narrative,
+        'sections': sections,
+        'sections_order': ['social', 'online', 'broadcast', 'print'],
+        'journalists': journalists,
+        'mod_bar_items': mod_bar_items,
+        'all_mod_ids': ALL_MOD_IDS,
+    })
+
+
+_MEDIA_TYPES_DEF = [
+    {'key': 'social',    'label': 'Social Media'},
+    {'key': 'online',    'label': 'Online Media'},
+    {'key': 'broadcast', 'label': 'Broadcast Media'},
+    {'key': 'print',     'label': 'Print Media'},
+]
+
+_MODULE_LIST = [
+    {'id': 'media_summary',              'label': 'Media Summary'},
+    {'id': 'sentiment_trend',            'label': 'Sentiment Trend'},
+    {'id': 'reputational_risks',         'label': 'Reputational Risks'},
+    {'id': 'reputational_opportunities', 'label': 'Reputational Opportunities'},
+    {'id': 'issue_impact',               'label': 'Issue Impact'},
+    {'id': 'top_sources',                'label': 'Top Media Sources'},
+    {'id': 'word_cloud',                 'label': 'Word Cloud'},
+    {'id': 'kpi_performance',            'label': 'KPI Performance'},
+]
+
+
 @login_required
 def reports_view(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
+    generated_reports = org.generated_reports.select_related('created_by').all()
+    country_set = set()
+    for qs in [org.online_articles, org.print_articles, org.social_posts, org.broadcast_mentions]:
+        for c in qs.exclude(country='').values_list('country', flat=True).distinct():
+            country_set.add(c)
     return render(request, 'monitor/reports.html', {
         'org': org,
         'page': 'reports',
+        'generated_reports': generated_reports,
+        'media_types_def': _MEDIA_TYPES_DEF,
+        'module_list': _MODULE_LIST,
+        'country_choices': sorted(country_set),
     })
+
+
+@login_required
+def report_save(request, org_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    org = get_object_or_404(Organization, id=org_id)
+    import json as _json
+    from datetime import date as _date
+    data = _json.loads(request.body)
+    report_type = data.get('report_type', 'Custom Report')
+    modules = data.get('modules', [])
+    date_from_str = data.get('date_from', '')
+    date_to_str = data.get('date_to', '')
+    date_from = _date.fromisoformat(date_from_str) if date_from_str else None
+    date_to = _date.fromisoformat(date_to_str) if date_to_str else None
+
+    submitted_countries = data.get('countries', [])
+    if submitted_countries:
+        scope = sorted(submitted_countries)
+    else:
+        countries = set()
+        qs_kwargs = {}
+        if date_from:
+            qs_kwargs['date_published__gte'] = date_from
+        if date_to:
+            qs_kwargs['date_published__lte'] = date_to
+        for qs in [org.online_articles, org.print_articles, org.social_posts, org.broadcast_mentions]:
+            for c in qs.filter(**qs_kwargs).exclude(country='').values_list('country', flat=True).distinct():
+                countries.add(c)
+        scope = sorted(countries)
+
+    report = GeneratedReport.objects.create(
+        organization=org,
+        title=f'{org.name} Report',
+        report_type=report_type,
+        modules=modules,
+        scope=scope,
+        created_by=request.user,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return JsonResponse({'id': str(report.id)})
+
+
+@login_required
+def report_delete(request, org_id, report_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    org = get_object_or_404(Organization, id=org_id)
+    report = get_object_or_404(GeneratedReport, id=report_id, organization=org)
+    report.delete()
+    return JsonResponse({'ok': True})
+
+
+@login_required
+def report_sentiment(request, org_id):
+    from collections import defaultdict
+    org = get_object_or_404(Organization, id=org_id)
+    today = date.today()
+
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str   = request.GET.get('date_to', '')
+    try:
+        date_from = date.fromisoformat(date_from_str) if date_from_str else today - timedelta(days=30)
+    except ValueError:
+        date_from = today - timedelta(days=30)
+    try:
+        date_to = date.fromisoformat(date_to_str) if date_to_str else today
+    except ValueError:
+        date_to = today
+
+    period_days = (date_to - date_from).days or 1
+    kw = dict(date_published__gte=date_from, date_published__lte=date_to)
+
+    oa = org.online_articles.filter(**kw)
+    pa = org.print_articles.filter(**kw)
+    sp = org.social_posts.filter(**kw)
+    bm = org.broadcast_mentions.filter(**kw)
+    all_qs = [oa, pa, sp, bm]
+
+    pos = sum(q.filter(sentiment='positive').count() for q in all_qs)
+    neu = sum(q.filter(sentiment='neutral').count() for q in all_qs)
+    neg = sum(q.filter(sentiment='negative').count() for q in all_qs)
+    total = pos + neu + neg
+
+    pos_pct = round(pos / total * 100) if total else 0
+    neu_pct = round(neu / total * 100) if total else 0
+    neg_pct = 100 - pos_pct - neu_pct if total else 0
+
+    score = round((pos * 5 + neu * 3 + neg * 1) / total, 2) if total else 0
+    if score >= 3.5:
+        sentiment_label, sentiment_color = 'Positive', '#22c55e'
+    elif score >= 2.5:
+        sentiment_label, sentiment_color = 'Neutral', '#f59e0b'
+    else:
+        sentiment_label, sentiment_color = 'Negative', '#ef4444'
+
+    daily = defaultdict(lambda: {'pos': 0, 'neu': 0, 'neg': 0})
+    for q in all_qs:
+        for row in q.values('date_published', 'sentiment'):
+            d = str(row['date_published'])
+            s = row['sentiment']
+            if s == 'positive':   daily[d]['pos'] += 1
+            elif s == 'negative': daily[d]['neg'] += 1
+            else:                 daily[d]['neu'] += 1
+
+    sorted_dates = sorted(daily.keys())
+    timeline_score = []
+    for d in sorted_dates:
+        dp = daily[d]
+        t = dp['pos'] + dp['neu'] + dp['neg']
+        timeline_score.append(round((dp['pos'] * 5 + dp['neu'] * 3 + dp['neg'] * 1) / t, 2) if t else 0)
+
+    prev_kw = dict(date_published__gte=date_from - timedelta(days=period_days), date_published__lte=date_from)
+    prev_total = (org.online_articles.filter(**prev_kw).count() +
+                  org.print_articles.filter(**prev_kw).count() +
+                  org.social_posts.filter(**prev_kw).count() +
+                  org.broadcast_mentions.filter(**prev_kw).count())
+    mentions_change = round((total - prev_total) / prev_total * 100, 1) if prev_total else 0
+
+    top_positive, top_negative = [], []
+    for q, src in [(oa, 'source'), (pa, 'source'), (sp, 'platform'), (bm, 'source')]:
+        for item in q.filter(sentiment='positive').order_by('-ave')[:3]:
+            top_positive.append({'headline': item.headline[:100], 'source': getattr(item, src, '') or '',
+                                  'ave': float(item.ave), 'date': item.date_published.strftime('%d %b %Y')})
+        for item in q.filter(sentiment='negative').order_by('-ave')[:3]:
+            top_negative.append({'headline': item.headline[:100], 'source': getattr(item, src, '') or '',
+                                  'ave': float(item.ave), 'date': item.date_published.strftime('%d %b %Y')})
+    top_positive = sorted(top_positive, key=lambda x: x['ave'], reverse=True)[:5]
+    top_negative = sorted(top_negative, key=lambda x: x['ave'], reverse=True)[:5]
+
+    ctx = {
+        'org': org, 'page': 'reports',
+        'date_from': date_from,
+        'date_to': date_to,
+        'date_from_str': date_from.isoformat(),
+        'date_to_str': date_to.isoformat(),
+        'period_label': f"{date_from.strftime('%d %b %Y')} – {date_to.strftime('%d %b %Y')}",
+        'score': score,
+        'sentiment_label': sentiment_label,
+        'sentiment_color': sentiment_color,
+        'pos': pos, 'neu': neu, 'neg': neg,
+        'pos_pct': pos_pct, 'neu_pct': neu_pct, 'neg_pct': neg_pct,
+        'total': total,
+        'mentions_change': mentions_change,
+        'timeline_json': json.dumps({
+            'labels': sorted_dates,
+            'pos':   [daily[d]['pos'] for d in sorted_dates],
+            'neu':   [daily[d]['neu'] for d in sorted_dates],
+            'neg':   [daily[d]['neg'] for d in sorted_dates],
+            'score': timeline_score,
+        }),
+        'top_positive': top_positive,
+        'top_negative': top_negative,
+    }
+    if request.GET.get('format') == 'pdf':
+        return render(request, 'monitor/report_sentiment_pdf.html', ctx)
+    return render(request, 'monitor/report_sentiment.html', ctx)
+
+
+@login_required
+def report_source(request, org_id):
+    org = get_object_or_404(Organization, id=org_id)
+    today = date.today()
+
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str   = request.GET.get('date_to', '')
+    try:
+        date_from = date.fromisoformat(date_from_str) if date_from_str else today - timedelta(days=30)
+    except ValueError:
+        date_from = today - timedelta(days=30)
+    try:
+        date_to = date.fromisoformat(date_to_str) if date_to_str else today
+    except ValueError:
+        date_to = today
+
+    kw = dict(date_published__gte=date_from, date_published__lte=date_to)
+
+    PALETTE = ['#0ea5e9','#f97316','#a855f7','#ef4444','#22c55e',
+               '#eab308','#06b6d4','#ec4899','#84cc16','#f43f5e',
+               '#8b5cf6','#14b8a6']
+
+    def _section(qs, field, label, accent):
+        rows = list(
+            qs.exclude(**{field: ''}).values(field)
+              .annotate(count=Count('id')).order_by('-count')
+        )
+        grand = sum(r['count'] for r in rows) or 1
+        sources = [
+            {'name': r[field],
+             'count': r['count'],
+             'pct': round(r['count'] / grand * 100, 1),
+             'color': PALETTE[i % len(PALETTE)]}
+            for i, r in enumerate(rows[:14])
+        ]
+        return {
+            'label': label,
+            'accent': accent,
+            'total': grand,
+            'sources': sources,
+            'chart_json': json.dumps({
+                'labels': [s['name'] for s in sources],
+                'counts': [s['count'] for s in sources],
+                'colors': [s['color'] for s in sources],
+            }),
+        }
+
+    sections = [
+        _section(org.social_posts.filter(**kw),       'platform', 'Social Media',    '#1d4ed8'),
+        _section(org.online_articles.filter(**kw),    'source',   'Online Media',     '#0f766e'),
+        _section(org.broadcast_mentions.filter(**kw), 'source',   'Broadcast Media',  '#9333ea'),
+        _section(org.print_articles.filter(**kw),     'source',   'Print Media',      '#c2410c'),
+    ]
+
+    ctx = {
+        'org': org, 'page': 'reports',
+        'date_from': date_from,
+        'date_to': date_to,
+        'date_from_str': date_from.isoformat(),
+        'date_to_str': date_to.isoformat(),
+        'period_label': f"{date_from.strftime('%d %b %Y')} – {date_to.strftime('%d %b %Y')}",
+        'sections': sections,
+        'sections_json': json.dumps([
+            {'label': s['label'], 'chart': s['chart_json']} for s in sections
+        ]),
+    }
+    if request.GET.get('format') == 'pdf':
+        return render(request, 'monitor/report_source_pdf.html', ctx)
+    return render(request, 'monitor/report_source.html', ctx)
 
 
 # ── Alerts ────────────────────────────────────────────────────────────────────
@@ -1107,6 +1724,36 @@ def _ordinal(n):
     return f'{n}{["th","st","nd","rd","th","th","th","th","th","th"][n % 10]}'
 
 
+_HOT_STOP = {
+    'the','a','an','and','or','but','in','on','at','to','for','of','with',
+    'by','from','as','is','was','are','were','be','been','being','have',
+    'has','had','do','does','did','will','would','could','should','may',
+    'might','shall','can','its','it','this','that','these','those',
+    'we','you','he','she','they','our','your','his','her','their','my',
+    'not','no','nor','so','yet','both','either','each','few','more',
+    'most','other','some','such','after','before','up','out','about',
+    'into','through','over','under','between','during','against','among',
+    'also','just','then','than','when','where','how','what','which','who',
+    'new','says','said','say','all','per','also','one','two','three',
+    'amid','after','than','says','amid','were','been','over','will',
+}
+
+
+def _hot_topics(texts, top_n=20):
+    counts = Counter()
+    for text in texts:
+        if not text:
+            continue
+        for word in re.findall(r'[a-zA-Z]{3,}', text.lower()):
+            if word not in _HOT_STOP:
+                counts[word] += 1
+    total = sum(counts.values()) or 1
+    return [
+        {'word': w.title(), 'count': c, 'pct': round(c / total * 100, 1)}
+        for w, c in counts.most_common(top_n)
+    ]
+
+
 @login_required
 def report_competitor(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
@@ -1246,6 +1893,18 @@ def report_competitor(request, org_id):
     else:
         comp_avg_art = comp_avg_soc = comp_avg_ave = 0
 
+    # ── Hot topics from competitor content ────────────────────────────────────
+    comp_texts = []
+    for cname in comp_names:
+        co = comp_orgs.get(cname)
+        if co:
+            comp_texts += list(OnlineArticle.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
+            comp_texts += list(PrintArticle.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
+            comp_texts += list(BroadcastMention.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
+            comp_texts += list(SocialMediaPost.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
+    hot_topics = _hot_topics(comp_texts, top_n=20)
+    hot_topics_json = json.dumps(hot_topics)
+
     # ── JSON for charts ───────────────────────────────────────────────────────
     bc_json = json.dumps([{'label': r['name'], 'value': r['count'], 'is_org': r['is_org']} for r in broadcast_rows])
     art_json = json.dumps([{'label': r['name'], 'value': r['count'], 'is_org': r['is_org']} for r in article_rows])
@@ -1292,6 +1951,9 @@ def report_competitor(request, org_id):
         'comp_avg_art': comp_avg_art,
         'comp_avg_soc': comp_avg_soc,
         'comp_avg_ave': comp_avg_ave,
+        # Hot topics
+        'hot_topics': hot_topics,
+        'hot_topics_json': hot_topics_json,
         # Chart JSON
         'bc_json': bc_json,
         'art_json': art_json,
@@ -1550,7 +2212,9 @@ def report_competitor_pptx(request, org_id):
             for ci, v in enumerate(vals):
                 cell = tbl.cell(ri, ci)
                 cell.text = v
-                cell.text_frame.paragraphs[0].runs[0].font.size = Pt(9)
+                p = cell.text_frame.paragraphs[0]
+                run = p.add_run() if not p.runs else p.runs[0]
+                run.font.size = Pt(9)
                 if ri % 2 == 0:
                     cell.fill.solid()
                     cell.fill.fore_color.rgb = RGBColor(0xF9, 0xFA, 0xFB)

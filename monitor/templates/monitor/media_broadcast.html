@@ -109,10 +109,17 @@
       {% endfor %}
     </tbody>
   </table>
+  {% if total > 30 %}
+  <div class="table-footer">
+    <div class="table-footer-info">Viewing {{ current_count }} out of {{ total }} entries</div>
+    {% if has_more %}
+    <a href="{{ next_page_url }}" class="btn btn-secondary btn-sm table-footer-btn">Load More</a>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 
 <!-- Edit Modal -->
-<div class="modal-overlay hidden" id="editBroadcastModal">
   <div class="modal">
     <div class="modal-header">
       <div>
@@ -188,23 +195,19 @@
   <div class="modal">
     <div class="modal-header">
       <div>
-        <h2 class="modal-title">Add Broadcast Mention</h2>
+        <h2 class="modal-title">Add New Article</h2>
         <p class="modal-subtitle">Add a new broadcast coverage entry</p>
       </div>
       <button class="modal-close" onclick="closeModal('addBroadcastModal')">&times;</button>
     </div>
     <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Headline / Summary</label>
-        <input type="text" id="bHeadline" class="form-control" placeholder="Segment headline or description" />
-      </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Station</label>
-          <input type="text" id="bSource" class="form-control" placeholder="e.g. BTV, KFM" />
+          <input type="text" id="bSource" class="form-control" placeholder="Station name" />
         </div>
         <div class="form-group">
-          <label class="form-label">Type</label>
+          <label class="form-label">Station Type</label>
           <select id="bType" class="form-select">
             <option value="RADIO">Radio</option>
             <option value="TV">TV</option>
@@ -212,20 +215,20 @@
             <option value="ONLINE">Online</option>
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Duration</label>
-          <input type="text" id="bDuration" class="form-control" placeholder="e.g. 2:30" />
-        </div>
       </div>
       <div class="form-group">
-        <label class="form-label">URL / Reference</label>
-        <input type="url" id="bUrl" class="form-control" placeholder="https://..." />
+        <label class="form-label">URL</label>
+        <input type="url" id="bUrl" class="form-control" placeholder="URL to the broadcast" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Transcript</label>
+        <input type="text" id="bHeadline" class="form-control" placeholder="Key spoken mention (transcript excerpt)" />
       </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Country</label>
           <div class="cty-wrap">
-            <input type="text" id="bCountry" class="form-control" placeholder="Type to search country..." autocomplete="off" />
+            <input type="text" id="bCountry" class="form-control" placeholder="Country" autocomplete="off" />
             <ul class="cty-drop" id="bCountry-drop"></ul>
           </div>
         </div>
@@ -243,7 +246,7 @@
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Date</label>
+        <label class="form-label">Date Broadcasted</label>
         <input type="date" id="bDate" class="form-control" />
       </div>
     </div>
@@ -260,7 +263,7 @@
 const ORG_ID = '{{ org.id }}';
 function addMention() {
   const headline = document.getElementById('bHeadline').value.trim();
-  if (!headline) return alert('Headline is required');
+  if (!headline) return alert('Transcript is required');
   apiRequest(`/api/${ORG_ID}/broadcast/`, 'POST', {
     source: document.getElementById('bSource').value.trim(),
     headline,
@@ -269,7 +272,6 @@ function addMention() {
     country: document.getElementById('bCountry').value.trim(),
     sentiment: document.getElementById('bSentiment').value,
     ave: document.getElementById('bAve').value || 0,
-    duration: document.getElementById('bDuration').value.trim(),
     date_published: document.getElementById('bDate').value,
   }).then(() => { closeModal('addBroadcastModal'); location.reload(); });
 }

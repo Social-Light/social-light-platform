@@ -188,6 +188,104 @@
   margin-top: 4px;
 }
 
+/* Hot Topics */
+.rpt-hot-section {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+  border-radius: 12px;
+  padding: 22px 24px 20px;
+  margin-bottom: 28px;
+}
+.rpt-hot-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.rpt-hot-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+.rpt-hot-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  background: rgba(255,255,255,.15);
+  color: rgba(255,255,255,.7);
+  border-radius: 9999px;
+  padding: 2px 9px;
+}
+.rpt-hot-sub {
+  font-size: 12px;
+  color: rgba(255,255,255,.5);
+  margin: 0 0 16px;
+}
+.rpt-hot-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.rpt-hot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 9999px;
+  padding: 5px 14px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition: transform .15s;
+}
+.rpt-hot-chip:hover { transform: scale(1.06); }
+.rpt-hot-chip-count {
+  font-size: .75em;
+  opacity: .65;
+}
+.rpt-hot-empty {
+  color: rgba(255,255,255,.4);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Bar-style top topics row */
+.rpt-hot-bars {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 24px;
+}
+.rpt-hot-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rpt-hot-bar-label {
+  font-size: 12px;
+  color: rgba(255,255,255,.85);
+  min-width: 80px;
+  font-weight: 500;
+}
+.rpt-hot-bar-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,.12);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.rpt-hot-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+.rpt-hot-bar-n {
+  font-size: 11px;
+  color: rgba(255,255,255,.5);
+  min-width: 22px;
+  text-align: right;
+}
+
 /* Footer */
 .rpt-footer {
   border-top: 1px solid #e5e7eb;
@@ -242,6 +340,55 @@
     <p class="rpt-subtitle">{{ date_from|date:"d M Y" }} &mdash; {{ date_to|date:"d M Y" }}</p>
   </div>
   <hr class="rpt-divider">
+
+  <!-- ── Hot Topics ──────────────────────────────────────────────────────── -->
+  <div class="rpt-hot-section">
+    <div class="rpt-hot-header">
+      <p class="rpt-hot-title">&#128293; Hot Topics from Competitors</p>
+      <span class="rpt-hot-badge">{{ month_label }}</span>
+    </div>
+    <p class="rpt-hot-sub">Most discussed subjects across all competitor content during this period</p>
+
+    {% if hot_topics %}
+    <!-- Word cloud chips -->
+    <div class="rpt-hot-cloud">
+      {% for t in hot_topics %}
+      {% with rank=forloop.counter %}
+      {% if rank == 1 %}
+        <span class="rpt-hot-chip" style="background:rgba(239,68,68,.25);color:#fca5a5;font-size:17px;">
+          {{ t.word }} <span class="rpt-hot-chip-count">{{ t.count }}</span>
+        </span>
+      {% elif rank == 2 %}
+        <span class="rpt-hot-chip" style="background:rgba(245,158,11,.22);color:#fcd34d;font-size:15px;">
+          {{ t.word }} <span class="rpt-hot-chip-count">{{ t.count }}</span>
+        </span>
+      {% elif rank == 3 %}
+        <span class="rpt-hot-chip" style="background:rgba(16,185,129,.2);color:#6ee7b7;font-size:14px;">
+          {{ t.word }} <span class="rpt-hot-chip-count">{{ t.count }}</span>
+        </span>
+      {% elif rank <= 7 %}
+        <span class="rpt-hot-chip" style="background:rgba(99,102,241,.22);color:#a5b4fc;font-size:13px;">
+          {{ t.word }} <span class="rpt-hot-chip-count">{{ t.count }}</span>
+        </span>
+      {% elif rank <= 12 %}
+        <span class="rpt-hot-chip" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:12px;">
+          {{ t.word }} <span class="rpt-hot-chip-count">{{ t.count }}</span>
+        </span>
+      {% else %}
+        <span class="rpt-hot-chip" style="background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);font-size:11px;">
+          {{ t.word }}
+        </span>
+      {% endif %}
+      {% endwith %}
+      {% endfor %}
+    </div>
+
+    <!-- Bar breakdown (top 10) -->
+    <div class="rpt-hot-bars" id="hotBars" data-topics="{{ hot_topics_json|escapejs }}"></div>
+    {% else %}
+    <p class="rpt-hot-empty">No competitor content found for this period.</p>
+    {% endif %}
+  </div>
 
   <!-- KPI row -->
   <div class="rpt-kpi-row">
@@ -478,6 +625,32 @@
 
 {% block extra_js %}
 <script>
+// ── Hot Topics bars ────────────────────────────────────────────────────────
+(function () {
+  var container = document.getElementById('hotBars');
+  if (!container) return;
+  var raw = container.dataset.topics;
+  if (!raw) return;
+  var topics;
+  try { topics = JSON.parse(raw); } catch (e) { return; }
+  if (!topics || !topics.length) return;
+  var BAR_COLORS = ['#ef4444','#f59e0b','#10b981','#6366f1','#6366f1','#6366f1','#6366f1','#6366f1','#6366f1','#6366f1'];
+  var maxCount = topics[0].count || 1;
+  var html = '';
+  topics.slice(0, 10).forEach(function (t, i) {
+    var pct = Math.round(t.count / maxCount * 100);
+    var color = BAR_COLORS[i] || '#6366f1';
+    html += '<div class="rpt-hot-bar-row">' +
+      '<span class="rpt-hot-bar-label">' + t.word + '</span>' +
+      '<div class="rpt-hot-bar-track">' +
+        '<div class="rpt-hot-bar-fill" style="width:' + pct + '%;background:' + color + ';"></div>' +
+      '</div>' +
+      '<span class="rpt-hot-bar-n">' + t.count + '</span>' +
+    '</div>';
+  });
+  container.innerHTML = html;
+}());
+
 (function () {
   var BLUE_ORG  = '#1d4ed8';
   var BLUE_COMP = '#93c5fd';

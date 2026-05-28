@@ -93,7 +93,7 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
             </button>
             <div class="row-menu hidden">
-              <button class="row-menu-item" onclick="closeMeAndRun(this, () => editPrint({{ a.id }},'{{ a.source|escapejs }}','{{ a.headline|escapejs }}','{{ a.author|escapejs }}','{{ a.section|escapejs }}','{{ a.url|escapejs }}','{{ a.country|escapejs }}','{{ a.sentiment }}',{{ a.ave }},'{{ a.date_published|date:"Y-m-d" }}'))"><i class="bi bi-pencil"></i> Edit</button>
+              <button class="row-menu-item" onclick="closeMeAndRun(this, () => editPrint({{ a.id }},'{{ a.source|escapejs }}','{{ a.headline|escapejs }}','{{ a.author|escapejs }}','{{ a.section|escapejs }}','{{ a.url|escapejs }}','{{ a.country|escapejs }}','{{ a.sentiment }}',{{ a.ave }},{{ a.reach|default:0 }},'{{ a.date_published|date:"Y-m-d" }}'))"><i class="bi bi-pencil"></i> Edit</button>
               <button class="row-menu-item row-menu-item--danger" onclick="closeMeAndRun(this, () => deleteArticle({{ a.id }}))"><i class="bi bi-trash3"></i> Delete</button>
             </div>
           </div>
@@ -104,6 +104,14 @@
       {% endfor %}
     </tbody>
   </table>
+  {% if total > 30 %}
+  <div class="table-footer">
+    <div class="table-footer-info">Viewing {{ current_count }} out of {{ total }} articles</div>
+    {% if has_more %}
+    <a href="{{ next_page_url }}" class="btn btn-secondary btn-sm table-footer-btn">Load More</a>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 
 <!-- Add Modal -->
@@ -157,7 +165,11 @@
         </div>
         <div class="form-group">
           <label class="form-label">AVE</label>
-          <input type="number" id="pAve" class="form-control" placeholder="0" step="0.01" />
+          <input type="number" id="pAve" class="form-control" placeholder="0" step="0.01" value="0" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reach</label>
+          <input type="number" id="pReach" class="form-control" placeholder="0" value="0" />
         </div>
       </div>
       <div class="form-group">
@@ -221,7 +233,11 @@
         </div>
         <div class="form-group">
           <label class="form-label">AVE</label>
-          <input type="number" id="editPAve" class="form-control" step="0.01" />
+          <input type="number" id="editPAve" class="form-control" step="0.01" value="0" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reach</label>
+          <input type="number" id="editPReach" class="form-control" step="1" value="0" />
         </div>
       </div>
       <div class="form-group">
@@ -253,11 +269,12 @@ function addArticle() {
     country: document.getElementById('pCountry').value.trim(),
     sentiment: document.getElementById('pSentiment').value,
     ave: document.getElementById('pAve').value || 0,
+    reach: document.getElementById('pReach').value || 0,
     date_published: document.getElementById('pDate').value,
   }).then(() => { closeModal('addPrintModal'); location.reload(); });
 }
 
-function editPrint(id, source, headline, author, section, url, country, sentiment, ave, date) {
+function editPrint(id, source, headline, author, section, url, country, sentiment, ave, reach, date) {
   document.getElementById('editPrintId').value = id;
   document.getElementById('editPSource').value = source;
   document.getElementById('editPHeadline').value = headline;
@@ -267,6 +284,7 @@ function editPrint(id, source, headline, author, section, url, country, sentimen
   document.getElementById('editPCountry').value = country;
   document.getElementById('editPSentiment').value = sentiment;
   document.getElementById('editPAve').value = ave;
+  document.getElementById('editPReach').value = reach || 0;
   document.getElementById('editPDate').value = date;
   openModal('editPrintModal');
 }
@@ -282,6 +300,7 @@ function saveArticle() {
     country: document.getElementById('editPCountry').value.trim(),
     sentiment: document.getElementById('editPSentiment').value,
     ave: document.getElementById('editPAve').value || 0,
+    reach: document.getElementById('editPReach').value || 0,
     date_published: document.getElementById('editPDate').value,
   }).then(() => { closeModal('editPrintModal'); location.reload(); });
 }

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>{{ org.name }} – Source Analysis {{ date_from|date:"d M Y" }} to {{ date_to|date:"d M Y" }}</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    @page { size: A4 portrait; margin: 13mm 14mm; }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10pt;
+      color: #111827;
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      padding-top: 38px;
+    }
+
+    /* ── Back bar (screen only) ─────────────────────────── */
+    .back-bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: #0f172a;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 18px;
+      font-size: 9pt;
+      z-index: 1000;
+      gap: 1rem;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: #a5b4fc;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 9pt;
+      transition: color .15s;
+    }
+    .back-link:hover { color: #fff; }
+    .back-bar-title { font-size: 9pt; color: rgba(255,255,255,.55); }
+    .back-bar-print {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 14px;
+      background: #4f46e5;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      font-size: 9pt;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .back-bar-print:hover { background: #4338ca; }
+
+    /* ── Document header ────────────────────────────────── */
+    .doc-hdr {
+      background: #4f46e5;
+      color: #fff;
+      border-radius: 8px;
+      padding: 13px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .doc-org   { font-size: 12.5pt; font-weight: 800; }
+    .doc-type  { font-size: 9pt; color: rgba(255,255,255,.7); margin-top: 2px; }
+    .doc-right { text-align: right; }
+    .doc-period-lbl  { font-size: 7.5pt; color: rgba(255,255,255,.6); }
+    .doc-period-date { font-size: 10pt; font-weight: 700; margin-top: 2px; }
+    .doc-branding    { font-size: 7pt; color: rgba(255,255,255,.4); margin-top: 3px; }
+
+    /* ── Section ────────────────────────────────────────── */
+    .section {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 11px;
+      page-break-inside: avoid;
+    }
+
+    .section-top {
+      display: flex;
+      align-items: stretch;
+    }
+    .section-hdr-box {
+      flex-shrink: 0;
+      width: 150px;
+      padding: 9px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .section-hdr-title { font-size: 9pt; font-weight: 800; color: #fff; margin: 0 0 1px; }
+    .section-hdr-sub   { font-size: 7pt; color: rgba(255,255,255,.75); }
+
+    .section-desc {
+      flex: 1;
+      padding: 8px 12px;
+      font-size: 8pt;
+      color: #6b7280;
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .section-total {
+      flex-shrink: 0;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+      border-bottom: 1px solid #f3f4f6;
+      border-left: 1px solid #f3f4f6;
+    }
+    .section-total-lbl { font-size: 6.5pt; color: #9ca3af; text-transform: uppercase; letter-spacing: .05em; }
+    .section-total-val { font-size: 13pt; font-weight: 800; color: #111827; line-height: 1; }
+
+    /* ── Body: chart + table ────────────────────────────── */
+    .section-body { display: flex; align-items: center; padding: 10px 12px; gap: 18px; }
+
+    .chart-wrap { flex-shrink: 0; width: 200px; height: 200px; position: relative; }
+    .chart-center {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      text-align: center; pointer-events: none;
+    }
+    .chart-center-n { font-size: 13pt; font-weight: 800; color: #111827; line-height: 1; }
+    .chart-center-l { font-size: 6.5pt; color: #9ca3af; margin-top: 1px; }
+
+    .src-table {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0 16px;
+      align-content: start;
+    }
+    .src-row {
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+      padding: 3px 0;
+      border-bottom: 1px solid #f9fafb;
+    }
+    .src-row:last-child { border-bottom: none; }
+    .src-count { font-size: 8.5pt; font-weight: 700; color: #111827; min-width: 32px; text-align: right; flex-shrink: 0; }
+    .src-name  { font-size: 8pt; font-weight: 500; }
+    .src-pct   { font-size: 7pt; color: #9ca3af; margin-left: auto; flex-shrink: 0; }
+
+    /* ── Section footer ─────────────────────────────────── */
+    .section-footer {
+      padding: 4px 12px;
+      font-size: 7pt;
+      color: #9ca3af;
+      border-top: 1px solid #f3f4f6;
+    }
+
+    /* ── Empty state ────────────────────────────────────── */
+    .section-empty { padding: 14px; text-align: center; font-size: 8pt; color: #9ca3af; }
+
+    /* ── Document footer ────────────────────────────────── */
+    .doc-footer {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 7pt;
+      color: #9ca3af;
+    }
+
+    @media print {
+      .back-bar { display: none !important; }
+      body { padding-top: 0 !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Back bar -->
+  <div class="back-bar">
+    <a href="/app/reports/{{ org.id }}/source/?date_from={{ date_from_str }}&date_to={{ date_to_str }}" class="back-link">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+      Back to platform
+    </a>
+    <span class="back-bar-title">{{ org.name }} — Source Analysis · {{ period_label }}</span>
+    <button class="back-bar-print" onclick="window.print()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Save as PDF
+    </button>
+  </div>
+
+  <!-- Document header -->
+  <div class="doc-hdr">
+    <div>
+      <div class="doc-org">{{ org.name }}</div>
+      <div class="doc-type">Source Analysis Report</div>
+    </div>
+    <div class="doc-right">
+      <div class="doc-period-lbl">Reporting Period</div>
+      <div class="doc-period-date">{{ date_from|date:"d M Y" }} – {{ date_to|date:"d M Y" }}</div>
+      <div class="doc-branding">Generated by Social Light</div>
+    </div>
+  </div>
+
+  <!-- Sections -->
+  {% for section in sections %}
+  <div class="section">
+    <div class="section-top">
+      <div class="section-hdr-box" style="background:{{ section.accent }};">
+        <div class="section-hdr-title">Media Share</div>
+        <div class="section-hdr-sub">{{ section.label }}</div>
+      </div>
+      <div class="section-desc">Share of mentions per source — {{ section.label }}</div>
+      <div class="section-total">
+        <div class="section-total-lbl">Total</div>
+        <div class="section-total-val">{{ section.total }}</div>
+      </div>
+    </div>
+
+    {% if section.sources %}
+    <div class="section-body">
+      <div class="chart-wrap">
+        <canvas id="chart-{{ forloop.counter }}"></canvas>
+        <div class="chart-center">
+          <div class="chart-center-n">{{ section.total }}</div>
+          <div class="chart-center-l">mentions</div>
+        </div>
+      </div>
+      <div class="src-table">
+        {% for src in section.sources %}
+        <div class="src-row">
+          <span class="src-count">{{ src.count }}</span>
+          <span class="src-name" style="color:{{ src.color }};">{{ src.name }}</span>
+          <span class="src-pct">{{ src.pct }}%</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="section-empty">No data for this period.</div>
+    {% endif %}
+
+    <div class="section-footer">{{ period_label }}</div>
+  </div>
+  {% endfor %}
+
+  <!-- Document footer -->
+  <div class="doc-footer">
+    <span>{{ org.name }} · Source Analysis Report</span>
+    <span>{{ date_from|date:"d M Y" }} – {{ date_to|date:"d M Y" }}</span>
+    <span>Social Light</span>
+  </div>
+
+<script>
+var SECTIONS = [
+  {% for section in sections %}
+  { data: {{ section.chart_json|safe }} }{% if not forloop.last %},{% endif %}
+  {% endfor %}
+];
+
+var chartsReady = 0;
+var totalCharts = SECTIONS.filter(function(s){ return s.data.labels.length > 0; }).length;
+var printFired  = false;
+
+function triggerPrint() {
+  if (printFired) return;
+  printFired = true;
+  document.querySelectorAll('canvas').forEach(function(c) {
+    var img = new Image();
+    img.src = c.toDataURL('image/png');
+    img.style.width  = c.offsetWidth  + 'px';
+    img.style.height = c.offsetHeight + 'px';
+    img.style.display = 'block';
+    c.parentNode.replaceChild(img, c);
+  });
+  setTimeout(window.print, 350);
+}
+
+function onChartDone() {
+  chartsReady++;
+  if (chartsReady >= totalCharts) triggerPrint();
+}
+
+setTimeout(triggerPrint, 4000);
+
+SECTIONS.forEach(function(sec, idx) {
+  var el = document.getElementById('chart-' + (idx + 1));
+  if (!el || !sec.data.labels.length) return;
+  new Chart(el, {
+    type: 'doughnut',
+    data: {
+      labels: sec.data.labels,
+      datasets: [{
+        data: sec.data.counts,
+        backgroundColor: sec.data.colors,
+        borderWidth: 2,
+        borderColor: '#fff',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '62%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      animation: { duration: 600, onComplete: onChartDone },
+    }
+  });
+});
+
+if (totalCharts === 0) triggerPrint();
+</script>
+</body>
+</html>

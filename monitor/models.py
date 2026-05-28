@@ -7,6 +7,7 @@ SENTIMENT_CHOICES = [
     ('positive', 'Positive'),
     ('neutral', 'Neutral'),
     ('negative', 'Negative'),
+    ('mixed', 'Mixed'),
 ]
 
 COVERAGE_CHOICES = [
@@ -243,6 +244,39 @@ class MediaSource(models.Model):
 
     class Meta:
         ordering = ['name']
+
+
+class GeneratedReport(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='generated_reports')
+    title = models.CharField(max_length=300)
+    report_type = models.CharField(max_length=100)
+    modules = models.JSONField(default=list)
+    scope = models.JSONField(default=list)
+    created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True)
+    date_from = models.DateField(null=True, blank=True)
+    date_to = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    _TAG_MAP = {'posts': 'social', 'articles': 'online', 'printmedia': 'print', 'broadcast': 'broadcast'}
+    _VALID = {'social', 'online', 'broadcast', 'print'}
+
+    @property
+    def media_type_keys(self):
+        seen, keys = set(), []
+        for m in (self.modules or []):
+            key = m.split(':')[0] if ':' in m else m
+            key = self._TAG_MAP.get(key, key)
+            if key in self._VALID and key not in seen:
+                seen.add(key)
+                keys.append(key)
+        return keys
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.title
 
 
 class Alert(models.Model):

@@ -59,8 +59,13 @@ urlpatterns = [
 
     # Reports
     path('app/reports/<uuid:org_id>/', views.reports_view, name='reports'),
+    path('app/reports/<uuid:org_id>/full/', views.report_full, name='report_full'),
+    path('app/reports/<uuid:org_id>/sentiment/', views.report_sentiment, name='report_sentiment'),
+    path('app/reports/<uuid:org_id>/source/', views.report_source, name='report_source'),
     path('app/reports/<uuid:org_id>/competitor/', views.report_competitor, name='report_competitor'),
     path('app/reports/<uuid:org_id>/competitor/pptx/', views.report_competitor_pptx, name='report_competitor_pptx'),
+    path('api/<uuid:org_id>/reports/save/', views.report_save, name='report_save'),
+    path('api/<uuid:org_id>/reports/<uuid:report_id>/delete/', views.report_delete, name='report_delete'),
 
     # Alerts
     path('app/alerts/<uuid:org_id>/', views.alerts_view, name='alerts'),
