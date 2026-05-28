@@ -98,5 +98,6 @@ EMAIL_PORT          = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_HOST_USER     = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS       = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
-SERVER_EMAIL="noreply@sociallight.africa"
+SERVER_EMAIL        = os.getenv('SERVER_EMAIL', 'Social Light <noreply@sociallight.africa>')
+
 MEDIA_MONITOR_WEBHOOK_SECRET = os.getenv('MEDIA_MONITOR_WEBHOOK_SECRET', '')
