@@ -37,6 +37,11 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'socialmonitor.urls'
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://sociallight.africa",
+    "https://www.sociallight.africa",
+]
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -71,8 +76,9 @@ LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/app/organizations/'
 LOGOUT_REDIRECT_URL = '/login/'
 
-STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_URL = "/static/"
+STATIC_ROOT = "/app/staticfiles"
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 LANGUAGE_CODE = 'en-us'
