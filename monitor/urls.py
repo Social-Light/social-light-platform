@@ -37,6 +37,7 @@ urlpatterns = [
     # Media: Print
     path('app/media/print/<uuid:org_id>/', views.media_print, name='media_print'),
     path('api/<uuid:org_id>/print/', views.print_article_create, name='print_create'),
+    path('api/<uuid:org_id>/print/upload/', views.print_article_csv_upload, name='print_csv_upload'),
     path('api/<uuid:org_id>/print/<int:article_id>/', views.print_article_update, name='print_update'),
     path('api/<uuid:org_id>/print/<int:article_id>/delete/', views.print_article_delete, name='print_delete'),
 

@@ -1,7 +1,9 @@
+import csv
+import io
 import json
 import re
 import calendar
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from collections import defaultdict, Counter
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -641,6 +643,90 @@ def print_article_delete(request, org_id, article_id):
     article = get_object_or_404(PrintArticle, id=article_id, organization=org)
     article.delete()
     return JsonResponse({'ok': True})
+
+
+_SENTIMENT_MAP = {
+    '1': 'positive', 'positive': 'positive', 'pos': 'positive',
+    '0': 'neutral', 'neutral': 'neutral', 'neu': 'neutral', '': 'neutral',
+    '-1': 'negative', 'negative': 'negative', 'neg': 'negative',
+    'mixed': 'mixed',
+}
+
+
+def _parse_csv_date(value):
+    if not value:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    # Try ISO 8601 with optional trailing Z (e.g. "2026-05-26T00:00:00.000Z")
+    try:
+        return datetime.fromisoformat(value.replace('Z', '+00:00')).date()
+    except ValueError:
+        pass
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y'):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+@login_required
+@require_http_methods(['POST'])
+def print_article_csv_upload(request, org_id):
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+
+    for idx, row in enumerate(reader, start=2):  # row 1 is header
+        headline = (row.get('headline') or '').strip()
+        if not headline:
+            errors.append(f'Row {idx}: missing headline')
+            continue
+
+        published = _parse_csv_date(row.get('publicationDate'))
+        if not published:
+            errors.append(f'Row {idx}: invalid or missing publicationDate')
+            continue
+
+        sentiment_raw = (row.get('sentiment') or '').strip().lower()
+        sentiment = _SENTIMENT_MAP.get(sentiment_raw, 'neutral')
+
+        try:
+            ave_value = float((row.get('ave') or '0').strip() or 0)
+        except ValueError:
+            ave_value = 0
+
+        to_create.append(PrintArticle(
+            organization=org,
+            source=(row.get('publication') or '').strip(),
+            headline=headline,
+            author=(row.get('byline') or '').strip(),
+            section=(row.get('section') or '').strip(),
+            url=(row.get('url') or '').strip(),
+            date_published=published,
+            country=(row.get('country') or '').strip(),
+            sentiment=sentiment,
+            ave=ave_value,
+        ))
+
+    if to_create:
+        PrintArticle.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
 
 
 # ── Media: Social Posts ───────────────────────────────────────────────────────
