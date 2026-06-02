@@ -1987,18 +1987,21 @@ def user_create(request, org_id):
         token = default_token_generator.make_token(user)
         protocol = 'https' if request.is_secure() else 'http'
         domain = request.get_host()
-        body = render_to_string('monitor/welcome_email.txt', {
+        ctx = {
             'full_name': user.get_full_name() or username,
             'uid': uid,
             'token': token,
             'protocol': protocol,
             'domain': domain,
-        })
+        }
+        body = render_to_string('monitor/welcome_email.txt', ctx)
+        html_body = render_to_string('monitor/email/welcome_email.html', ctx)
         send_mail(
             subject='Welcome to Social Light — Set Your Password',
             message=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[email],
+            html_message=html_body,
             fail_silently=True,
         )
 
