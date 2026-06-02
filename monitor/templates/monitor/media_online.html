@@ -115,7 +115,7 @@
         <td>
           <div class="source-cell">
             <div class="source-icon">{{ a.source|first|upper }}</div>
-            <span class="fw-medium">{{ a.source }}</span>
+            <span class="fw-medium">{{ a.source|title }}</span>
           </div>
         </td>
         <td><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:45 }}</a></td>

@@ -1,4 +1,5 @@
 {% extends 'monitor/base.html' %}
+{% load humanize %}
 {% block title %}Competitor Analysis{% endblock %}
 
 {% block content %}
@@ -114,8 +115,8 @@
           </td>
           <td>{{ art.source }}</td>
           <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
-          <td>{{ art.reach|default:"—" }}</td>
-          <td>{{ art.ave|floatformat:0 }}</td>
+          <td>{{ art.reach|default:"—"|intcomma }}</td>
+          <td>{{ art.ave|floatformat:0|intcomma }}</td>
           <td>{{ art.date_published|date:"d/m/Y" }}</td>
           <td>{{ art.country|default:"—" }}</td>
           <td>
@@ -169,7 +170,7 @@
           </td>
           <td>{{ art.source }}</td>
           <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
-          <td>{{ art.ave|floatformat:0 }}</td>
+          <td>{{ art.ave|floatformat:0|intcomma }}</td>
           <td>{{ art.date_published|date:"d/m/Y" }}</td>
           <td>{{ art.country|default:"—" }}</td>
           <td>
@@ -223,7 +224,7 @@
           </td>
           <td>{{ art.source }}</td>
           <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
-          <td>{{ art.ave|floatformat:0 }}</td>
+          <td>{{ art.ave|floatformat:0|intcomma }}</td>
           <td>{{ art.date_published|date:"d/m/Y" }}</td>
           <td>{{ art.country|default:"—" }}</td>
           <td>
@@ -278,8 +279,8 @@
           </td>
           <td>{{ art.source }}</td>
           <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
-          <td>{{ art.reach|default:"—" }}</td>
-          <td>{{ art.ave|floatformat:0 }}</td>
+          <td>{{ art.reach|default:"—"|intcomma }}</td>
+          <td>{{ art.ave|floatformat:0|intcomma }}</td>
           <td>{{ art.date_published|date:"d/m/Y" }}</td>
           <td>{{ art.country|default:"—" }}</td>
           <td>

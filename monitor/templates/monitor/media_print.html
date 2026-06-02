@@ -87,7 +87,7 @@
       {% for a in articles %}
       <tr>
         <td><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:50 }}</a></td>
-        <td class="fw-medium">{{ a.source }}</td>
+        <td class="fw-medium">{{ a.source|title }}</td>
         <td class="text-muted">{{ a.author|default:"—" }}</td>
         <td><span class="section-pill">{{ a.section|default:"Main" }}</span></td>
         <td class="text-muted">{{ a.country|default:"Unknown" }}</td>

@@ -422,13 +422,23 @@ def analytics(request, org_id):
     neu = qs.filter(sentiment='neutral').count()
     neg = qs.filter(sentiment='negative').count()
 
-    # Top sources
+    # Top sources (normalize platform/source names so variants map together)
     source_field = 'source' if hasattr(qs.model, 'source') else 'platform'
-    top_sources = list(
-        qs.values(source_field).annotate(c=Count('id')).order_by('-c')[:10]
-    )
-    top_sources_labels = [row.get(source_field) or 'Unknown' for row in top_sources]
-    top_sources_values = [row['c'] for row in top_sources]
+    raw_counts = qs.values(source_field).annotate(c=Count('id'))
+    agg = Counter()
+    for row in raw_counts:
+        raw_name = row.get(source_field) or ''
+        if source_field == 'platform':
+            name = _normalize_platform(raw_name)
+        else:
+            name = raw_name.strip() or 'Unknown'
+        agg[name] += row['c']
+    top = agg.most_common(10)
+    top_sources_labels = [t[0] for t in top]
+    top_sources_values = [t[1] for t in top]
+    # Also provide `top_sources` as a list of dicts for templates that expect the
+    # original queryset-style rows (keyed by `source` or `platform`).
+    top_sources = [{source_field: t[0], 'c': t[1]} for t in top]
 
     # Countries
     top_countries = list(
@@ -670,6 +680,29 @@ _SENTIMENT_MAP = {
     '-1': 'negative', 'negative': 'negative', 'neg': 'negative',
     'mixed': 'mixed',
 }
+
+_PLATFORM_MAP = {
+    'facebook': 'Facebook',
+    'twitter': 'Twitter',
+    'x': 'Twitter',
+    'instagram': 'Instagram',
+    'linkedin': 'LinkedIn',
+    'youtube': 'YouTube',
+    'tiktok': 'TikTok',
+    'other': 'Other',
+}
+
+
+def _normalize_platform(platform_raw):
+    """Normalize platform name to standard form."""
+    if not platform_raw:
+        return 'Other'
+    normalized = _PLATFORM_MAP.get(platform_raw.strip().lower(), None)
+    if normalized:
+        return normalized
+    # If not found, title-case and return
+    return platform_raw.strip().title()
+
 
 
 def _parse_csv_date(value):

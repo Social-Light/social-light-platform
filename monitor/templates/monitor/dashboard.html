@@ -1,4 +1,5 @@
 {% extends 'monitor/base.html' %}
+{% load humanize %}
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
@@ -189,9 +190,9 @@
             <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
             <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
             <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
-            <td class="text-muted">{{ a.ave|floatformat:2 }}</td>
+            <td class="text-muted">{{ a.ave|floatformat:2|intcomma }}</td>
             <td><span class="badge badge--blue">{{ a.coverage|default:"Earned" }}</span></td>
-            <td class="text-muted">{{ a.reach|default:0 }}</td>
+            <td class="text-muted">{{ a.reach|default:0|intcomma }}</td>
             <td>
               <button class="icon-btn icon-btn--danger" onclick="deleteOnline('{{ org.id }}',{{ a.id }})">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -263,7 +264,7 @@
             <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
             <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
             <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
-            <td class="text-muted">{{ a.ave|floatformat:2 }}</td>
+            <td class="text-muted">{{ a.ave|floatformat:2|intcomma }}</td>
             <td class="text-muted">{{ a.section|default:"Main" }}</td>
             <td>
               <button class="icon-btn icon-btn--danger" onclick="deletePrint('{{ org.id }}',{{ a.id }})">
@@ -337,7 +338,7 @@
             <td class="text-muted">{{ b.date_published|date:"M j, Y" }}</td>
             <td class="text-muted">{{ b.country|default:"Unknown" }}</td>
             <td><span class="badge badge--{{ b.sentiment }}">{{ b.get_sentiment_display }}</span></td>
-            <td class="text-muted">{{ b.ave|floatformat:2 }}</td>
+            <td class="text-muted">{{ b.ave|floatformat:2|intcomma }}</td>
             <td class="text-muted">{{ b.duration|default:"—" }}</td>
             <td class="text-muted">{{ b.broadcast_type }}</td>
             <td>
@@ -422,9 +423,9 @@
             <td class="text-muted">{{ p.date_published|date:"M j, Y" }}</td>
             <td class="text-muted">{{ p.country|default:"Unknown" }}</td>
             <td><span class="badge badge--{{ p.sentiment }}">{{ p.get_sentiment_display }}</span></td>
-            <td class="text-muted">{{ p.ave|floatformat:2 }}</td>
+            <td class="text-muted">{{ p.ave|floatformat:2|intcomma }}</td>
             <td class="text-muted">{{ p.rank|floatformat:2 }}</td>
-            <td class="text-muted">{{ p.reach|default:0 }}</td>
+            <td class="text-muted">{{ p.reach|default:0|intcomma }}</td>
             <td>
               <button class="icon-btn icon-btn--danger" onclick="deleteSocial('{{ org.id }}',{{ p.id }})">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>

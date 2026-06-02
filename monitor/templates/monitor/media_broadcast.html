@@ -85,7 +85,7 @@
     <tbody>
       {% for m in mentions %}
       <tr>
-        <td><span class="fw-medium">{{ m.source }}</span></td>
+        <td><span class="fw-medium">{{ m.source|title }}</span></td>
         <td><a href="{{ m.url }}" target="_blank" class="table-link">{{ m.headline|truncatechars:55 }}</a></td>
         <td><span class="type-badge type-badge--{{ m.broadcast_type|lower }}">{{ m.broadcast_type }}</span></td>
         <td class="text-muted">{{ m.country|default:"Unknown" }}</td>

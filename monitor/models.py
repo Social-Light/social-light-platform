@@ -20,7 +20,7 @@ COVERAGE_CHOICES = [
 
 PLATFORM_CHOICES = [
     ('Facebook', 'Facebook'),
-    ('Twitter', 'Twitter'),
+    ('Twitter', 'X'),
     ('Instagram', 'Instagram'),
     ('LinkedIn', 'LinkedIn'),
     ('YouTube', 'YouTube'),
