@@ -108,7 +108,21 @@
 <!-- Latest News -->
 <div class="latest-news-section">
   <h2 class="section-title"><a href="{% url 'monitor:media_online' org.id %}">Latest News</a></h2>
-
+  
+  <div class="global-search" style="margin:14px 0 20px;display:flex;align-items:center;gap:12px;">
+    <input id="globalSearchInput" type="search" placeholder="Search articles" class="form-control" style="max-width:520px;padding:10px 14px;border-radius:8px;border:1px solid #cbd5e1;background:#ffffff;color:#0f172a;"/>
+    <div style="position:relative;">
+      <select id="globalSearchType" class="form-control" style="width:160px;padding:10px 12px;padding-right:36px;border-radius:8px;border:1px solid #cbd5e1;background:#ffffff;color:#0f172a;appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;">
+        <option value="all">All Media</option>
+        <option value="online">Online</option>
+        <option value="print">Print</option>
+        <option value="broadcast">Broadcast</option>
+        <option value="social">Social</option>
+      </select>
+      <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#0f172a;font-size:14px;">▾</span>
+    </div>
+    <div id="globalSearchCount" style="color:rgba(255,255,255,.8);font-size:13px;margin-left:auto;">Showing all</div>
+  </div>
   <!-- Online Articles -->
   <div class="subsection">
     <div class="subsection-header">
@@ -132,6 +146,9 @@
       </select>
       <select class="filter-select" data-field="country" onchange="filterTable(this,'online-table','country')">
         <option value="">All Countries</option>
+        {% for c in online_countries %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
       </select>
       <select class="filter-select" data-field="coverage" onchange="filterTable(this,'online-table','coverage')">
         <option value="">All Coverage</option>
@@ -203,8 +220,29 @@
       </a>
     </div>
     {% if latest_print %}
+    <div class="filter-bar">
+      <select class="filter-select" data-field="sentiment" onchange="filterTable(this,'print-table','sentiment')">
+        <option value="">All Sentiment</option>
+        <option value="positive">Positive</option>
+        <option value="neutral">Neutral</option>
+        <option value="negative">Negative</option>
+      </select>
+      <select class="filter-select" data-field="country" onchange="filterTable(this,'print-table','country')">
+        <option value="">All Countries</option>
+        {% for c in print_countries %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+      <select class="filter-select" data-field="section" onchange="filterTable(this,'print-table','section')">
+        <option value="">All Sections</option>
+        {% for s in print_sections %}
+        <option value="{{ s }}">{{ s }}</option>
+        {% endfor %}
+      </select>
+      <span class="filter-count">Showing {{ latest_print|length }} of {{ latest_print|length }} articles</span>
+    </div>
     <div class="table-card">
-      <table class="data-table table-hover">
+      <table id="print-table" class="data-table table-hover">
         <thead>
           <tr>
             <th>Source</th>
@@ -219,7 +257,7 @@
         </thead>
         <tbody>
           {% for a in latest_print %}
-          <tr>
+          <tr data-sentiment="{{ a.sentiment }}" data-country="{{ a.country|default:'Unknown' }}" data-section="{{ a.section|default:'Main' }}">
             <td class="text-muted">{{ a.source }}</td>
             <td><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:50 }}</a></td>
             <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
@@ -264,13 +302,15 @@
       </select>
       <select class="filter-select" data-field="country" onchange="filterTable(this,'broadcast-table','country')">
         <option value="">All Countries</option>
+        {% for c in broadcast_countries %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
       </select>
       <select class="filter-select" data-field="broadcast_type" onchange="filterTable(this,'broadcast-table','broadcast_type')">
         <option value="">All Types</option>
-        <option value="radio">Radio</option>
-        <option value="tv">TV</option>
-        <option value="podcast">Podcast</option>
-        <option value="online">Online</option>
+        {% for code,label in broadcast_types %}
+        <option value="{{ code|lower }}">{{ label }}</option>
+        {% endfor %}
       </select>
       <span class="filter-count">Showing {{ latest_broadcast|length }} of {{ latest_broadcast|length }} mentions</span>
     </div>
@@ -328,8 +368,29 @@
       </a>
     </div>
     {% if latest_social %}
+    <div class="filter-bar">
+      <select class="filter-select" data-field="sentiment" onchange="filterTable(this,'social-table','sentiment')">
+        <option value="">All Sentiment</option>
+        <option value="positive">Positive</option>
+        <option value="neutral">Neutral</option>
+        <option value="negative">Negative</option>
+      </select>
+      <select class="filter-select" data-field="country" onchange="filterTable(this,'social-table','country')">
+        <option value="">All Countries</option>
+        {% for c in social_countries %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+      <select class="filter-select" data-field="platform" onchange="filterTable(this,'social-table','platform')">
+        <option value="">All Platforms</option>
+        {% for p in social_platforms %}
+        <option value="{{ p|lower }}">{{ p }}</option>
+        {% endfor %}
+      </select>
+      <span class="filter-count">Showing {{ latest_social|length }} of {{ latest_social|length }} posts</span>
+    </div>
     <div class="table-card">
-      <table class="data-table table-hover">
+      <table id="social-table" class="data-table table-hover">
         <thead>
           <tr>
             <th>Source</th>
@@ -346,7 +407,7 @@
         </thead>
         <tbody>
           {% for p in latest_social %}
-          <tr>
+          <tr data-sentiment="{{ p.sentiment }}" data-country="{{ p.country|default:'Unknown' }}" data-platform="{{ p.platform|lower }}">
             <td>
               <div class="source-cell">
                 <div class="source-icon">{{ p.platform|first|upper }}</div>
@@ -492,5 +553,40 @@ function filterTable(select, tableId, field) {
     countEl.textContent = `Showing ${visible} of ${rows.length} articles`;
   }
 }
+
+// Global search across media tables
+function searchArticles() {
+  const term = (document.getElementById('globalSearchInput')?.value || '').trim().toLowerCase();
+  const type = (document.getElementById('globalSearchType')?.value || 'all');
+  const tables = [];
+  if (type === 'all' || type === 'online') tables.push(document.getElementById('online-table'));
+  if (type === 'all' || type === 'print') tables.push(document.getElementById('print-table'));
+  if (type === 'all' || type === 'broadcast') tables.push(document.getElementById('broadcast-table'));
+  if (type === 'all' || type === 'social') tables.push(document.getElementById('social-table'));
+
+  let totalRows = 0, matched = 0;
+  tables.forEach(t => {
+    if (!t) return;
+    const rows = Array.from(t.querySelectorAll('tbody tr'));
+    totalRows += rows.length;
+    rows.forEach(row => {
+      const text = row.textContent.replace(/\s+/g,' ').toLowerCase();
+      const show = term === '' ? true : text.indexOf(term) !== -1;
+      row.style.display = show ? '' : 'none';
+      if (show) matched += 1;
+    });
+  });
+  const countEl = document.getElementById('globalSearchCount');
+  if (countEl) {
+    if (!term) countEl.textContent = `Showing all (${totalRows})`;
+    else countEl.textContent = `Matches: ${matched} of ${totalRows}`;
+  }
+}
+
+// Wire up search input and media type select
+const gInput = document.getElementById('globalSearchInput');
+if (gInput) gInput.addEventListener('input', searchArticles);
+const gType = document.getElementById('globalSearchType');
+if (gType) gType.addEventListener('change', searchArticles);
 </script>
 {% endblock %}

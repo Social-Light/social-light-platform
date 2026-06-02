@@ -29,6 +29,16 @@
     .nav-logo-sub{font-size:8px;color:rgba(255,255,255,.4);letter-spacing:.14em;text-transform:uppercase;display:block;margin-top:1px;}
     .nav-signin{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;background:#4294CE;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;transition:background .15s,transform .15s;font-family:inherit;}
     .nav-signin:hover{background:#306EB1;transform:translateY(-1px);color:#fff;}
+    .nav-actions{display:flex;align-items:center;gap:10px;}
+    .nav-dropdown-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s,transform .15s;font-family:inherit;}
+    .nav-dropdown-btn:hover{background:rgba(255,255,255,.14);transform:translateY(-1px);}
+    .service-dropdown-menu{min-width:280px;background:rgba(15,23,42,.98);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);border-radius:18px;box-shadow:0 18px 40px rgba(15,23,42,.25);padding:8px;}
+    .service-dropdown-item{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;margin:0 6px;transition:background .2s,transform .2s;color:#fff;}
+    .service-dropdown-item:hover,.service-dropdown-item:focus{background:rgba(255,255,255,.06);transform:translateY(-1px);text-decoration:none;color:#fff;}
+    .service-item-title{display:block;font-size:15px;font-weight:700;line-height:1.2;}
+    .service-item-desc{display:block;font-size:13px;color:rgba(255,255,255,.7);line-height:1.4;margin-top:4px;}
+    .service-dropdown-item svg{flex-shrink:0;color:#7dd3fc;}
+    .dropdown-item{padding:0;border:none;background:transparent;}
 
     /* Hero */
     .hero{position:relative;min-height:100vh;overflow:hidden;display:flex;align-items:center;background:var(--navy-dk);}
@@ -138,10 +148,37 @@
         <span class="nav-logo-sub">Globally African</span>
       </div>
     </a>
-    <a href="{% url 'monitor:login' %}" class="nav-signin">
-      Sign In
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-    </a>
+    <div class="nav-actions">
+      <div class="dropdown">
+        <button class="nav-dropdown-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          Services
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end service-dropdown-menu">
+          <li>
+            <a class="dropdown-item service-dropdown-item" href="{{ article_extractor_url }}" target="_blank" rel="noopener">
+              <div>
+                <span class="service-item-title">Extractor</span>
+                <span class="service-item-desc">Extract content from web sources</span>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item service-dropdown-item" href="#">
+              <div>
+                <span class="service-item-title">Crawler</span>
+                <span class="service-item-desc">Scan sites and collect pages</span>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+          </li>
+        </ul>
+      </div>
+      <a href="{% url 'monitor:login' %}" class="nav-signin">
+        Sign In
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+    </div>
   </div>
 </nav>
 

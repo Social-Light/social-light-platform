@@ -1,3 +1,4 @@
+import re
 import uuid
 from django.db import models
 from django.contrib.auth.models import AbstractUser
@@ -122,12 +123,27 @@ class Keyword(models.Model):
 class Competitor(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='competitors')
     name = models.CharField(max_length=200)
+    aliases = models.TextField(blank=True, default='',
+                               help_text='Comma-separated alternative names/keywords used to match coverage')
     website = models.URLField(blank=True)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
+
+    def match_terms(self):
+        """All terms that should match this competitor in coverage: the name plus
+        any comma/newline-separated aliases. De-duplicated (case-insensitive),
+        empties dropped, original casing preserved."""
+        terms = [self.name] + re.split(r'[,\n]', self.aliases or '')
+        seen, out = set(), []
+        for t in terms:
+            t = t.strip()
+            if t and t.lower() not in seen:
+                seen.add(t.lower())
+                out.append(t)
+        return out
 
     class Meta:
         ordering = ['name']

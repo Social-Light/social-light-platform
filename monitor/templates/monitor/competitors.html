@@ -41,6 +41,7 @@
       <span class="legend-dot" style="background:#818cf8"></span><span class="legend-label">Online Articles</span>
       <span class="legend-dot" style="background:#34d399"></span><span class="legend-label">Broadcast Articles</span>
       <span class="legend-dot" style="background:#f87171"></span><span class="legend-label">Print Media Articles</span>
+      <span class="legend-dot" style="background:#fbbf24"></span><span class="legend-label">Social Posts</span>
     </div>
     <div class="chart-body">
       <canvas id="yearlyLineChart"></canvas>
@@ -72,6 +73,7 @@
   <button class="comp-tab active" data-tab="online" onclick="switchTab('online')">Online ({{ online_count }})</button>
   <button class="comp-tab" data-tab="broadcast" onclick="switchTab('broadcast')">Broadcast ({{ broadcast_count }})</button>
   <button class="comp-tab" data-tab="print" onclick="switchTab('print')">Print ({{ print_count }})</button>
+  <button class="comp-tab" data-tab="social" onclick="switchTab('social')">Social ({{ social_count }})</button>
 </div>
 
 <!-- Online Tab -->
@@ -239,6 +241,62 @@
   </div>
 </div>
 
+<!-- Social Tab -->
+<div class="comp-tab-content" id="tab-social">
+  <div class="table-card">
+    <div class="table-card-header">
+      <h3 class="table-section-title">Social Media Coverage</h3>
+      <p class="table-section-sub">Competitor mentions in social media posts</p>
+    </div>
+    {% if social_articles %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Competitor</th>
+          <th>Post</th>
+          <th>Page / Platform</th>
+          <th>Sentiment</th>
+          <th>Reach</th>
+          <th>AVE</th>
+          <th>Date</th>
+          <th>Country</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for art in social_articles %}
+        <tr>
+          <td>
+            <div class="comp-cell">
+              <div class="comp-avatar comp-avatar--sm">{{ art.competitor_name|first|upper }}</div>
+              <span class="comp-cell-name">{{ art.competitor_name }}</span>
+            </div>
+          </td>
+          <td class="headline-cell">
+            {% if art.url %}<a href="{{ art.url }}" target="_blank" class="article-link">{{ art.headline|truncatechars:80 }}</a>
+            {% else %}{{ art.headline|truncatechars:80 }}{% endif %}
+          </td>
+          <td>{{ art.source }}</td>
+          <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
+          <td>{{ art.reach|default:"—" }}</td>
+          <td>{{ art.ave|floatformat:0 }}</td>
+          <td>{{ art.date_published|date:"d/m/Y" }}</td>
+          <td>{{ art.country|default:"—" }}</td>
+          <td>
+            <button class="icon-btn icon-btn--danger" data-type="social" data-id="{{ art.id }}" onclick="deleteArticle(this)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state-inline">No social posts match competitor names.</div>
+    {% endif %}
+  </div>
+</div>
+
 {% else %}
 <!-- Empty state: no competitors configured -->
 <div class="empty-state-card">
@@ -260,6 +318,11 @@
       <div class="form-group">
         <label class="form-label">Competitor Name *</label>
         <input type="text" id="compName" class="form-control" placeholder="Organisation name" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Other names / keywords</label>
+        <input type="text" id="compAliases" class="form-control" placeholder="e.g. FNB, First National Bank" />
+        <small class="text-muted">Comma-separated. An article matches this competitor if the name or any of these appears in it.</small>
       </div>
       <div class="form-group">
         <label class="form-label">Website</label>
@@ -286,7 +349,8 @@
   "months":    {{ months_json|safe }},
   "onlineY":   {{ online_yearly_json|safe }},
   "broadcastY":{{ broadcast_yearly_json|safe }},
-  "printY":    {{ print_yearly_json|safe }}
+  "printY":    {{ print_yearly_json|safe }},
+  "socialY":   {{ social_yearly_json|safe }}
 }
 </script>
 <script>
@@ -308,6 +372,7 @@ const MONTHS      = _cd.months;
 const ONLINE_Y    = _cd.onlineY;
 const BROADCAST_Y = _cd.broadcastY;
 const PRINT_Y     = _cd.printY;
+const SOCIAL_Y    = _cd.socialY;
 
 const PALETTE = [
   '#f87171','#fb923c','#fbbf24','#a3e635','#34d399',
@@ -353,6 +418,7 @@ function buildLine() {
         { label: 'Online Articles',    data: ONLINE_Y,    borderColor: '#818cf8', backgroundColor: 'rgba(129,140,248,0.08)', tension: 0.3, pointRadius: 4, fill: true },
         { label: 'Broadcast Articles', data: BROADCAST_Y, borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.08)',  tension: 0.3, pointRadius: 4, fill: true },
         { label: 'Print Media Articles', data: PRINT_Y,   borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.08)', tension: 0.3, pointRadius: 4, fill: true },
+        { label: 'Social Posts',       data: SOCIAL_Y,   borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.08)',  tension: 0.3, pointRadius: 4, fill: true },
       ],
     },
     options: {
@@ -377,6 +443,7 @@ function addComp() {
   if (!name) return alert('Name is required');
   apiRequest(`/api/${ORG_ID}/competitors/`, 'POST', {
     name,
+    aliases: document.getElementById('compAliases').value.trim(),
     website: document.getElementById('compWebsite').value.trim(),
     notes: document.getElementById('compNotes').value.trim(),
   }).then(() => { closeModal('addCompModal'); location.reload(); });

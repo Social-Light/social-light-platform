@@ -31,6 +31,7 @@ urlpatterns = [
     # Media: Online Articles
     path('app/media/online/<uuid:org_id>/', views.media_online, name='media_online'),
     path('api/<uuid:org_id>/online/', views.online_article_create, name='online_create'),
+    path('api/<uuid:org_id>/online/upload/', views.online_article_csv_upload, name='online_csv_upload'),
     path('api/<uuid:org_id>/online/<int:article_id>/', views.online_article_update, name='online_update'),
     path('api/<uuid:org_id>/online/<int:article_id>/delete/', views.online_article_delete, name='online_delete'),
 
@@ -46,16 +47,19 @@ urlpatterns = [
     path('api/<uuid:org_id>/social/', views.social_post_create, name='social_create'),
     path('api/<uuid:org_id>/social/<int:post_id>/', views.social_post_update, name='social_update'),
     path('api/<uuid:org_id>/social/<int:post_id>/delete/', views.social_post_delete, name='social_delete'),
+    path('api/<uuid:org_id>/social/upload/', views.social_post_csv_upload, name='social_csv_upload'),
 
     # Media: Broadcast
     path('app/media/broadcast/<uuid:org_id>/', views.media_broadcast, name='media_broadcast'),
     path('api/<uuid:org_id>/broadcast/', views.broadcast_create, name='broadcast_create'),
     path('api/<uuid:org_id>/broadcast/<int:mention_id>/', views.broadcast_update, name='broadcast_update'),
     path('api/<uuid:org_id>/broadcast/<int:mention_id>/delete/', views.broadcast_delete, name='broadcast_delete'),
+    path('api/<uuid:org_id>/broadcast/upload/', views.broadcast_csv_upload, name='broadcast_csv_upload'),
 
     # Competitors
     path('app/competitors/<uuid:org_id>/', views.competitors_view, name='competitors'),
     path('api/<uuid:org_id>/competitors/', views.competitor_create, name='competitor_create'),
+    path('api/<uuid:org_id>/competitors/<int:comp_id>/', views.competitor_update, name='competitor_update'),
     path('api/<uuid:org_id>/competitors/<int:comp_id>/delete/', views.competitor_delete, name='competitor_delete'),
 
     # Reports

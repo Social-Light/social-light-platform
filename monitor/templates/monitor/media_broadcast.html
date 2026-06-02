@@ -1,4 +1,5 @@
 {% extends 'monitor/base.html' %}
+{% load humanize %}
 {% block title %}Broadcast Media{% endblock %}
 
 {% block content %}
@@ -7,10 +8,16 @@
     <h1 class="page-title">Broadcast Media</h1>
     <p class="page-subtitle">Track TV and radio coverage</p>
   </div>
-  <button class="btn btn-primary" onclick="openModal('addBroadcastModal')">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    Add Article
-  </button>
+  <div style="display:flex; gap:8px;">
+    <button class="btn btn-secondary" onclick="openModal('uploadBroadcastModal')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Load Articles
+    </button>
+    <button class="btn btn-primary" onclick="openModal('addBroadcastModal')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Article
+    </button>
+  </div>
 </div>
 
 <!-- Filters & Search card -->
@@ -84,7 +91,7 @@
         <td class="text-muted">{{ m.country|default:"Unknown" }}</td>
         <td class="text-muted">{{ m.date_published|date:"M j, Y" }}</td>
         <td><span class="badge badge--{{ m.sentiment }}">{{ m.get_sentiment_display }}</span></td>
-        <td class="text-muted">{{ m.ave|floatformat:0 }}</td>
+        <td class="text-muted">{{ m.ave|floatformat:2|intcomma }}</td>
         <td>
           <div class="row-menu-wrap">
             <button class="row-menu-btn" onclick="toggleRowMenu(this)">
@@ -117,6 +124,31 @@
     {% endif %}
   </div>
   {% endif %}
+</div>
+
+<!-- Upload CSV Modal -->
+<div class="modal-overlay hidden" id="uploadBroadcastModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Load Broadcast Mentions from CSV</h2>
+        <p class="modal-subtitle">Bulk import broadcast mentions. The <code>_id</code> column is ignored; new IDs are assigned automatically.</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('uploadBroadcastModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">CSV File</label>
+        <input type="file" id="bCsvFile" class="form-control" accept=".csv,text/csv" />
+        <small class="text-muted">Expected columns: _id,id,client,search,keyword,station,country,mentionDT,duration,mention,ave,stationType,url,createdAt</small>
+      </div>
+      <div id="bCsvResult" style="margin-top:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('uploadBroadcastModal')">Cancel</button>
+      <button class="btn btn-primary" id="bCsvUploadBtn" onclick="uploadBroadcastCsv()">Upload</button>
+    </div>
+  </div>
 </div>
 
 <!-- Edit Modal -->
@@ -320,6 +352,45 @@ function saveMention() {
     date_published: document.getElementById('editBDate').value,
   }).then(() => { closeModal('editBroadcastModal'); location.reload(); });
 }
+
+function uploadBroadcastCsv() {
+  const input = document.getElementById('bCsvFile');
+  const resultEl = document.getElementById('bCsvResult');
+  const btn = document.getElementById('bCsvUploadBtn');
+  const file = input.files && input.files[0];
+  if (!file) { resultEl.innerHTML = '<span style="color:#dc2626;">Please choose a CSV file.</span>'; return; }
+
+  const fd = new FormData();
+  fd.append('file', file);
+  btn.disabled = true;
+  btn.textContent = 'Uploading...';
+  resultEl.innerHTML = '';
+
+  fetch(`/api/${ORG_ID}/broadcast/upload/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') || '' },
+    body: fd,
+  })
+    .then(async (res) => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`);
+      return data;
+    })
+    .then((data) => {
+      let html = `<div style="color:#059669;">Imported ${data.created} mention(s).</div>`;
+      if (data.errors && data.errors.length) {
+        html += `<details style="margin-top:8px;"><summary>${data.errors.length} row(s) skipped</summary><ul style="margin:6px 0 0 18px;">` +
+          data.errors.slice(0, 20).map(e => `<li>${e}</li>`).join('') + '</ul></details>';
+      }
+      resultEl.innerHTML = html;
+      setTimeout(() => { closeModal('uploadBroadcastModal'); location.reload(); }, 1200);
+    })
+    .catch((err) => {
+      resultEl.innerHTML = `<span style="color:#dc2626;">${err.message}</span>`;
+    })
+    .finally(() => { btn.disabled = false; btn.textContent = 'Upload'; });
+}
+
 function toggleDate(id) { document.getElementById(id).showPicker?.() || document.getElementById(id).click(); }
 initCountryInput('bCountry');
 initCountryInput('editBCountry');

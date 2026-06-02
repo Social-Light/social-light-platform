@@ -21,8 +21,9 @@ from .models import (
     OnlineArticle, PrintArticle, SocialMediaPost, BroadcastMention, Alert, MediaSource,
     GeneratedReport,
     SENTIMENT_CHOICES, COVERAGE_CHOICES, PLATFORM_CHOICES, INDUSTRY_CHOICES, ROLE_CHOICES,
-    SOURCE_TYPE_CHOICES,
+    SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES,
 )
+from .relevancy import compute_relevancy
 
 COMPETITOR_SUGGESTIONS = {
     'Banking & Financial Services': [
@@ -312,6 +313,15 @@ def dashboard(request, org_id):
     latest_social = org.social_posts.all()[:8]
     latest_broadcast = org.broadcast_mentions.all()[:8]
 
+    # Distinct lists for dashboard filters
+    print_countries = list(org.print_articles.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    print_sections = list(org.print_articles.exclude(section='').values_list('section', flat=True).distinct().order_by('section'))
+    social_countries = list(org.social_posts.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    social_platforms = list(org.social_posts.exclude(platform='').values_list('platform', flat=True).distinct().order_by('platform'))
+    online_countries = list(org.online_articles.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    broadcast_countries = list(org.broadcast_mentions.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    broadcast_types = BROADCAST_TYPE_CHOICES
+
     # Media types present
     media_types = []
     if total_online: media_types.append('Online')
@@ -340,6 +350,13 @@ def dashboard(request, org_id):
         'latest_print': latest_print,
         'latest_social': latest_social,
         'latest_broadcast': latest_broadcast,
+        'print_countries': print_countries,
+        'print_sections': print_sections,
+        'social_countries': social_countries,
+        'social_platforms': social_platforms,
+        'online_countries': online_countries,
+        'broadcast_countries': broadcast_countries,
+        'broadcast_types': broadcast_types,
         'current_year': today.year,
     })
 
@@ -500,11 +517,13 @@ def media_online(request, org_id):
 def online_article_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
+    headline = data.get('headline', '').strip()
+    summary = data.get('summary', '').strip()
     article = OnlineArticle.objects.create(
         organization=org,
         source=data.get('source', '').strip(),
-        headline=data.get('headline', '').strip(),
-        summary=data.get('summary', '').strip(),
+        headline=headline,
+        summary=summary,
         url=data.get('url', '').strip(),
         date_published=data.get('date_published') or date.today(),
         country=data.get('country', '').strip(),
@@ -512,7 +531,7 @@ def online_article_create(request, org_id):
         ave=float(data.get('ave', 0) or 0),
         coverage=data.get('coverage', 'Not Set'),
         reach=int(data.get('reach', 0) or 0),
-        relevancy=float(data.get('relevancy', 0) or 0),
+        relevancy=compute_relevancy(headline, summary, org=org),
     )
     return JsonResponse({'id': article.id, 'headline': article.headline[:60]})
 
@@ -724,6 +743,202 @@ def print_article_csv_upload(request, org_id):
 
     if to_create:
         PrintArticle.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
+
+
+@login_required
+@require_http_methods(['POST'])
+def online_article_csv_upload(request, org_id):
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+    keywords = list(org.keywords.all())  # fetched once; reused for every row
+
+    for idx, row in enumerate(reader, start=2):
+        title = (row.get('title') or row.get('headline') or '').strip()
+        if not title:
+            errors.append(f'Row {idx}: missing title')
+            continue
+
+        published = _parse_csv_date(row.get('publication_date') or row.get('publicationDate') or row.get('createdAt'))
+        if not published:
+            errors.append(f'Row {idx}: invalid or missing publication_date')
+            continue
+
+        sentiment_raw = (row.get('sentiment') or '').strip().lower()
+        sentiment = _SENTIMENT_MAP.get(sentiment_raw, 'neutral')
+
+        try:
+            ave_value = float((row.get('ave') or '0').strip() or 0)
+        except ValueError:
+            ave_value = 0
+
+        try:
+            reach_value = int((row.get('reach') or '0').strip() or 0)
+        except ValueError:
+            reach_value = 0
+
+        coverage = (row.get('coverage_type') or row.get('coverage') or row.get('coverageType') or '').strip()
+        summary = (row.get('snippet') or row.get('summary') or '').strip()
+
+        to_create.append(OnlineArticle(
+            organization=org,
+            source=(row.get('source') or '').strip(),
+            headline=title,
+            summary=summary,
+            url=(row.get('url') or '').strip(),
+            date_published=published,
+            country=(row.get('country') or '').strip(),
+            sentiment=sentiment,
+            ave=ave_value,
+            coverage=coverage or 'Not Set',
+            reach=reach_value,
+            relevancy=compute_relevancy(title, summary, keywords=keywords),
+        ))
+
+    if to_create:
+        OnlineArticle.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
+
+
+@login_required
+@require_http_methods(['POST'])
+def social_post_csv_upload(request, org_id):
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+
+    for idx, row in enumerate(reader, start=2):
+        message = (row.get('message') or row.get('headline') or '').strip()
+        if not message:
+            errors.append(f'Row {idx}: missing message')
+            continue
+
+        published = _parse_csv_date(row.get('createdTime') or row.get('createdAt'))
+        if not published:
+            errors.append(f'Row {idx}: invalid or missing createdTime')
+            continue
+
+        sentiment_raw = (row.get('sentiment') or '').strip().lower()
+        sentiment = _SENTIMENT_MAP.get(sentiment_raw, 'neutral')
+
+        try:
+            ave_value = float((row.get('ave') or '0').strip() or 0)
+        except ValueError:
+            ave_value = 0
+
+        try:
+            reach_value = int((row.get('reach') or '0').strip() or 0)
+        except ValueError:
+            reach_value = 0
+
+        platform = (row.get('source') or row.get('platform') or '').strip() or 'Other'
+
+        to_create.append(SocialMediaPost(
+            organization=org,
+            platform=platform,
+            page_name=(row.get('pageName') or '').strip(),
+            headline=message,
+            summary=(row.get('group') or '').strip(),
+            url=(row.get('link') or '').strip(),
+            date_published=published,
+            country=(row.get('country') or '').strip(),
+            sentiment=sentiment,
+            ave=ave_value,
+            rank=float((row.get('rank') or 0) or 0),
+            reach=reach_value,
+        ))
+
+    if to_create:
+        SocialMediaPost.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
+
+
+@login_required
+@require_http_methods(['POST'])
+def broadcast_csv_upload(request, org_id):
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+
+    for idx, row in enumerate(reader, start=2):
+        mention = (row.get('mention') or row.get('headline') or '').strip()
+        if not mention:
+            errors.append(f'Row {idx}: missing mention')
+            continue
+
+        published = _parse_csv_date(row.get('mentionDT') or row.get('mentionDt') or row.get('publication_date') or row.get('createdAt'))
+        if not published:
+            errors.append(f'Row {idx}: invalid or missing mentionDT')
+            continue
+
+        try:
+            ave_value = float((row.get('ave') or '0').strip() or 0)
+        except ValueError:
+            ave_value = 0
+
+        btype_raw = (row.get('stationType') or row.get('station_type') or row.get('stationType') or '').strip()
+        btype = btype_raw.upper() if btype_raw else 'RADIO'
+        if btype not in dict(BROADCAST_TYPE_CHOICES):
+            # try matching by label
+            rev = {v.upper(): k for k, v in BROADCAST_TYPE_CHOICES}
+            btype = rev.get(btype_raw.upper(), 'RADIO')
+
+        to_create.append(BroadcastMention(
+            organization=org,
+            source=(row.get('station') or row.get('client') or '').strip(),
+            headline=mention,
+            summary=(row.get('keyword') or row.get('search') or '').strip(),
+            url=(row.get('url') or '').strip(),
+            date_published=published,
+            country=(row.get('country') or '').strip(),
+            sentiment='neutral',
+            ave=ave_value,
+            duration=(row.get('duration') or '').strip(),
+            broadcast_type=btype,
+        ))
+
+    if to_create:
+        BroadcastMention.objects.bulk_create(to_create)
         created = len(to_create)
 
     return JsonResponse({'created': created, 'errors': errors})
@@ -941,24 +1156,39 @@ def competitors_view(request, org_id):
     q_search = request.GET.get('q', '')
     sentiment_filter = request.GET.get('sentiment', '')
 
+    def terms_q(comp):
+        """Match if ANY of the competitor's terms (name + aliases) appears in
+        the headline or summary."""
+        q = Q()
+        for term in comp.match_terms():
+            q |= Q(headline__icontains=term) | Q(summary__icontains=term)
+        return q
+
     comp_monthly_counts = []
     comp_overall_counts = []
     online_articles = []
     broadcast_articles = []
     print_articles = []
+    social_articles = []
 
     for comp in competitors:
-        name_q = Q(headline__icontains=comp.name) | Q(summary__icontains=comp.name)
+        name_q = terms_q(comp)
+        if not name_q:  # competitor with no usable name/aliases — nothing to match
+            comp_monthly_counts.append({'name': comp.name, 'count': 0})
+            comp_overall_counts.append({'name': comp.name, 'count': 0})
+            continue
 
         m_count = (
             org.online_articles.filter(date_published__gte=month_start).filter(name_q).count() +
             org.broadcast_mentions.filter(date_published__gte=month_start).filter(name_q).count() +
-            org.print_articles.filter(date_published__gte=month_start).filter(name_q).count()
+            org.print_articles.filter(date_published__gte=month_start).filter(name_q).count() +
+            org.social_posts.filter(date_published__gte=month_start).filter(name_q).count()
         )
         o_count = (
             org.online_articles.filter(name_q).count() +
             org.broadcast_mentions.filter(name_q).count() +
-            org.print_articles.filter(name_q).count()
+            org.print_articles.filter(name_q).count() +
+            org.social_posts.filter(name_q).count()
         )
         comp_monthly_counts.append({'name': comp.name, 'count': m_count})
         comp_overall_counts.append({'name': comp.name, 'count': o_count})
@@ -966,16 +1196,20 @@ def competitors_view(request, org_id):
         art_qs = org.online_articles.filter(name_q)
         bc_qs = org.broadcast_mentions.filter(name_q)
         pr_qs = org.print_articles.filter(name_q)
+        so_qs = org.social_posts.filter(name_q)
 
         if q_search:
             sq = Q(headline__icontains=q_search) | Q(source__icontains=q_search)
             art_qs = art_qs.filter(sq)
             bc_qs = bc_qs.filter(sq)
             pr_qs = pr_qs.filter(sq)
+            # Social posts have no `source`; match the page name instead.
+            so_qs = so_qs.filter(Q(headline__icontains=q_search) | Q(page_name__icontains=q_search))
         if sentiment_filter:
             art_qs = art_qs.filter(sentiment=sentiment_filter)
             bc_qs = bc_qs.filter(sentiment=sentiment_filter)
             pr_qs = pr_qs.filter(sentiment=sentiment_filter)
+            so_qs = so_qs.filter(sentiment=sentiment_filter)
 
         for art in art_qs.values('id', 'headline', 'source', 'sentiment', 'reach', 'ave', 'date_published', 'country', 'url'):
             art['competitor_name'] = comp.name
@@ -988,44 +1222,41 @@ def competitors_view(request, org_id):
             art['reach'] = 0
             art['competitor_name'] = comp.name
             print_articles.append(art)
+        for art in so_qs.values('id', 'headline', 'page_name', 'platform', 'sentiment', 'reach', 'ave', 'date_published', 'country', 'url'):
+            art['source'] = art.get('page_name') or art.get('platform') or '—'
+            art['competitor_name'] = comp.name
+            social_articles.append(art)
 
     online_articles.sort(key=lambda x: x['date_published'], reverse=True)
     broadcast_articles.sort(key=lambda x: x['date_published'], reverse=True)
     print_articles.sort(key=lambda x: x['date_published'], reverse=True)
+    social_articles.sort(key=lambda x: x['date_published'], reverse=True)
 
-    # Deduplicate by article id (first competitor match wins)
-    seen = set()
-    deduped_online = []
-    for a in online_articles:
-        if a['id'] not in seen:
-            seen.add(a['id'])
-            deduped_online.append(a)
+    def _dedupe(items):
+        """Deduplicate by article id (first competitor match wins)."""
+        seen, out = set(), []
+        for a in items:
+            if a['id'] not in seen:
+                seen.add(a['id'])
+                out.append(a)
+        return out
 
-    seen = set()
-    deduped_bc = []
-    for a in broadcast_articles:
-        if a['id'] not in seen:
-            seen.add(a['id'])
-            deduped_bc.append(a)
-
-    seen = set()
-    deduped_print = []
-    for a in print_articles:
-        if a['id'] not in seen:
-            seen.add(a['id'])
-            deduped_print.append(a)
+    deduped_online = _dedupe(online_articles)
+    deduped_bc = _dedupe(broadcast_articles)
+    deduped_print = _dedupe(print_articles)
+    deduped_social = _dedupe(social_articles)
 
     # Yearly line chart
     months = list(calendar.month_abbr)[1:]
-    if competitors:
-        any_comp_q = Q()
-        for comp in competitors:
-            any_comp_q |= Q(headline__icontains=comp.name) | Q(summary__icontains=comp.name)
+    online_yearly = broadcast_yearly = print_yearly = social_yearly = [0] * 12
+    any_comp_q = Q()
+    for comp in competitors:
+        any_comp_q |= terms_q(comp)
+    if any_comp_q:
         online_yearly = _monthly_counts(org.online_articles.filter(any_comp_q), today.year)
         broadcast_yearly = _monthly_counts(org.broadcast_mentions.filter(any_comp_q), today.year)
         print_yearly = _monthly_counts(org.print_articles.filter(any_comp_q), today.year)
-    else:
-        online_yearly = broadcast_yearly = print_yearly = [0] * 12
+        social_yearly = _monthly_counts(org.social_posts.filter(any_comp_q), today.year)
 
     return render(request, 'monitor/competitors.html', {
         'org': org,
@@ -1037,12 +1268,15 @@ def competitors_view(request, org_id):
         'online_yearly_json': json.dumps(online_yearly),
         'broadcast_yearly_json': json.dumps(broadcast_yearly),
         'print_yearly_json': json.dumps(print_yearly),
+        'social_yearly_json': json.dumps(social_yearly),
         'online_articles': deduped_online[:200],
         'broadcast_articles': deduped_bc[:200],
         'print_articles': deduped_print[:200],
+        'social_articles': deduped_social[:200],
         'online_count': len(deduped_online),
         'broadcast_count': len(deduped_bc),
         'print_count': len(deduped_print),
+        'social_count': len(deduped_social),
         'q': q_search,
         'selected_sentiment': sentiment_filter,
         'sentiment_choices': SENTIMENT_CHOICES,
@@ -1057,10 +1291,24 @@ def competitor_create(request, org_id):
     comp = Competitor.objects.create(
         organization=org,
         name=data.get('name', '').strip(),
+        aliases=data.get('aliases', '').strip(),
         website=data.get('website', '').strip(),
         notes=data.get('notes', '').strip(),
     )
     return JsonResponse({'id': comp.id, 'name': comp.name})
+
+
+@login_required
+@require_http_methods(['POST', 'PUT'])
+def competitor_update(request, org_id, comp_id):
+    org = get_object_or_404(Organization, id=org_id)
+    comp = get_object_or_404(Competitor, id=comp_id, organization=org)
+    data = json.loads(request.body)
+    for field in ['name', 'aliases', 'website', 'notes']:
+        if field in data:
+            setattr(comp, field, (data[field] or '').strip())
+    comp.save()
+    return JsonResponse({'ok': True})
 
 
 @login_required
@@ -2526,6 +2774,7 @@ def media_monitor_webhook(request, org_id):
         date_published= pub_date,
         country       = country,
         sentiment     = sentiment,
+        relevancy     = compute_relevancy(title, summary, org=org),
     )
     return JsonResponse({'ok': True, 'id': article.id})
 
