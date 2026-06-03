@@ -477,7 +477,32 @@ function saveOrg() {
   const logoFile=document.getElementById('orgLogo').files[0];if(logoFile)fd.append('logo',logoFile);
   const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';
   const url=_orgMode==='edit'?`/api/organizations/${_orgId}/`:'/api/organizations/';
-  fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf},body:fd}).then(r=>{if(!r.ok)throw new Error();return r.json();}).then(()=>{closeModal('orgModal');location.reload();}).catch(()=>alert('Failed to save'));
+  fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf},body:fd}).then(async r=>{
+    if(!r.ok)throw new Error();
+    // parse response (create returns new org id)
+    const data = await r.json().catch(()=>({}));
+    // If this was a create and we have pending temp competitors, submit them
+    const createdId = data.id || null;
+    if(createdId) {
+      // find temp keys in _compMap (keys starting with 'tmp_')
+      const pending = Object.entries(_compMap).filter(([k])=>String(k).startsWith('tmp_'));
+      for(const [tmpId, name] of pending) {
+        try {
+          const res = await fetch(`/api/${createdId}/competitors/`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({name})});
+          if(res.ok) {
+            const d = await res.json().catch(()=>null);
+            if(d && d.id) {
+              // replace temp key with real id
+              delete _compMap[tmpId];
+              _compMap[d.id] = d.name;
+            }
+          }
+        } catch(e) {/* continue */}
+      }
+    }
+    closeModal('orgModal');
+    location.reload();
+  }).catch(()=>alert('Failed to save'));
 }
 function deleteOrg(id,name) {
   if(!confirm(`Delete "${name}"? This will remove all associated data.`))return;
@@ -490,7 +515,27 @@ function kwKeydown(e,cat){if(e.key==='Enter'){e.preventDefault();addKeyword(cat)
 function addKeyword(cat){const input=document.getElementById(`kwInput-${cat}`);const kw=input.value.trim();if(!kw||!_orgId)return;if(Object.values(_kwMap).some(v=>v.keyword===kw&&v.category===cat)){input.value='';return;}if(Object.keys(_kwMap).length>=30)return alert('Max 30 keywords');const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';fetch(`/api/${_orgId}/keywords/`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({keyword:kw,category:cat})}).then(r=>r.json()).then(d=>{_kwMap[d.id]={keyword:d.keyword,category:d.category};refreshCatCloud(cat);input.value='';});}
 function removeKeyword(id){const cat=_kwMap[id]?.category;const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';fetch(`/api/${_orgId}/keywords/${id}/delete/`,{method:'DELETE',headers:{'X-CSRFToken':csrf}}).then(()=>{delete _kwMap[id];if(cat)refreshCatCloud(cat);});}
 function compKeydown(e){if(e.key==='Enter'){e.preventDefault();addCompetitor();}}
-function addCompetitor(name){const input=document.getElementById('compInput');const val=(name||input.value).trim();if(!val||!_orgId)return;if(Object.values(_compMap).includes(val)){input.value='';return;}const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';fetch(`/api/${_orgId}/competitors/`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({name:val})}).then(r=>r.json()).then(d=>{_compMap[d.id]=d.name;renderCompChips();input.value='';});}
+function addCompetitor(name){
+  const input=document.getElementById('compInput');
+  const val=(name||input.value).trim();
+  if(!val) return;
+  // If org doesn't exist yet, add as a temporary entry and render it
+  if(!_orgId){
+    // prevent duplicates
+    if(Object.values(_compMap).includes(val)){ input.value=''; return; }
+    const tmpId = 'tmp_' + Date.now();
+    _compMap[tmpId] = val;
+    renderCompChips();
+    input.value = '';
+    return;
+  }
+  if(Object.values(_compMap).includes(val)){input.value='';return;}
+  const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';
+  fetch(`/api/${_orgId}/competitors/`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({name:val})})
+    .then(r=>{ if(!r.ok) throw new Error(); return r.json(); })
+    .then(d=>{_compMap[d.id]=d.name;renderCompChips();input.value='';})
+    .catch(()=>{alert('Failed to add competitor');});
+}
 function removeCompetitor(id){const csrf=document.cookie.match(/csrftoken=([^;]+)/)?.[1]||'';fetch(`/api/${_orgId}/competitors/${id}/delete/`,{method:'DELETE',headers:{'X-CSRFToken':csrf}}).then(()=>{delete _compMap[id];renderCompChips();});}
 function renderCompChips(){document.getElementById('compCloud').innerHTML=Object.entries(_compMap).map(([id,name])=>`<span class="tag-chip">${escHtml(name)}<button class="tag-chip-x" onclick="removeCompetitor(${id})">&times;</button></span>`).join('');}
 

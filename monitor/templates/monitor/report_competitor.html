@@ -341,13 +341,13 @@
   </div>
   <hr class="rpt-divider">
 
-  <!-- ── Hot Topics ──────────────────────────────────────────────────────── -->
+  <!-- ── Popular Keywords ──────────────────────────────────────────────────────── -->
   <div class="rpt-hot-section">
     <div class="rpt-hot-header">
-      <p class="rpt-hot-title">&#128293; Hot Topics from Competitors</p>
+      <p class="rpt-hot-title">&#128293; Popular Keywords from Competitors</p>
       <span class="rpt-hot-badge">{{ month_label }}</span>
     </div>
-    <p class="rpt-hot-sub">Most discussed subjects across all competitor content during this period</p>
+    <p class="rpt-hot-sub">A sample of articles and topics captured from competitor content during this period</p>
 
     {% if hot_topics %}
     <!-- Word cloud chips -->
@@ -387,6 +387,25 @@
     <div class="rpt-hot-bars" id="hotBars" data-topics="{{ hot_topics_json|escapejs }}"></div>
     {% else %}
     <p class="rpt-hot-empty">No competitor content found for this period.</p>
+    {% endif %}
+  </div>
+
+  <!-- ── Headline Preview ───────────────────────────────────────────────────── -->
+  <div class="rpt-hot-section">
+    <div class="rpt-hot-header">
+      <p class="rpt-hot-title">&#128218; Headline Preview</p>
+      <span class="rpt-hot-badge">{{ month_label }}</span>
+    </div>
+    <p class="rpt-hot-sub">A sneak peek at competitor article headlines captured during this period.</p>
+
+    {% if headline_preview %}
+    <ul class="rpt-headline-list">
+      {% for headline in headline_preview %}
+      <li class="rpt-headline-item">{{ headline }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="rpt-hot-empty">No competitor headlines available for this period.</p>
     {% endif %}
   </div>
 

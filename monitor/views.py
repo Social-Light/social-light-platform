@@ -2193,22 +2193,27 @@ def report_competitor(request, org_id):
     org_art_reach = art_qs.aggregate(s=Sum('reach'))['s'] or 0
 
     # ── Competitor data ───────────────────────────────────────────────────────
-    comp_names = list(org.competitors.values_list('name', flat=True))
-    comp_orgs = {o.name: o for o in Organization.objects.filter(name__in=comp_names)}
+    competitors = list(org.competitors.all())
 
-    # Per-competitor counts
+    def terms_q(comp):
+        q = Q()
+        for term in comp.match_terms():
+            q |= Q(headline__icontains=term) | Q(summary__icontains=term)
+        return q
+
+    # Per-competitor counts using keyword matches from the competitors page
     comp_data = {}
-    for cname in comp_names:
-        co = comp_orgs.get(cname)
-        if co:
-            c_bc = BroadcastMention.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_art = OnlineArticle.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_print = PrintArticle.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_soc = SocialMediaPost.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_ave = OnlineArticle.objects.filter(organization=co, date_published__range=(df, dt)).aggregate(s=Sum('ave'))['s'] or 0
-        else:
+    for comp in competitors:
+        name_q = terms_q(comp)
+        if not name_q:
             c_bc = c_art = c_print = c_soc = c_ave = 0
-        comp_data[cname] = {'bc': c_bc, 'art': c_art, 'print': c_print, 'soc': c_soc, 'ave': c_ave}
+        else:
+            c_bc = bc_qs.filter(name_q).count()
+            c_art = art_qs.filter(name_q).count()
+            c_print = print_qs.filter(name_q).count()
+            c_soc = soc_qs.filter(name_q).count()
+            c_ave = art_qs.filter(name_q).aggregate(s=Sum('ave'))['s'] or 0
+        comp_data[comp.name] = {'bc': c_bc, 'art': c_art, 'print': c_print, 'soc': c_soc, 'ave': c_ave}
 
     # ── Build row lists (sorted desc by count) ────────────────────────────────
     def _make_rows(org_count, comp_key):
@@ -2298,14 +2303,26 @@ def report_competitor(request, org_id):
 
     # ── Hot topics from competitor content ────────────────────────────────────
     comp_texts = []
-    for cname in comp_names:
-        co = comp_orgs.get(cname)
-        if co:
-            comp_texts += list(OnlineArticle.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
-            comp_texts += list(PrintArticle.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
-            comp_texts += list(BroadcastMention.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
-            comp_texts += list(SocialMediaPost.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
+    comp_article_headlines = []
+    for comp in competitors:
+        name_q = terms_q(comp)
+        if not name_q:
+            continue
+        comp_texts += list(art_qs.filter(name_q).values_list('headline', flat=True))
+        comp_texts += list(print_qs.filter(name_q).values_list('headline', flat=True))
+        comp_texts += list(bc_qs.filter(name_q).values_list('headline', flat=True))
+        comp_texts += list(soc_qs.filter(name_q).values_list('headline', flat=True))
+        comp_article_headlines += list(art_qs.filter(name_q).values_list('headline', flat=True))
+        comp_article_headlines += list(print_qs.filter(name_q).values_list('headline', flat=True))
     hot_topics = _hot_topics(comp_texts, top_n=20)
+    headline_preview = []
+    seen_headlines = set()
+    for headline in comp_article_headlines:
+        if headline and headline not in seen_headlines:
+            seen_headlines.add(headline)
+            headline_preview.append(headline)
+        if len(headline_preview) >= 8:
+            break
     hot_topics_json = json.dumps(hot_topics)
 
     # ── JSON for charts ───────────────────────────────────────────────────────
@@ -2357,6 +2374,7 @@ def report_competitor(request, org_id):
         # Hot topics
         'hot_topics': hot_topics,
         'hot_topics_json': hot_topics_json,
+        'headline_preview': headline_preview,
         # Chart JSON
         'bc_json': bc_json,
         'art_json': art_json,
@@ -2411,20 +2429,25 @@ def report_competitor_pptx(request, org_id):
     org_art_reach = art_qs.aggregate(s=Sum('reach'))['s'] or 0
 
     # ── Competitor data ───────────────────────────────────────────────────────
-    comp_names = list(org.competitors.values_list('name', flat=True))
-    comp_orgs = {o.name: o for o in Organization.objects.filter(name__in=comp_names)}
+    competitors = list(org.competitors.all())
+
+    def terms_q(comp):
+        q = Q()
+        for term in comp.match_terms():
+            q |= Q(headline__icontains=term) | Q(summary__icontains=term)
+        return q
 
     comp_data = {}
-    for cname in comp_names:
-        co = comp_orgs.get(cname)
-        if co:
-            c_bc = BroadcastMention.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_art = OnlineArticle.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_print = PrintArticle.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_soc = SocialMediaPost.objects.filter(organization=co, date_published__range=(df, dt)).count()
-        else:
+    for comp in competitors:
+        name_q = terms_q(comp)
+        if not name_q:
             c_bc = c_art = c_print = c_soc = 0
-        comp_data[cname] = {'bc': c_bc, 'art': c_art, 'print': c_print, 'soc': c_soc}
+        else:
+            c_bc = bc_qs.filter(name_q).count()
+            c_art = art_qs.filter(name_q).count()
+            c_print = print_qs.filter(name_q).count()
+            c_soc = soc_qs.filter(name_q).count()
+        comp_data[comp.name] = {'bc': c_bc, 'art': c_art, 'print': c_print, 'soc': c_soc}
 
     def _make_rows(org_count, comp_key):
         rows = [{'name': org.name, 'count': org_count, 'is_org': True}]
