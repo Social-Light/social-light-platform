@@ -149,6 +149,35 @@ class Competitor(models.Model):
         ordering = ['name']
 
 
+class CompetitorArticle(models.Model):
+    """Online coverage *about* a competitor, loaded in bulk via CSV. Distinct from
+    OnlineArticle, which is the organisation's own coverage."""
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='competitor_articles')
+    competitor = models.ForeignKey(Competitor, on_delete=models.SET_NULL, null=True, blank=True, related_name='articles')
+    company_name = models.CharField(max_length=200)
+    headline = models.TextField()
+    url = models.URLField(blank=True, max_length=2000)
+    summary = models.TextField(blank=True)
+    source = models.CharField(max_length=200, blank=True)
+    date_published = models.DateField(null=True, blank=True)
+    country = models.CharField(max_length=100, blank=True)
+    matched_keywords = models.CharField(max_length=300, blank=True)
+    sentiment_score = models.FloatField(default=0)
+    sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    reach = models.IntegerField(default=0)
+    cpm = models.FloatField(default=0)
+    ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    rank = models.FloatField(default=0)
+    coverage_type = models.CharField(max_length=50, blank=True, default='Not Set')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.company_name}: {self.headline[:50]}"
+
+    class Meta:
+        ordering = ['-date_published', '-created_at']
+
+
 class OnlineArticle(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='online_articles')
     source = models.CharField(max_length=200)

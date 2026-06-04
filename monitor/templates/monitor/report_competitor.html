@@ -343,12 +343,18 @@
     <span style="color:#6b7280;font-size:13px;">to</span>
     <input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}"
            class="form-control form-control-sm" style="width:140px;">
+    <select name="country" class="form-control form-control-sm" style="width:180px;">
+      <option value="">All countries</option>
+      {% for country in countries %}
+      <option value="{{ country }}" {% if country == selected_country %}selected{% endif %}>{{ country }}</option>
+      {% endfor %}
+    </select>
     <button type="submit" class="btn btn-secondary btn-sm">Apply</button>
   </form>
   <button type="button" class="btn btn-primary btn-sm" onclick="downloadPDF()">
     &#8681; Download PDF
   </button>
-  <a href="{% url 'monitor:report_competitor_pptx' org.id %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"
+<a href="{% url 'monitor:report_competitor_pptx' org.id %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}{% if selected_country %}&country={{ selected_country|urlencode }}{% endif %}"
      class="btn btn-secondary btn-sm">
     &#8681; Download PPTX
   </a>
@@ -361,7 +367,7 @@
   <div class="rpt-header">
     <h1 class="rpt-title">{{ org.name }} Competitor Analysis</h1>
     <p class="rpt-subtitle">Media Monitoring Report | {{ month_label }}</p>
-    <p class="rpt-subtitle">{{ date_from|date:"d M Y" }} &mdash; {{ date_to|date:"d M Y" }}</p>
+    <p class="rpt-subtitle">{{ date_from|date:"d M Y" }} &mdash; {{ date_to|date:"d M Y" }} | {{ selected_country|default:"All countries" }}</p>
   </div>
   <hr class="rpt-divider">
 

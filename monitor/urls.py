@@ -59,6 +59,8 @@ urlpatterns = [
     # Competitors
     path('app/competitors/<uuid:org_id>/', views.competitors_view, name='competitors'),
     path('api/<uuid:org_id>/competitors/', views.competitor_create, name='competitor_create'),
+    path('api/<uuid:org_id>/competitors/articles/upload/', views.competitor_article_csv_upload, name='competitor_article_csv_upload'),
+    path('api/<uuid:org_id>/competitors/articles/<int:article_id>/delete/', views.competitor_article_delete, name='competitor_article_delete'),
     path('api/<uuid:org_id>/competitors/<int:comp_id>/', views.competitor_update, name='competitor_update'),
     path('api/<uuid:org_id>/competitors/<int:comp_id>/delete/', views.competitor_delete, name='competitor_delete'),
 

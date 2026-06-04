@@ -17,7 +17,7 @@ from django.db.models import Count, Sum, Q
 from django.utils import timezone
 
 from .models import (
-    Organization, User, Keyword, Competitor,
+    Organization, User, Keyword, Competitor, CompetitorArticle,
     OnlineArticle, PrintArticle, SocialMediaPost, BroadcastMention, Alert, MediaSource,
     GeneratedReport,
     SENTIMENT_CHOICES, COVERAGE_CHOICES, PLATFORM_CHOICES, INDUSTRY_CHOICES, ROLE_CHOICES,
@@ -1211,14 +1211,19 @@ def competitors_view(request, org_id):
             comp_overall_counts.append({'name': comp.name, 'count': 0})
             continue
 
+        # Online coverage comes from the loaded CompetitorArticle dataset (linked by
+        # FK); broadcast/print/social are still derived by name-matching the org's
+        # own coverage.
+        online_qs = comp.articles.all()
+
         m_count = (
-            org.online_articles.filter(date_published__gte=month_start).filter(name_q).count() +
+            online_qs.filter(date_published__gte=month_start).count() +
             org.broadcast_mentions.filter(date_published__gte=month_start).filter(name_q).count() +
             org.print_articles.filter(date_published__gte=month_start).filter(name_q).count() +
             org.social_posts.filter(date_published__gte=month_start).filter(name_q).count()
         )
         o_count = (
-            org.online_articles.filter(name_q).count() +
+            online_qs.count() +
             org.broadcast_mentions.filter(name_q).count() +
             org.print_articles.filter(name_q).count() +
             org.social_posts.filter(name_q).count()
@@ -1226,7 +1231,7 @@ def competitors_view(request, org_id):
         comp_monthly_counts.append({'name': comp.name, 'count': m_count})
         comp_overall_counts.append({'name': comp.name, 'count': o_count})
 
-        art_qs = org.online_articles.filter(name_q)
+        art_qs = online_qs
         bc_qs = org.broadcast_mentions.filter(name_q)
         pr_qs = org.print_articles.filter(name_q)
         so_qs = org.social_posts.filter(name_q)
@@ -1260,7 +1265,7 @@ def competitors_view(request, org_id):
             art['competitor_name'] = comp.name
             social_articles.append(art)
 
-    online_articles.sort(key=lambda x: x['date_published'], reverse=True)
+    online_articles.sort(key=lambda x: x['date_published'] or date.min, reverse=True)
     broadcast_articles.sort(key=lambda x: x['date_published'], reverse=True)
     print_articles.sort(key=lambda x: x['date_published'], reverse=True)
     social_articles.sort(key=lambda x: x['date_published'], reverse=True)
@@ -1286,7 +1291,7 @@ def competitors_view(request, org_id):
     for comp in competitors:
         any_comp_q |= terms_q(comp)
     if any_comp_q:
-        online_yearly = _monthly_counts(org.online_articles.filter(any_comp_q), today.year)
+        online_yearly = _monthly_counts(org.competitor_articles.all(), today.year)
         broadcast_yearly = _monthly_counts(org.broadcast_mentions.filter(any_comp_q), today.year)
         print_yearly = _monthly_counts(org.print_articles.filter(any_comp_q), today.year)
         social_yearly = _monthly_counts(org.social_posts.filter(any_comp_q), today.year)
@@ -1350,6 +1355,118 @@ def competitor_delete(request, org_id, comp_id):
     org = get_object_or_404(Organization, id=org_id)
     comp = get_object_or_404(Competitor, id=comp_id, organization=org)
     comp.delete()
+    return JsonResponse({'ok': True})
+
+
+def _sentiment_from_score(score):
+    """Map a numeric sentiment score (roughly -1..1) to a category."""
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        return 'neutral'
+    if s >= 0.05:
+        return 'positive'
+    if s <= -0.05:
+        return 'negative'
+    return 'neutral'
+
+
+@login_required
+@require_http_methods(['POST'])
+def competitor_article_csv_upload(request, org_id):
+    """Bulk-import online competitor coverage. The `company` column maps each row
+    to a competitor (auto-created if it doesn't exist)."""
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+
+    # Index existing competitors by every term (name + aliases) for matching.
+    comp_by_term = {}
+    for comp in org.competitors.all():
+        for term in comp.match_terms():
+            comp_by_term[term.lower()] = comp
+
+    existing_urls = set(org.competitor_articles.exclude(url='').values_list('url', flat=True))
+    seen_urls = set()
+
+    def _num(row, key, cast, default=0):
+        val = (row.get(key) or '').strip()
+        if val == '':
+            return default
+        try:
+            return cast(val)
+        except ValueError:
+            return default
+
+    for idx, row in enumerate(reader, start=2):
+        company = (row.get('company') or '').strip()
+        title = (row.get('title') or row.get('headline') or '').strip()
+        if not title:
+            errors.append(f'Row {idx}: missing title')
+            continue
+        if not company:
+            errors.append(f'Row {idx}: missing company')
+            continue
+
+        # Match an existing competitor (by name or alias) or auto-create one.
+        comp = comp_by_term.get(company.lower())
+        if comp is None:
+            comp = Competitor.objects.create(organization=org, name=company)
+            for term in comp.match_terms():
+                comp_by_term[term.lower()] = comp
+
+        url_val = (row.get('url') or '').strip()
+        if url_val and (url_val in existing_urls or url_val in seen_urls):
+            continue  # skip duplicate
+        if url_val:
+            seen_urls.add(url_val)
+
+        score = _num(row, 'sentiment', float, 0.0)
+
+        to_create.append(CompetitorArticle(
+            organization=org,
+            competitor=comp,
+            company_name=company,
+            headline=title,
+            url=url_val,
+            summary=(row.get('snippet') or row.get('summary') or '').strip(),
+            source=(row.get('source') or '').strip(),
+            date_published=_parse_csv_date(row.get('publication_date') or row.get('publicationDate')),
+            country=(row.get('country') or '').strip(),
+            matched_keywords=(row.get('matched_keywords') or '').strip()[:300],
+            sentiment_score=score,
+            sentiment=_sentiment_from_score(score),
+            reach=_num(row, 'reach', int, 0),
+            cpm=_num(row, 'cpm', float, 0),
+            ave=_num(row, 'ave', float, 0),
+            rank=_num(row, 'rank', float, 0),
+            coverage_type=(row.get('coverage_type') or row.get('coverage') or '').strip() or 'Not Set',
+        ))
+
+    if to_create:
+        CompetitorArticle.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
+
+
+@login_required
+@require_http_methods(['DELETE'])
+def competitor_article_delete(request, org_id, article_id):
+    org = get_object_or_404(Organization, id=org_id)
+    art = get_object_or_404(CompetitorArticle, id=article_id, organization=org)
+    art.delete()
     return JsonResponse({'ok': True})
 
 
@@ -2183,6 +2300,23 @@ def report_competitor(request, org_id):
     print_qs = PrintArticle.objects.filter(organization=org, date_published__range=(df, dt))
     soc_qs = SocialMediaPost.objects.filter(organization=org, date_published__range=(df, dt))
 
+    # ── Country filter ────────────────────────────────────────────────────────
+    # Distinct countries that exist in the coverage — including the loaded
+    # competitor articles — so every available country shows in the dropdown.
+    countries = sorted(set(
+        list(org.competitor_articles.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(bc_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(art_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(print_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(soc_qs.exclude(country='').values_list('country', flat=True).distinct())
+    ))
+    selected_country = request.GET.get('country', '').strip()
+    if selected_country:
+        bc_qs = bc_qs.filter(country=selected_country)
+        art_qs = art_qs.filter(country=selected_country)
+        print_qs = print_qs.filter(country=selected_country)
+        soc_qs = soc_qs.filter(country=selected_country)
+
     org_bc_count = bc_qs.count()
     org_art_count = art_qs.count()
     org_print_count = print_qs.count()
@@ -2263,8 +2397,7 @@ def report_competitor(request, org_id):
 
     # ── Publisher volume (top 8 print sources) ────────────────────────────────
     pub_qs = (
-        PrintArticle.objects
-        .filter(organization=org, date_published__range=(df, dt))
+        print_qs
         .values('source')
         .annotate(count=Count('id'))
         .order_by('-count')[:8]
@@ -2273,8 +2406,7 @@ def report_competitor(request, org_id):
 
     # ── Print detail (last 10) ─────────────────────────────────────────────────
     print_detail = list(
-        PrintArticle.objects
-        .filter(organization=org, date_published__range=(df, dt))
+        print_qs
         .order_by('-date_published')[:10]
         .values('headline', 'source', 'date_published', 'sentiment', 'ave')
     )
@@ -2338,6 +2470,8 @@ def report_competitor(request, org_id):
         'date_from': df,
         'date_to': dt,
         'month_label': month_label,
+        'selected_country': selected_country,
+        'countries': countries,
         # Counts
         'org_bc_count': org_bc_count,
         'org_art_count': org_art_count,
@@ -2419,6 +2553,23 @@ def report_competitor_pptx(request, org_id):
     art_qs = OnlineArticle.objects.filter(organization=org, date_published__range=(df, dt))
     print_qs = PrintArticle.objects.filter(organization=org, date_published__range=(df, dt))
     soc_qs = SocialMediaPost.objects.filter(organization=org, date_published__range=(df, dt))
+
+    # ── Country filter ────────────────────────────────────────────────────────
+    # Distinct countries that exist in the coverage — including the loaded
+    # competitor articles — so every available country shows in the dropdown.
+    countries = sorted(set(
+        list(org.competitor_articles.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(bc_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(art_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(print_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(soc_qs.exclude(country='').values_list('country', flat=True).distinct())
+    ))
+    selected_country = request.GET.get('country', '').strip()
+    if selected_country:
+        bc_qs = bc_qs.filter(country=selected_country)
+        art_qs = art_qs.filter(country=selected_country)
+        print_qs = print_qs.filter(country=selected_country)
+        soc_qs = soc_qs.filter(country=selected_country)
 
     org_bc_count = bc_qs.count()
     org_art_count = art_qs.count()

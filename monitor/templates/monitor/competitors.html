@@ -8,10 +8,16 @@
     <h1 class="page-title">Competitor Analysis</h1>
     <p class="page-subtitle">Monitor and analyze competitor media presence</p>
   </div>
-  <button class="btn btn-primary" onclick="openModal('addCompModal')">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    Add Competitor
-  </button>
+  <div style="display:flex; gap:8px;">
+    <button class="btn btn-secondary" onclick="openModal('uploadCompModal')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Load Online Competitors
+    </button>
+    <button class="btn btn-primary" onclick="openModal('addCompModal')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Competitor
+    </button>
+  </div>
 </div>
 
 {% if competitors %}
@@ -120,7 +126,7 @@
           <td>{{ art.date_published|date:"d/m/Y" }}</td>
           <td>{{ art.country|default:"—" }}</td>
           <td>
-            <button class="icon-btn icon-btn--danger" data-type="online" data-id="{{ art.id }}" onclick="deleteArticle(this)">
+            <button class="icon-btn icon-btn--danger" data-type="competitor" data-id="{{ art.id }}" onclick="deleteArticle(this)">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
             </button>
           </td>
@@ -129,7 +135,7 @@
       </tbody>
     </table>
     {% else %}
-    <div class="empty-state-inline">No online articles match competitor names.</div>
+    <div class="empty-state-inline">No online competitor articles loaded yet. Use “Load Online Competitors” to import a CSV.</div>
     {% endif %}
   </div>
 </div>
@@ -340,6 +346,31 @@
     </div>
   </div>
 </div>
+
+<!-- Load Online Competitors CSV Modal -->
+<div class="modal-overlay hidden" id="uploadCompModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Load Online Competitor Articles</h2>
+        <p class="modal-subtitle">Bulk import competitor coverage. The <code>company</code> column maps each row to a competitor (created automatically if new).</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('uploadCompModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">CSV File</label>
+        <input type="file" id="compCsvFile" class="form-control" accept=".csv,text/csv" />
+        <small class="text-muted">Expected columns: _id, company, title, url, snippet, source, publication_date, country, matched_keywords, sentiment, reach, cpm, ave, rank, coverage_type</small>
+      </div>
+      <div id="compCsvResult" style="margin-top:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('uploadCompModal')">Cancel</button>
+      <button class="btn btn-primary" id="compCsvUploadBtn" onclick="uploadCompetitorCsv()">Upload</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -455,7 +486,49 @@ function deleteArticle(btn) {
   var type = btn.getAttribute('data-type');
   var id   = btn.getAttribute('data-id');
   if (!confirm('Remove this article?')) return;
-  apiRequest('/api/' + ORG_ID + '/' + type + '/' + id + '/delete/', 'DELETE').then(function() { location.reload(); });
+  var url = (type === 'competitor')
+    ? '/api/' + ORG_ID + '/competitors/articles/' + id + '/delete/'
+    : '/api/' + ORG_ID + '/' + type + '/' + id + '/delete/';
+  apiRequest(url, 'DELETE').then(function() { location.reload(); });
+}
+
+// ── Load online competitor articles (CSV) ─────────────────────────────────────
+function uploadCompetitorCsv() {
+  var input = document.getElementById('compCsvFile');
+  var resultEl = document.getElementById('compCsvResult');
+  var btn = document.getElementById('compCsvUploadBtn');
+  var file = input.files && input.files[0];
+  if (!file) { resultEl.innerHTML = '<span style="color:#dc2626;">Please choose a CSV file.</span>'; return; }
+
+  var fd = new FormData();
+  fd.append('file', file);
+  btn.disabled = true;
+  btn.textContent = 'Uploading...';
+  resultEl.innerHTML = '';
+
+  fetch('/api/' + ORG_ID + '/competitors/articles/upload/', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') || '' },
+    body: fd,
+  })
+    .then(async function (res) {
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(data.error || ('Upload failed: ' + res.status));
+      return data;
+    })
+    .then(function (data) {
+      var html = '<div style="color:#059669;">Imported ' + data.created + ' competitor article(s).</div>';
+      if (data.errors && data.errors.length) {
+        html += '<details style="margin-top:8px;"><summary>' + data.errors.length + ' row(s) skipped</summary><ul style="margin:6px 0 0 18px;">' +
+          data.errors.slice(0, 20).map(function (e) { return '<li>' + e + '</li>'; }).join('') + '</ul></details>';
+      }
+      resultEl.innerHTML = html;
+      setTimeout(function () { closeModal('uploadCompModal'); location.reload(); }, 1200);
+    })
+    .catch(function (err) {
+      resultEl.innerHTML = '<span style="color:#dc2626;">' + err.message + '</span>';
+    })
+    .finally(function () { btn.disabled = false; btn.textContent = 'Upload'; });
 }
 </script>
 
