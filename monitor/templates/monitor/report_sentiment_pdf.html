@@ -15,6 +15,10 @@
       font-size: 10pt;
       color: #111827;
       background: #fff;
+      /* Match the A4 printable width (210mm − 2×14mm margins) so the on-screen
+         layout is the same width as the page and nothing overflows when printed. */
+      max-width: 180mm;
+      margin: 0 auto;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -372,9 +376,12 @@ function canvasesToImages() {
   document.querySelectorAll('canvas').forEach(function(c) {
     var img = new Image();
     img.src = c.toDataURL('image/png');
-    img.style.width  = c.offsetWidth  + 'px';
-    img.style.height = c.offsetHeight + 'px';
-    img.style.display = 'block';
+    // Responsive width so the snapshot can never exceed the page width. A fixed
+    // px width taken from a wide screen would overflow the A4 page and be clipped.
+    img.style.width    = '100%';
+    img.style.maxWidth = '100%';
+    img.style.height   = c.offsetHeight + 'px';
+    img.style.display  = 'block';
     c.parentNode.replaceChild(img, c);
   });
 }
