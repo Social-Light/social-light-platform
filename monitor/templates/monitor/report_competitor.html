@@ -297,13 +297,22 @@
 }
 
 /* Print */
+.report-page,
+.report-page * {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
 @media print {
+  body, html { background: #fff !important; }
   .no-print,
   .sidebar,
   .topheader,
   .main-content > *:not(#reportPage) { display: none !important; }
   .main-content { margin: 0 !important; padding: 0 !important; }
-  .report-page { box-shadow: none !important; padding: 24px !important; }
+  .report-page { box-shadow: none !important; padding: 24px !important; background: #fff !important; }
+  canvas { max-width: 100% !important; }
+  img[data-canvas-replacement] { display: block !important; max-width: 100% !important; height: auto !important; }
   @page { margin: 0; size: A4; }
 }
 </style>
@@ -321,7 +330,7 @@
            class="form-control form-control-sm" style="width:140px;">
     <button type="submit" class="btn btn-secondary btn-sm">Apply</button>
   </form>
-  <button class="btn btn-primary btn-sm" onclick="downloadPDF()">
+  <button type="button" class="btn btn-primary btn-sm" onclick="downloadPDF()">
     &#8681; Download PDF
   </button>
   <a href="{% url 'monitor:report_competitor_pptx' org.id %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"
@@ -644,6 +653,8 @@
 
 {% block extra_js %}
 <script>
+var PDF_MODE = {{ pdf_mode|yesno:'true,false' }};
+
 // ── Hot Topics bars ────────────────────────────────────────────────────────
 (function () {
   var container = document.getElementById('hotBars');
@@ -701,6 +712,7 @@
         }]
       },
       options: {
+        animation: PDF_MODE ? false : undefined,
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
@@ -744,25 +756,60 @@
   buildHBar('pubChart',       '{{ pub_json|escapejs }}');
 
   // ── Print / PDF helpers ───────────────────────────────────────────────── //
-  window.addEventListener('beforeprint', function () {
-    document.querySelectorAll('canvas').forEach(function (c) {
+  function replaceCanvasWithImage(done) {
+    var canvases = Array.prototype.slice.call(document.querySelectorAll('canvas'));
+    var pending = 0, finished = false;
+    function finish() { if (!finished) { finished = true; if (done) done(); } }
+    canvases.forEach(function (c) {
+      if (c._pi) { return; }
       var img = new Image();
-      img.src = c.toDataURL('image/png', 1.0);
       img.style.width  = c.offsetWidth  + 'px';
       img.style.height = c.offsetHeight + 'px';
+      img.setAttribute('data-canvas-replacement', 'true');
+      // Wait for the data-URL image to actually decode before we report done,
+      // otherwise the print rasterises blank <img> elements.
+      pending++;
+      img.onload = img.onerror = function () { pending--; if (pending === 0) finish(); };
+      img.src = c.toDataURL('image/png', 1.0);
       c.style.display = 'none';
       c.parentNode.insertBefore(img, c.nextSibling);
       c._pi = img;
     });
-  });
+    if (pending === 0) finish();  // no canvases to convert
+  }
 
-  window.addEventListener('afterprint', function () {
+  function restoreCanvasImages() {
     document.querySelectorAll('canvas').forEach(function (c) {
       if (c._pi) { c._pi.remove(); c._pi = null; c.style.display = ''; }
     });
-  });
+  }
+
+  window.addEventListener('beforeprint', function () { replaceCanvasWithImage(); });
+  window.addEventListener('afterprint', restoreCanvasImages);
+
+  // In PDF mode (?format=pdf): wait for full load + paint, snapshot every chart
+  // canvas to an image, wait for those images to decode, THEN print — so the
+  // generated PDF actually contains the rendered charts.
+  if (PDF_MODE) {
+    window.addEventListener('load', function () {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          replaceCanvasWithImage(function () {
+            setTimeout(function () { window.print(); }, 50);
+          });
+        });
+      });
+    });
+  }
 })();
 
-function downloadPDF() { window.print(); }
+function downloadPDF() {
+  var params = new URLSearchParams(window.location.search);
+  params.set('format', 'pdf');
+  window.open(window.location.pathname + '?' + params.toString(), '_blank');
+}
+
+// (PDF auto-print is handled inside the chart IIFE above, after the canvases
+//  have been snapshotted to images and those images have finished loading.)
 </script>
 {% endblock %}

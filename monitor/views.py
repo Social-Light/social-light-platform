@@ -2363,7 +2363,6 @@ def report_competitor(request, org_id):
         # Broadcast sentiment
         'pos_bc': pos_bc,
         'neu_bc': neu_bc,
-        'neg_bc': neg_bc,
         'pos_pct': pos_pct,
         'neu_pct': neu_pct,
         'neg_pct': neg_pct,
@@ -2381,6 +2380,8 @@ def report_competitor(request, org_id):
         'soc_json': soc_json,
         'print_json': print_json,
         'pub_json': pub_json,
+        # PDF mode flag
+        'pdf_mode': request.GET.get('format') == 'pdf',
     }
     return render(request, 'monitor/report_competitor.html', context)
 
