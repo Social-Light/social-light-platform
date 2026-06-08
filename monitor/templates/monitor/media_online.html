@@ -304,7 +304,7 @@ function addArticle() {
     sentiment: document.getElementById('oSentiment').value,
     reach: document.getElementById('oReach').value || 0,
     date_published: document.getElementById('oDate').value,
-  }).then(() => { closeModal('addOnlineModal'); location.reload(); });
+  }).then(() => { flashToast('Online article added', 'success'); location.reload(); });
 }
 
 function editOnline(id, source, headline, url, country, sentiment, ave, coverage, reach, relevancy, date) {
@@ -335,7 +335,7 @@ function saveArticle() {
     reach: document.getElementById('editOReach').value || 0,
     relevancy: document.getElementById('editORelevancy').value || 0,
     date_published: document.getElementById('editODate').value,
-  }).then(() => { closeModal('editOnlineModal'); location.reload(); });
+  }).then(() => { flashToast('Online article updated', 'success'); location.reload(); });
 }
 
 function deleteArticle(id) {

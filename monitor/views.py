@@ -1509,6 +1509,9 @@ def _type_stats(qs, src_field, has_reach=True):
         ).order_by('-total')[:8]:
             src_map[row[src_field]] = {k: row[k] for k in ('total', 'pos', 'neu', 'neg')}
 
+    top_source = next(iter(src_map), '')           # src_map is ordered by volume desc
+    top_source_count = src_map[top_source]['total'] if top_source else 0
+
     risks = [{'headline': i.headline[:100], 'source': getattr(i, src_field, '') if src_field else '',
               'ave': float(i.ave), 'date': i.date_published.strftime('%d %b %Y')}
              for i in qs.filter(sentiment='negative').order_by('-ave')[:5]]
@@ -1528,6 +1531,18 @@ def _type_stats(qs, src_field, has_reach=True):
         counter.update(w for w in _re.findall(r'\b[a-zA-Z]{4,}\b', h.lower()) if w not in STOP)
     words = counter.most_common(30)
 
+    # Key events & spikes — the period's highest-impact mentions for this media type.
+    key_events = [
+        {
+            'sentiment': i.sentiment,
+            'date': i.date_published.isoformat(),
+            'headline': (i.headline or '')[:140],
+            'summary': (i.summary or '')[:240],
+        }
+        for i in qs.exclude(headline='').order_by('-ave')[:6]
+    ]
+    key_events.sort(key=lambda e: e['date'])
+
     return {
         'vol': vol, 'ave': ave, 'reach': reach,
         'pos': pos, 'neu': neu, 'neg': neg,
@@ -1537,13 +1552,72 @@ def _type_stats(qs, src_field, has_reach=True):
                              'neu': [daily[d]['neu'] for d in dates],
                              'neg': [daily[d]['neg'] for d in dates]}),
         'sources_json': json.dumps([{'name': n, **v} for n, v in src_map.items()]),
-        'key_events_json': json.dumps([]),
+        'key_events_json': json.dumps(key_events),
         'risks': risks,
         'opps': opps,
         'issues_json': json.dumps(issues),
         'words_json': json.dumps(words),
         'max_freq': words[0][1] if words else 1,
+        'top_source': top_source,
+        'top_source_count': top_source_count,
     }
+
+
+# KPI themes scanned for in coverage. Each is (display name, [match keywords]).
+_KPI_CATEGORIES = [
+    ('Customer Service',          ['customer service', 'client service', 'support', 'complaint',
+                                    'call centre', 'call center', 'service quality', 'turnaround']),
+    ('Digital Transformation',    ['digital', ' app', 'online banking', 'mobile banking', 'fintech',
+                                    'technology', 'innovation', 'platform', 'ussd', 'e-wallet', 'cyber']),
+    ('Regulatory Compliance',     ['regulat', 'compliance', 'central bank', 'bank of botswana', 'licen',
+                                    'audit', 'governance', 'sanction', 'anti-money', 'aml', 'kyc']),
+    ('Loan Portfolio Performance',['loan', 'lending', 'credit', 'mortgage', 'advance', 'default',
+                                    'non-performing', 'impairment', 'facility', 'repayment']),
+    ('Financial Inclusion',       ['financial inclusion', 'unbanked', 'accessib', 'rural', 'sme', 'smme',
+                                    'microfinance', 'affordab', 'underserved']),
+    ('Reputation Management',     ['reputation', 'brand', 'trust', 'scandal', 'fraud', 'image',
+                                    'crisis', 'apolog', 'backlash']),
+    ('Employee Satisfaction',     ['employee', 'staff', 'workforce', 'recruit', 'talent', 'retrench',
+                                    'layoff', 'union', 'salary', 'workplace', 'graduate programme']),
+    ('Community Investment',      ['community', 'csr', 'donat', 'sponsor', 'charit', 'scholarship',
+                                    'foundation', 'social responsibility', 'give back', 'outreach']),
+    ('Operational Efficiency',    ['efficien', 'cost', 'profit', 'revenue', 'earnings', 'margin',
+                                    'restructur', 'operational', 'productivity', 'results']),
+    ('Diversity & Inclusion',     ['diversity', 'inclusion', 'women', 'gender', 'disab', 'equality',
+                                    'empower', 'youth']),
+]
+
+
+def _kpi_insights(qs, label, period_label):
+    """For each KPI theme, count matching mentions in this media type's coverage and
+    build a pill + insight sentence. Returns [{category, count, sentiment, text}]."""
+    rows = list(qs.values_list('headline', 'summary', 'sentiment'))
+    blobs = [((h or '') + ' ' + (s or '')).lower() for h, s, _ in rows]
+
+    items = []
+    for category, keywords in _KPI_CATEGORIES:
+        matched = [i for i, blob in enumerate(blobs) if any(k in blob for k in keywords)]
+        count = len(matched)
+        if count == 0:
+            items.append({
+                'category': category, 'count': 0, 'sentiment': 'neutral',
+                'text': f"No significant mentions of {category} in {period_label}.",
+            })
+            continue
+        pos = sum(1 for i in matched if rows[i][2] == 'positive')
+        neg = sum(1 for i in matched if rows[i][2] == 'negative')
+        if pos > neg:
+            sentiment, tone = 'positive', 'largely positive'
+        elif neg > pos:
+            sentiment, tone = 'negative', 'largely negative'
+        else:
+            sentiment, tone = 'neutral', 'mixed'
+        items.append({
+            'category': category, 'count': count, 'sentiment': sentiment,
+            'text': f"{count} {label} mention{'' if count == 1 else 's'} relating to "
+                    f"{category}, {tone} in tone, during {period_label}.",
+        })
+    return items
 
 
 @login_required
@@ -1709,7 +1783,7 @@ def report_full(request, org_id):
     report_mode   = request.GET.get('type', 'full')
     ALL_MOD_IDS = ['media_summary', 'sentiment_trend', 'reputational_risks',
                    'reputational_opportunities', 'issue_impact', 'top_sources',
-                   'word_cloud', 'kpi_performance']
+                   'word_cloud', 'kpi_performance', 'kpi_insights']
 
     VALID_TYPES = {'social', 'online', 'broadcast', 'print'}
     if report_mode == 'custom' and modules_param:
@@ -1735,10 +1809,16 @@ def report_full(request, org_id):
         'broadcast': {'qs': bm, 'src': 'source',   'reach': False, 'label': 'Broadcast Media', 'color': '#9333ea'},
         'print':     {'qs': pa, 'src': 'source',   'reach': False, 'label': 'Print Media',     'color': '#c2410c'},
     }
+    # Concise period label for KPI insights ("April 2026" for a single month, else the range).
+    if date_from.year == date_to.year and date_from.month == date_to.month:
+        _period_label = date_from.strftime('%B %Y')
+    else:
+        _period_label = month_label
     sections = {}
     for key, cfg in type_map.items():
         stats = _type_stats(cfg['qs'], cfg['src'], cfg['reach'])
         stats.update({'label': cfg['label'], 'color': cfg['color'], 'key': key})
+        stats['kpi_insights'] = _kpi_insights(cfg['qs'], cfg['label'], _period_label)
         # Which modules are selected for this type
         stats['sel_mods'] = [m for m in ALL_MOD_IDS if _sel(key, m)]
         sections[key] = stats
@@ -1751,6 +1831,18 @@ def report_full(request, org_id):
         neg=Count('id', filter=Q(sentiment='negative')),
         ave_total=Sum('ave'),
     ).order_by('-total')[:10])
+    _max_j = journalists[0]['total'] if journalists else 1
+    for j in journalists:
+        j['pct'] = round(j['total'] / _max_j * 100) if _max_j else 0
+        j['ave_total'] = float(j['ave_total'] or 0)
+
+    # AI-generated analysis (ESG, stakeholder, sectorial competitor). Read from
+    # cache only — generation is triggered on demand via the "Generate AI
+    # Analysis" button (report_ai_generate) so report loads stay fast.
+    from .report_ai import get_cached_analysis, get_analysis_generated_at
+    analysis = get_cached_analysis(org, date_from, date_to)
+    analysis_generated_at = get_analysis_generated_at(org, date_from, date_to) if analysis else None
+    ai_enabled = bool(settings.ANTHROPIC_API_KEY)
 
     # Module bar text (all selected modules, flagging those with no data)
     mod_bar_items = []
@@ -1779,7 +1871,74 @@ def report_full(request, org_id):
         'journalists': journalists,
         'mod_bar_items': mod_bar_items,
         'all_mod_ids': ALL_MOD_IDS,
+        'methodology_steps': _METHODOLOGY_STEPS,
+        'glossary_terms': _GLOSSARY_TERMS,
+        'analysis': analysis,
+        'ai_enabled': ai_enabled,
+        'analysis_generated_at': analysis_generated_at,
     })
+
+
+_METHODOLOGY_STEPS = [
+    {'title': 'Collection', 'color': '#1d4ed8',
+     'desc': 'Coverage is gathered across online, print, broadcast and social media sources.'},
+    {'title': 'Classification', 'color': '#0f766e',
+     'desc': 'Each mention is tagged by media type, source, country and reach.'},
+    {'title': 'Sentiment Analysis', 'color': '#9333ea',
+     'desc': 'Mentions are scored as positive, neutral or negative based on tone toward the brand.'},
+    {'title': 'Valuation', 'color': '#c2410c',
+     'desc': 'Advertising Value Equivalency (AVE) and audience reach are calculated per mention.'},
+    {'title': 'Insight', 'color': '#16a34a',
+     'desc': 'Trends, risks and opportunities are surfaced and summarised into this report.'},
+]
+
+_GLOSSARY_TERMS = [
+    {'term': 'AVE', 'definition': 'Advertising Value Equivalency — the estimated cost of buying the '
+                                  'equivalent space/time as paid advertising.'},
+    {'term': 'Reach', 'definition': 'The estimated size of the audience potentially exposed to a mention.'},
+    {'term': 'Sentiment', 'definition': 'The tone of a mention toward the organisation — positive, '
+                                        'neutral or negative.'},
+    {'term': 'Volume', 'definition': 'The total number of media mentions in the reporting period.'},
+    {'term': 'Share of Voice', 'definition': "An organisation's mentions as a proportion of total "
+                                             "coverage across it and its competitors."},
+    {'term': 'Issue Impact', 'definition': 'The total effect a particular issue or story has on '
+                                           'overall sentiment.'},
+    {'term': 'Reputational Risk', 'definition': 'A high-value negative mention that could damage the '
+                                                'brand if left unmanaged.'},
+    {'term': 'Reputational Opportunity', 'definition': 'A high-value positive mention that can be '
+                                                       'amplified to strengthen the brand.'},
+]
+
+
+@login_required
+@require_http_methods(['POST'])
+def report_ai_generate(request, org_id):
+    """Run the Anthropic analysis for a period on demand and cache it. The Full
+    Report's 'Generate AI Analysis' button calls this, then reloads."""
+    from .report_ai import generate_analysis, ReportAIError
+    org = get_object_or_404(Organization, id=org_id)
+    today = date.today()
+
+    def _d(raw, default):
+        try:
+            return date.fromisoformat(raw) if raw else default
+        except ValueError:
+            return default
+
+    df = _d(request.POST.get('date_from') or request.GET.get('date_from', ''), today.replace(day=1))
+    dt = _d(request.POST.get('date_to') or request.GET.get('date_to', ''), today)
+
+    try:
+        result = generate_analysis(org, df, dt, force=True)
+    except ReportAIError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+
+    if not result:
+        return JsonResponse(
+            {'ok': False, 'error': 'No coverage in this period to analyse.'},
+            status=400,
+        )
+    return JsonResponse({'ok': True})
 
 
 _MEDIA_TYPES_DEF = [
@@ -1798,6 +1957,7 @@ _MODULE_LIST = [
     {'id': 'top_sources',                'label': 'Top Media Sources'},
     {'id': 'word_cloud',                 'label': 'Word Cloud'},
     {'id': 'kpi_performance',            'label': 'KPI Performance'},
+    {'id': 'kpi_insights',               'label': 'KPI Performance Summary & Insights'},
 ]
 
 
@@ -2887,6 +3047,75 @@ def media_source_create(request, org_id):
         'country': source.country,
         'reach': source.reach,
     })
+
+
+@login_required
+@require_http_methods(['POST'])
+def media_source_csv_upload(request, org_id):
+    """Bulk-import media sources from a CSV.
+
+    Expected columns: name, type, domain, reach, country, handle
+    (the _id / logo_url / createdAt / updatedAt columns are ignored).
+    """
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+    valid_types = {v for v, _ in SOURCE_TYPE_CHOICES}
+
+    # Skip rows that already exist (matched on name + type) so re-uploading is safe.
+    existing_keys = {
+        (n.lower(), t) for n, t in org.media_sources.values_list('name', 'source_type')
+    }
+    seen = set()
+
+    for idx, row in enumerate(reader, start=2):  # row 1 is the header
+        name = (row.get('name') or '').strip()
+        if not name:
+            errors.append(f'Row {idx}: missing name')
+            continue
+
+        stype = (row.get('type') or row.get('source_type') or '').strip().lower()
+        if stype not in valid_types:
+            stype = 'online'
+
+        url = (row.get('domain') or row.get('url') or '').strip()
+
+        try:
+            reach = int(float((row.get('reach') or '0').strip() or 0))
+        except ValueError:
+            reach = 0
+
+        key = (name.lower(), stype)
+        if key in existing_keys or key in seen:
+            continue
+        seen.add(key)
+
+        to_create.append(MediaSource(
+            organization=org,
+            name=name,
+            source_type=stype,
+            url=url[:500],
+            handle=(row.get('handle') or '').strip(),
+            country=(row.get('country') or '').strip(),
+            reach=reach,
+        ))
+
+    if to_create:
+        MediaSource.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
 
 
 @login_required

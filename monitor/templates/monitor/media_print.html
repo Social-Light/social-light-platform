@@ -303,7 +303,7 @@ function addArticle() {
     ave: document.getElementById('pAve').value || 0,
     reach: document.getElementById('pReach').value || 0,
     date_published: document.getElementById('pDate').value,
-  }).then(() => { closeModal('addPrintModal'); location.reload(); });
+  }).then(() => { flashToast('Print article added', 'success'); location.reload(); });
 }
 
 function editPrint(id, source, headline, author, section, url, country, sentiment, ave, reach, date) {
@@ -334,7 +334,7 @@ function saveArticle() {
     ave: document.getElementById('editPAve').value || 0,
     reach: document.getElementById('editPReach').value || 0,
     date_published: document.getElementById('editPDate').value,
-  }).then(() => { closeModal('editPrintModal'); location.reload(); });
+  }).then(() => { flashToast('Print article updated', 'success'); location.reload(); });
 }
 
 function deleteArticle(id) {

@@ -324,7 +324,7 @@ function addPost() {
     ave: 0,
     relevancy: 0,
     date_published: document.getElementById('sDate').value,
-  }).then(() => { closeModal('addSocialModal'); location.reload(); });
+  }).then(() => { flashToast('Social post added', 'success'); location.reload(); });
 }
 
 function deletePost(id) {
@@ -373,7 +373,7 @@ function savePost() {
     reach: document.getElementById('editSReach').value || 0,
     relevancy: document.getElementById('editSRelevancy').value || 0,
     date_published: document.getElementById('editSDate').value,
-  }).then(() => { closeModal('editSocialModal'); location.reload(); });
+  }).then(() => { flashToast('Social post updated', 'success'); location.reload(); });
 }
 function toggleDate(id) { document.getElementById(id).showPicker?.() || document.getElementById(id).click(); }
 initCountryInput('sCountry');

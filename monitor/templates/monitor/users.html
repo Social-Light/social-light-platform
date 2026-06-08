@@ -175,7 +175,7 @@ function createUser() {
     last_name: document.getElementById('uLast').value.trim(),
     email,
     role: document.getElementById('uRole').value,
-  }).then(() => { closeModal('addUserModal'); location.reload(); });
+  }).then(() => { flashToast('User added', 'success'); location.reload(); });
 }
 
 function editUser(id, first, last, email, role) {
@@ -194,7 +194,7 @@ function saveUser() {
     last_name: document.getElementById('editULast').value.trim(),
     email: document.getElementById('editUEmail').value.trim(),
     role: document.getElementById('editURole').value,
-  }).then(() => { closeModal('editUserModal'); location.reload(); });
+  }).then(() => { flashToast('User updated', 'success'); location.reload(); });
 }
 
 function deleteUser(id, name) {

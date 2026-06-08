@@ -8,7 +8,11 @@
     <h1 class="page-title">Media Sources</h1>
     <p class="page-subtitle">Manage your media sources and contacts</p>
   </div>
-  <div class="header-actions">
+  <div class="header-actions" style="display:flex; gap:8px;">
+    <button class="btn btn-secondary" onclick="openModal('uploadSourceModal')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Load Sources
+    </button>
     <button class="btn btn-primary" onclick="openModal('addSourceModal')">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Add Source
@@ -143,6 +147,31 @@
   </div>
 </div>
 
+<!-- Load Sources CSV Modal -->
+<div class="modal-overlay hidden" id="uploadSourceModal">
+  <div class="modal modal--sm">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Load Media Sources from CSV</div>
+        <div class="modal-subtitle">Bulk import sources. Rows matching an existing source (name + type) are skipped.</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('uploadSourceModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">CSV File</label>
+        <input type="file" class="form-input" id="sourceCsvFile" accept=".csv,text/csv" />
+        <small class="text-muted">Expected columns: name, type, domain, reach, country, handle. The <code>_id</code>, <code>logo_url</code>, <code>createdAt</code> and <code>updatedAt</code> columns are ignored.</small>
+      </div>
+      <div id="sourceCsvResult" style="margin-top:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('uploadSourceModal')">Cancel</button>
+      <button class="btn btn-primary" id="sourceCsvUploadBtn" onclick="uploadSourcesCsv()">Upload</button>
+    </div>
+  </div>
+</div>
+
 <!-- Edit Source Modal -->
 <div class="modal-overlay hidden" id="editSourceModal">
   <div class="modal modal--sm">
@@ -224,6 +253,7 @@ async function createSource() {
   };
   try {
     await apiRequest(`/api/${ORG_ID}/sources/`, 'POST', body);
+    flashToast('Source added', 'success');
     location.reload();
   } catch (e) { alert(e.message); }
 }
@@ -254,8 +284,49 @@ async function saveEdit() {
   };
   try {
     await apiRequest(`/api/${ORG_ID}/sources/${id}/`, 'PUT', body);
+    flashToast('Source updated', 'success');
     location.reload();
   } catch (e) { alert(e.message); }
+}
+
+// ── Bulk CSV upload ────────────────────────────────────
+function uploadSourcesCsv() {
+  const input = document.getElementById('sourceCsvFile');
+  const resultEl = document.getElementById('sourceCsvResult');
+  const btn = document.getElementById('sourceCsvUploadBtn');
+  const file = input.files && input.files[0];
+  if (!file) { resultEl.innerHTML = '<span style="color:#dc2626;">Please choose a CSV file.</span>'; return; }
+
+  const fd = new FormData();
+  fd.append('file', file);
+  btn.disabled = true;
+  btn.textContent = 'Uploading...';
+  resultEl.innerHTML = '';
+
+  fetch(`/api/${ORG_ID}/sources/upload/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') || '' },
+    body: fd,
+  })
+    .then(async (res) => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`);
+      return data;
+    })
+    .then((data) => {
+      let html = `<div style="color:#059669;">Imported ${data.created} source(s).</div>`;
+      if (data.errors && data.errors.length) {
+        html += `<details style="margin-top:8px;"><summary>${data.errors.length} row(s) skipped</summary><ul style="margin:6px 0 0 18px;">` +
+          data.errors.slice(0, 20).map(e => `<li>${e}</li>`).join('') + '</ul></details>';
+      }
+      resultEl.innerHTML = html;
+      flashToast('Imported ' + data.created + ' source(s)', 'success');
+      setTimeout(() => { closeModal('uploadSourceModal'); location.reload(); }, 1200);
+    })
+    .catch((err) => {
+      resultEl.innerHTML = `<span style="color:#dc2626;">${err.message}</span>`;
+    })
+    .finally(() => { btn.disabled = false; btn.textContent = 'Upload'; });
 }
 
 // ── Delete ─────────────────────────────────────────────
@@ -263,6 +334,7 @@ async function deleteSource(id, name) {
   if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
   try {
     await apiRequest(`/api/${ORG_ID}/sources/${id}/delete/`, 'DELETE');
+    flashToast('Source deleted', 'success');
     location.reload();
   } catch (e) { alert(e.message); }
 }

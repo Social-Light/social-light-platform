@@ -67,6 +67,7 @@ urlpatterns = [
     # Reports
     path('app/reports/<uuid:org_id>/', views.reports_view, name='reports'),
     path('app/reports/<uuid:org_id>/full/', views.report_full, name='report_full'),
+    path('api/<uuid:org_id>/report-ai/', views.report_ai_generate, name='report_ai_generate'),
     path('app/reports/<uuid:org_id>/sentiment/', views.report_sentiment, name='report_sentiment'),
     path('app/reports/<uuid:org_id>/source/', views.report_source, name='report_source'),
     path('app/reports/<uuid:org_id>/competitor/', views.report_competitor, name='report_competitor'),
@@ -95,6 +96,7 @@ urlpatterns = [
     # Media Sources
     path('app/media/sources/<uuid:org_id>/', views.media_sources, name='media_sources'),
     path('api/<uuid:org_id>/sources/', views.media_source_create, name='media_source_create'),
+    path('api/<uuid:org_id>/sources/upload/', views.media_source_csv_upload, name='media_source_csv_upload'),
     path('api/<uuid:org_id>/sources/<int:source_id>/', views.media_source_update, name='media_source_update'),
     path('api/<uuid:org_id>/sources/<int:source_id>/delete/', views.media_source_delete, name='media_source_delete'),
 

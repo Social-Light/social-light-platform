@@ -150,6 +150,66 @@ document.addEventListener('click', e => {
   }
 });
 
+// ── Toast notifications ─────────────────────────────
+function _toastContainer() {
+  let c = document.getElementById('toastContainer');
+  if (!c) {
+    c = document.createElement('div');
+    c.id = 'toastContainer';
+    c.className = 'toast-container';
+    document.body.appendChild(c);
+  }
+  return c;
+}
+
+const _TOAST_ICONS = {
+  success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
+  error:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+  info:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+};
+
+// Show a toast immediately. type = 'success' | 'error' | 'info'.
+function showToast(message, type, timeout) {
+  if (!message) return;
+  type = type || 'info';
+  const el = document.createElement('div');
+  el.className = 'toast toast--' + type;
+  el.innerHTML = '<span class="toast-icon">' + (_TOAST_ICONS[type] || _TOAST_ICONS.info) + '</span>' +
+                 '<span class="toast-msg"></span>' +
+                 '<button class="toast-close" type="button" aria-label="Dismiss">&times;</button>';
+  el.querySelector('.toast-msg').textContent = message;
+  _toastContainer().appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  const remove = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 220); };
+  el.querySelector('.toast-close').addEventListener('click', remove);
+  setTimeout(remove, timeout || (type === 'error' ? 6000 : 3500));
+}
+
+// Queue a toast to appear after the next page load (survives reload/navigation).
+function flashToast(message, type) {
+  try {
+    sessionStorage.setItem('flashToast', JSON.stringify({ message: message, type: type || 'info' }));
+  } catch (e) { /* ignore */ }
+}
+
+(function () {
+  // Surface a flashed toast from a previous page (e.g. after a reload on success).
+  try {
+    const raw = sessionStorage.getItem('flashToast');
+    if (raw) { sessionStorage.removeItem('flashToast'); const f = JSON.parse(raw); showToast(f.message, f.type); }
+  } catch (e) { /* ignore */ }
+
+  // Route legacy alert() calls (validation messages etc.) through the toast system,
+  // so existing error messages across the app become non-blocking toasts.
+  window.alert = function (message) { showToast(String(message), 'error'); };
+
+  // Any uncaught API failure (apiRequest with no .catch) surfaces as an error toast.
+  window.addEventListener('unhandledrejection', function (e) {
+    const msg = e && e.reason && e.reason.message ? e.reason.message : '';
+    if (msg) showToast(msg, 'error');
+  });
+})();
+
 // ── Table sort ──────────────────────────────────────
 document.querySelectorAll('.sort-icon').forEach(icon => {
   icon.style.cursor = 'pointer';

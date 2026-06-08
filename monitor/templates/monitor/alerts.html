@@ -147,7 +147,7 @@ function createAlert() {
     email: document.getElementById('alertEmail').value.trim(),
     frequency: document.getElementById('alertFreq').value,
     start_date: document.getElementById('alertStartDate').value || null,
-  }).then(() => { closeModal('addAlertModal'); location.reload(); });
+  }).then(() => { flashToast('Alert created', 'success'); location.reload(); });
 }
 
 function deleteAlert(id) {

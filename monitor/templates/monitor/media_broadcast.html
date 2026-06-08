@@ -305,7 +305,7 @@ function addMention() {
     sentiment: document.getElementById('bSentiment').value,
     ave: document.getElementById('bAve').value || 0,
     date_published: document.getElementById('bDate').value,
-  }).then(() => { closeModal('addBroadcastModal'); location.reload(); });
+  }).then(() => { flashToast('Broadcast mention added', 'success'); location.reload(); });
 }
 function deleteMention(id) {
   if (!confirm('Delete this mention?')) return;
@@ -350,7 +350,7 @@ function saveMention() {
     sentiment: document.getElementById('editBSentiment').value,
     ave: document.getElementById('editBAve').value || 0,
     date_published: document.getElementById('editBDate').value,
-  }).then(() => { closeModal('editBroadcastModal'); location.reload(); });
+  }).then(() => { flashToast('Broadcast mention updated', 'success'); location.reload(); });
 }
 
 function uploadBroadcastCsv() {

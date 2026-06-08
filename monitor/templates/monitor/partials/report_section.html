@@ -22,6 +22,36 @@
 .trend-wrap { display:grid; grid-template-rows:auto auto; gap:6px; }
 .trend-note { font-size:.67rem; color:#9ca3af; margin:2px 0 0; text-align:right; }
 .trend-note-bot { font-size:.67rem; color:#9ca3af; margin:4px 0 0; }
+
+/* KPI insights list */
+.ins-list { display:flex; flex-direction:column; gap:11px; margin-top:6px; }
+.ins-item { display:flex; align-items:flex-start; gap:10px; font-size:.86rem; color:#374151; line-height:1.55; }
+.ins-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+.ins-dot--positive { background:#22c55e; }
+.ins-dot--neutral  { background:#9ca3af; }
+.ins-dot--negative { background:#ef4444; }
+
+/* KPI insights — category pills + text */
+.kpi-ins-list { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
+.kpi-ins-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.kpi-pill { display:inline-flex; align-items:center; gap:6px; border:1.5px solid #e5e7eb; border-radius:9999px; padding:5px 13px; font-size:.76rem; font-weight:600; color:#0f766e; white-space:nowrap; flex-shrink:0; }
+.kpi-pill-chev { color:#9ca3af; flex-shrink:0; }
+.kpi-pill--positive { border-color:#bbf7d0; color:#15803d; }
+.kpi-pill--negative { border-color:#fecaca; color:#dc2626; }
+.kpi-ins-text { font-size:.82rem; color:#374151; line-height:1.5; }
+.kpi-ins-text::before { content:': '; color:#9ca3af; }
+
+/* Top journalists bars */
+.journ-bars { display:flex; flex-direction:column; gap:8px; margin-bottom:6px; }
+.journ-bar-row { display:grid; grid-template-columns:150px 1fr 34px; align-items:center; gap:10px; }
+.journ-bar-name { font-size:.78rem; color:#374151; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.journ-bar-outer { background:#f3f4f6; border-radius:4px; }
+.journ-bar-track { display:flex; height:18px; border-radius:4px; overflow:hidden; min-width:3px; }
+.journ-bar-seg { height:100%; }
+.journ-bar-seg.pos { background:#22c55e; }
+.journ-bar-seg.neu { background:#9ca3af; }
+.journ-bar-seg.neg { background:#ef4444; }
+.journ-bar-val { font-size:.78rem; font-weight:700; color:#374151; text-align:right; }
 </style>
 
 {% if td.sel_mods %}
@@ -382,26 +412,95 @@
           </div>
         </div>
       </div>
-      {% if type_key == 'print' and journalists %}
-      <div style="margin-top:18px;">
-        <div class="kpi-lbl" style="margin-bottom:8px;">Top Journalists</div>
-        <table class="journ-table">
-          <thead><tr><th>Author</th><th>Articles</th><th>Positive</th><th>Neutral</th><th>Negative</th><th>AVE</th></tr></thead>
-          <tbody>
-            {% for j in journalists|slice:":6" %}
-            <tr>
-              <td>{{ j.author }}</td>
-              <td>{{ j.total }}</td>
-              <td style="color:#16a34a;">{{ j.pos }}</td>
-              <td style="color:#6b7280;">{{ j.neu }}</td>
-              <td style="color:#dc2626;">{{ j.neg }}</td>
-              <td>BWP {{ j.ave_total|floatformat:0 }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── KPI PERFORMANCE SUMMARY & INSIGHTS ───────────────────────────────── #}
+{% if 'kpi_insights' in td.sel_mods %}
+<div class="slide" id="s-{{ type_key }}-kpi-insights">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>KPI Performance Summary &amp; Insights</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">KPI Performance Summary &amp; Insights</h2>
+      <div class="kpi-ins-list">
+        {% for ins in td.kpi_insights %}
+        <div class="kpi-ins-row">
+          <span class="kpi-pill kpi-pill--{{ ins.sentiment }}">
+            <svg class="kpi-pill-chev" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
+            {{ ins.category }} ({{ ins.count }})
+          </span>
+          <span class="kpi-ins-text">{{ ins.text }}</span>
+        </div>
+        {% empty %}
+        <p style="color:#9ca3af;font-size:.86rem;">No data available for this period.</p>
+        {% endfor %}
       </div>
-      {% endif %}
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── TOP JOURNALISTS (print only) ─────────────────────────────────────── #}
+{% if type_key == 'print' and journalists %}
+<div class="slide" id="s-{{ type_key }}-journalists">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>Top Journalists</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">Top Journalists</h2>
+      <p class="src-subtitle">Most active authors by volume &amp; tonality</p>
+      <div class="journ-bars">
+        {% for j in journalists|slice:":10" %}
+        <div class="journ-bar-row">
+          <div class="journ-bar-name">{{ j.author|truncatechars:26 }}</div>
+          <div class="journ-bar-outer">
+            <div class="journ-bar-track" style="width:{{ j.pct }}%;">
+              <div class="journ-bar-seg pos" style="flex:{{ j.pos }};"></div>
+              <div class="journ-bar-seg neu" style="flex:{{ j.neu }};"></div>
+              <div class="journ-bar-seg neg" style="flex:{{ j.neg }};"></div>
+            </div>
+          </div>
+          <div class="journ-bar-val">{{ j.total }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      <div style="display:flex;gap:16px;font-size:.72rem;color:#6b7280;margin:10px 0 16px;justify-content:center;">
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#22c55e;display:inline-block;"></span>Positive</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#9ca3af;display:inline-block;"></span>Neutral</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block;"></span>Negative</span>
+      </div>
+      <table class="journ-table">
+        <thead><tr><th>Author</th><th>Articles</th><th>Positive</th><th>Neutral</th><th>Negative</th><th>AVE</th></tr></thead>
+        <tbody>
+          {% for j in journalists|slice:":8" %}
+          <tr>
+            <td>{{ j.author }}</td>
+            <td>{{ j.total }}</td>
+            <td style="color:#16a34a;">{{ j.pos }}</td>
+            <td style="color:#6b7280;">{{ j.neu }}</td>
+            <td style="color:#dc2626;">{{ j.neg }}</td>
+            <td>BWP {{ j.ave_total|floatformat:0 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
     <div class="slide-ftr">
       <span>© Social Light Botswana | {% now "Y" %}</span>

@@ -324,6 +324,25 @@ class GeneratedReport(models.Model):
         return self.title
 
 
+class ReportAnalysis(models.Model):
+    """Durable store for the AI-generated report analysis (ESG / stakeholder /
+    sectorial competitor), so it survives server restarts and is reused for a
+    week before the user is prompted to regenerate."""
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='report_analyses')
+    date_from = models.DateField()
+    date_to = models.DateField()
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('organization', 'date_from', 'date_to')]
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.organization.name} analysis {self.date_from}–{self.date_to}"
+
+
 class Alert(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='alerts')
     name = models.CharField(max_length=200)

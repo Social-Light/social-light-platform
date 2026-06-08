@@ -478,7 +478,7 @@ function addComp() {
     aliases: document.getElementById('compAliases').value.trim(),
     website: document.getElementById('compWebsite').value.trim(),
     notes: document.getElementById('compNotes').value.trim(),
-  }).then(() => { closeModal('addCompModal'); location.reload(); });
+  }).then(() => { flashToast('Competitor added', 'success'); location.reload(); });
 }
 
 // ── Article deletion ──────────────────────────────────────────────────────────
@@ -489,7 +489,7 @@ function deleteArticle(btn) {
   var url = (type === 'competitor')
     ? '/api/' + ORG_ID + '/competitors/articles/' + id + '/delete/'
     : '/api/' + ORG_ID + '/' + type + '/' + id + '/delete/';
-  apiRequest(url, 'DELETE').then(function() { location.reload(); });
+  apiRequest(url, 'DELETE').then(function() { flashToast('Article removed', 'success'); location.reload(); });
 }
 
 // ── Load online competitor articles (CSV) ─────────────────────────────────────

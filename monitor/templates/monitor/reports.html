@@ -228,7 +228,7 @@
     <table class="data-table" id="reportsTable">
       <thead>
         <tr>
-          <th>Title</th><th>Type</th><th>Modules</th><th>Scope</th>
+          <th>Title</th><th>Type</th><th>Modules</th><th>Scope</th><th>Date Range</th>
           <th>Created By</th><th>Date Created</th><th>Actions</th>
         </tr>
       </thead>
@@ -251,6 +251,9 @@
           <td style="color:#374151;font-size:.875rem;">
             {% if report.scope %}{% for c in report.scope|slice:":3" %}{{ c }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if report.scope|length > 3 %}...{% endif %}{% else %}—{% endif %}
           </td>
+          <td style="font-size:.875rem;white-space:nowrap;color:#374151;">
+            {% if report.date_from or report.date_to %}{{ report.date_from|date:"d M Y"|default:"…" }} &ndash; {{ report.date_to|date:"d M Y"|default:"…" }}{% else %}<span style="color:#9ca3af;">—</span>{% endif %}
+          </td>
           <td style="font-size:.875rem;">{{ report.created_by.get_full_name|default:report.created_by.username|default:"—" }}</td>
           <td style="font-size:.875rem;white-space:nowrap;">{{ report.created_at|date:"M d, Y H:i" }}</td>
           <td>
@@ -268,7 +271,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:2.5rem;">No reports generated yet. Click <strong>Monthly Summary</strong> above to get started.</td></tr>
+        <tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:2.5rem;">No reports generated yet. Click <strong>Monthly Summary</strong> above to get started.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -465,8 +468,9 @@ function generateReport() {
       countries: selectedCountries,
     })
   })
-  .then(function(r) { return r.json(); })
+  .then(function(r) { if (!r.ok) throw new Error('Report generation failed'); return r.json(); })
   .then(function() {
+    flashToast('Report generated successfully', 'success');
     var url = '/app/reports/' + ORG_ID + '/full/';
     var params = [];
     if (dateFrom) params.push('date_from=' + dateFrom);
@@ -475,7 +479,7 @@ function generateReport() {
     if (mode === 'custom') params.push('modules=' + encodeURIComponent(moduleParams.join(',')));
     window.location.href = url + (params.length ? '?' + params.join('&') : '');
   })
-  .catch(function() { btn.disabled = false; btn.textContent = 'Generate Report'; });
+  .catch(function(err) { showToast(err.message || 'Report generation failed', 'error'); btn.disabled = false; btn.textContent = 'Generate Report'; });
 }
 
 /* ── Delete ───────────────────────────────────────────────── */
@@ -483,7 +487,7 @@ function deleteReport(id) {
   if (!confirm('Delete this report?')) return;
   fetch('/api/' + ORG_ID + '/reports/' + id + '/delete/', {
     method: 'POST', headers: {'X-CSRFToken': getCookie('csrftoken')}
-  }).then(function(r){return r.json();}).then(function(){ window.location.reload(); });
+  }).then(function(r){return r.json();}).then(function(){ flashToast('Report deleted', 'success'); window.location.reload(); });
 }
 
 /* ── Search / Sort ────────────────────────────────────────── */
