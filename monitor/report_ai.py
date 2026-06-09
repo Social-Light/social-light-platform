@@ -120,6 +120,9 @@ def generate_analysis(org, date_from, date_to, force=False):
         raise ReportAIError('Anthropic rate limit reached. Please try again shortly.')
     except anthropic.APIStatusError as exc:
         raise ReportAIError(f'Anthropic API error (HTTP {exc.status_code}). Please try again.')
+    except anthropic.APIConnectionError:
+        raise ReportAIError('Could not reach the AI service in time (timeout or network). '
+                            'Try again, or use a shorter reporting period.')
     except ReportAIError:
         raise
     except Exception:
@@ -168,7 +171,9 @@ def _gather(org, date_from, date_to):
 def _call_anthropic(api_key, org, date_from, date_to, payload):
     import anthropic  # lazy import so the app runs without the SDK installed
 
-    client = anthropic.Anthropic(api_key=api_key)
+    # Bound the call well under gunicorn's --timeout so a slow response fails
+    # cleanly (ReportAIError) instead of getting the worker killed mid-request.
+    client = anthropic.Anthropic(api_key=api_key, timeout=120.0, max_retries=1)
 
     mentions_block = "\n".join(
         f"- [{m['media']}/{m['sentiment']}] {m['text']}" for m in payload['mentions']
