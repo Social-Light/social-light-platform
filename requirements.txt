@@ -1,5 +1,6 @@
 gunicorn
 psycopg2-binary
+anthropic
 amqp==5.3.1
 annotated-doc==0.0.4
 annotated-types==0.7.0
