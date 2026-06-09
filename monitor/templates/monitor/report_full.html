@@ -194,10 +194,37 @@
 .sec-card-score { font-size:.95rem; font-weight:800; background:rgba(0,0,0,.14); border-radius:9999px;
   padding:6px 12px; min-width:48px; text-align:center; flex-shrink:0; }
 
+/* Export dropdown */
+.rf-export { position:relative; }
+.rf-export-menu {
+  position:absolute; right:0; top:calc(100% + 8px); z-index:60;
+  background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+  box-shadow:0 12px 32px rgba(0,0,0,.14); padding:8px; min-width:236px; display:none;
+}
+.rf-export-menu.open { display:block; }
+.rf-export-item {
+  display:flex; align-items:center; gap:12px; width:100%; padding:11px 14px;
+  border:none; background:none; border-radius:8px; font-size:.92rem; color:#1f2937;
+  cursor:pointer; text-align:left;
+}
+.rf-export-item:hover:not(:disabled) { background:#f3f4f6; }
+.rf-export-item:disabled { color:#9ca3af; cursor:not-allowed; }
+.rf-soon {
+  margin-left:auto; font-size:.6rem; text-transform:uppercase; letter-spacing:.05em;
+  background:#f3f4f6; color:#9ca3af; padding:2px 7px; border-radius:9999px;
+}
+
 @media print {
   .rf-mod-bar, .rf-controls, .rf-pagination, .no-print, .sidebar, .topheader { display:none !important; }
   .slide.active { display:block !important; }
   .rf-slide-wrap { box-shadow:none; }
+  /* PDF export: every slide on its own page, none clipped */
+  body.pdf-mode .slide { display:block !important; page-break-after:always; page-break-inside:avoid; }
+  body.pdf-mode .slide:last-child { page-break-after:auto; }
+  body.pdf-mode .rf-slide-wrap { max-width:none; }
+  body.pdf-mode img[data-canvas-replacement] { display:block !important; max-width:100% !important; height:auto !important; }
+  body.pdf-mode .rf-slide-wrap, body.pdf-mode .rf-slide-wrap * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  @page { size: A4 landscape; margin: 6mm; }
 }
 </style>
 {% endblock %}
@@ -236,11 +263,23 @@
         {% if analysis %}Regenerate AI Analysis{% else %}Generate AI Analysis{% endif %}
       </button>
       {% endif %}
-      <a href="{% url 'monitor:report_competitor' org.id %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"
-         class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:6px;">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Export Report
-      </a>
+      <div class="rf-export" id="rfExport">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleExportMenu(event)" style="display:flex;align-items:center;gap:6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export Report
+        </button>
+        <div class="rf-export-menu" id="rfExportMenu">
+          <button type="button" class="rf-export-item" onclick="exportPDF()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Export as PDF
+          </button>
+          <button type="button" class="rf-export-item" disabled title="Coming soon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export as PowerPoint
+            <span class="rf-soon">soon</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -622,13 +661,69 @@ function generateAi(btn){
     .catch(function(err){ if(window.showToast){ showToast(err.message || 'Failed to generate AI analysis', 'error'); } else { alert(err.message); } btn.disabled=false; btn.innerHTML=orig; });
 }
 
-// Init
-showSlide(0);
+// ── Export dropdown ──────────────────────────────────────────────────────
+function toggleExportMenu(e){
+  e.stopPropagation();
+  document.getElementById('rfExportMenu').classList.toggle('open');
+}
+document.addEventListener('click', function(e){
+  var menu = document.getElementById('rfExportMenu');
+  if (menu && !document.getElementById('rfExport').contains(e.target)) menu.classList.remove('open');
+});
+function exportPDF(){
+  document.getElementById('rfExportMenu').classList.remove('open');
+  var params = new URLSearchParams(window.location.search);
+  params.set('format', 'pdf');
+  window.open(window.location.pathname + '?' + params.toString(), '_blank');
+}
 
-// Observe slide visibility to build charts lazily
-var io = new IntersectionObserver(function(entries){
-  entries.forEach(function(e){if(e.isIntersecting) buildChartForSlide(e.target.id);});
-},{threshold:0.1});
-document.querySelectorAll('#slideWrap .slide').forEach(function(s){io.observe(s);});
+// ── PDF mode: render all slides + charts, rasterise canvases, then print ──
+var PDF_MODE = new URLSearchParams(window.location.search).get('format') === 'pdf';
+
+function replaceCanvasWithImage(done){
+  var canvases = Array.prototype.slice.call(document.querySelectorAll('#slideWrap canvas'));
+  var pending = 0, finished = false;
+  function finish(){ if(!finished){ finished = true; if(done) done(); } }
+  canvases.forEach(function(c){
+    if (c._pi || !c.offsetWidth) return;
+    var img = new Image();
+    img.style.width  = c.offsetWidth  + 'px';
+    img.style.height = c.offsetHeight + 'px';
+    img.setAttribute('data-canvas-replacement', 'true');
+    pending++;
+    img.onload = img.onerror = function(){ pending--; if(pending === 0) finish(); };
+    img.src = c.toDataURL('image/png', 1.0);
+    c.style.display = 'none';
+    c.parentNode.insertBefore(img, c.nextSibling);
+    c._pi = img;
+  });
+  if (pending === 0) finish();
+}
+
+if (PDF_MODE) {
+  document.body.classList.add('pdf-mode');
+  if (window.Chart) Chart.defaults.animation = false;  // render charts to final state instantly
+  // Build every slide's charts and reveal all slides so the whole report prints.
+  ALL_SLIDES.forEach(function(id){
+    var s = document.getElementById(id);
+    if (s) s.classList.add('active');
+    buildChartForSlide(id);
+    if (window._reportFullBuildSectionCharts) window._reportFullBuildSectionCharts(id);
+  });
+  window.addEventListener('load', function(){
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      replaceCanvasWithImage(function(){ setTimeout(function(){ window.print(); }, 60); });
+    });});
+  });
+} else {
+  // Init normal interactive viewer
+  showSlide(0);
+
+  // Observe slide visibility to build charts lazily
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){if(e.isIntersecting) buildChartForSlide(e.target.id);});
+  },{threshold:0.1});
+  document.querySelectorAll('#slideWrap .slide').forEach(function(s){io.observe(s);});
+}
 </script>
 {% endblock %}
