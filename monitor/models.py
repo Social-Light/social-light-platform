@@ -225,7 +225,7 @@ class PrintArticle(models.Model):
 class SocialMediaPost(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='social_posts')
     platform = models.CharField(max_length=50, choices=PLATFORM_CHOICES, default='Facebook')
-    page_name = models.CharField(max_length=200, blank=True)
+    page_name = models.TextField(blank=True)
     headline = models.TextField()
     summary = models.TextField(blank=True)
     url = models.URLField(blank=True, max_length=2000)
