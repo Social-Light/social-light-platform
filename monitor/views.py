@@ -24,6 +24,7 @@ from .models import (
     SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES,
 )
 from .relevancy import compute_relevancy
+from .alert_email import build_and_send, start_of_today
 
 COMPETITOR_SUGGESTIONS = {
     'Banking & Financial Services': [
@@ -2222,21 +2223,66 @@ def alerts_view(request, org_id):
     })
 
 
+def _clean_recipients(raw):
+    """Normalise a comma-separated recipients string, de-duplicating and trimming."""
+    seen, out = set(), []
+    for email in (raw or '').split(','):
+        email = email.strip()
+        if email and email.lower() not in seen:
+            seen.add(email.lower())
+            out.append(email)
+    return ', '.join(out)
+
+
 @login_required
 @require_http_methods(['POST'])
 def alert_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
-    data = json.loads(request.body)
+    multipart = request.content_type and 'multipart' in request.content_type
+    data = request.POST if multipart else json.loads(request.body)
+    recipients = _clean_recipients(data.get('recipients', '') or data.get('email', ''))
     alert = Alert.objects.create(
         organization=org,
-        name=data.get('name', '').strip(),
-        keywords=data.get('keywords', '').strip(),
-        email=data.get('email', '').strip(),
+        name=(data.get('name', '') or '').strip(),
+        keywords=(data.get('keywords', '') or '').strip(),
+        recipients=recipients,
+        email=recipients.split(',')[0].strip() if recipients else '',
         frequency=data.get('frequency', 'daily'),
-        email_subject=data.get('email_subject', '').strip(),
+        email_subject=(data.get('email_subject', '') or '').strip(),
         start_date=data.get('start_date') or None,
+        delivery_time=data.get('delivery_time') or None,
     )
+    if multipart and 'banner_image' in request.FILES:
+        alert.banner_image = request.FILES['banner_image']
+        alert.save()
     return JsonResponse({'id': alert.id, 'name': alert.name})
+
+
+@login_required
+@require_http_methods(['POST'])
+def alert_update(request, org_id, alert_id):
+    org = get_object_or_404(Organization, id=org_id)
+    alert = get_object_or_404(Alert, id=alert_id, organization=org)
+    multipart = request.content_type and 'multipart' in request.content_type
+    data = request.POST if multipart else json.loads(request.body)
+    for field in ['name', 'keywords', 'frequency', 'email_subject']:
+        if field in data:
+            setattr(alert, field, data[field].strip() if isinstance(data[field], str) else data[field])
+    if 'recipients' in data:
+        alert.recipients = _clean_recipients(data['recipients'])
+        alert.email = alert.recipients.split(',')[0].strip() if alert.recipients else ''
+    if 'start_date' in data:
+        alert.start_date = data['start_date'] or None
+    if 'delivery_time' in data:
+        alert.delivery_time = data['delivery_time'] or None
+    if 'is_active' in data:
+        alert.is_active = str(data['is_active']).lower() in ('1', 'true', 'on', 'yes')
+    if multipart and 'banner_image' in request.FILES:
+        alert.banner_image = request.FILES['banner_image']
+    if str(data.get('remove_banner', '')).lower() in ('1', 'true', 'yes'):
+        alert.banner_image = None
+    alert.save()
+    return JsonResponse({'ok': True})
 
 
 @login_required
@@ -2246,6 +2292,25 @@ def alert_delete(request, org_id, alert_id):
     alert = get_object_or_404(Alert, id=alert_id, organization=org)
     alert.delete()
     return JsonResponse({'ok': True})
+
+
+@login_required
+@require_http_methods(['POST'])
+def alert_test_send(request, org_id, alert_id):
+    """Send the digest for one alert right now (force, ignoring the watermark)."""
+    org = get_object_or_404(Organization, id=org_id)
+    alert = get_object_or_404(Alert, id=alert_id, organization=org)
+    if not alert.recipient_list():
+        return JsonResponse({'error': 'Add at least one recipient first.'}, status=400)
+    try:
+        result = build_and_send(alert, since=start_of_today(), force=True, update_watermark=False)
+    except Exception as exc:
+        return JsonResponse({'error': f'Send failed: {exc}'}, status=502)
+    return JsonResponse({
+        'ok': True,
+        'recipients': result.get('recipients', []),
+        'total': result.get('total', 0),
+    })
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────

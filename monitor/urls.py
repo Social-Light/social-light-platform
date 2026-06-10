@@ -78,6 +78,8 @@ urlpatterns = [
     # Alerts
     path('app/alerts/<uuid:org_id>/', views.alerts_view, name='alerts'),
     path('api/<uuid:org_id>/alerts/', views.alert_create, name='alert_create'),
+    path('api/<uuid:org_id>/alerts/<int:alert_id>/', views.alert_update, name='alert_update'),
+    path('api/<uuid:org_id>/alerts/<int:alert_id>/test/', views.alert_test_send, name='alert_test_send'),
     path('api/<uuid:org_id>/alerts/<int:alert_id>/delete/', views.alert_delete, name='alert_delete'),
 
     # Users
