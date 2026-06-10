@@ -1,6 +1,6 @@
 {% extends 'monitor/base.html' %}
 {% load static %}
-{% block title %}Media Insights Report{% endblock %}
+{% block title %}{{ org.name }} — Media Insights Report{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -218,13 +218,21 @@
   .rf-mod-bar, .rf-controls, .rf-pagination, .no-print, .sidebar, .topheader { display:none !important; }
   .slide.active { display:block !important; }
   .rf-slide-wrap { box-shadow:none; }
-  /* PDF export: every slide on its own page, none clipped */
-  body.pdf-mode .slide { display:block !important; page-break-after:always; page-break-inside:avoid; }
-  body.pdf-mode .slide:last-child { page-break-after:auto; }
-  body.pdf-mode .rf-slide-wrap { max-width:none; }
+  /* PDF export: drop the app chrome's offsets so slides fill the page */
+  body.pdf-mode .main-content { margin:0 !important; padding:0 !important; background:#fff !important; }
+  body.pdf-mode .rf-shell { max-width:none !important; margin:0 !important; }
+  body.pdf-mode .rf-slide-wrap { max-width:none !important; box-shadow:none; }
+  /* Each slide is one full landscape page; flex lets the content stretch to fill it */
+  body.pdf-mode .slide {
+    display:flex !important; flex-direction:column;
+    min-height:100vh; box-sizing:border-box;
+    page-break-after:always; break-after:page;
+  }
+  body.pdf-mode .slide:last-child { page-break-after:auto; break-after:auto; }
+  body.pdf-mode .slide > * { flex:1 1 auto; }
   body.pdf-mode img[data-canvas-replacement] { display:block !important; max-width:100% !important; height:auto !important; }
   body.pdf-mode .rf-slide-wrap, body.pdf-mode .rf-slide-wrap * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  @page { size: A4 landscape; margin: 6mm; }
+  @page { size: A4 landscape; margin: 0; }
 }
 </style>
 {% endblock %}
@@ -702,6 +710,8 @@ function replaceCanvasWithImage(done){
 
 if (PDF_MODE) {
   document.body.classList.add('pdf-mode');
+  // Default "Save as PDF" filename comes from document.title — name it after the org.
+  document.title = "{{ org.name|escapejs }} - Media Insights Report - {{ month_label|escapejs }}";
   if (window.Chart) Chart.defaults.animation = false;  // render charts to final state instantly
   // Build every slide's charts and reveal all slides so the whole report prints.
   ALL_SLIDES.forEach(function(id){

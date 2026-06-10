@@ -1,18 +1,91 @@
 {% extends 'monitor/base.html' %}
+{% load static %}
 {% block title %}Alerts{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Avatar stack (People column) */
+  .avatar-stack { display: flex; align-items: center; }
+  .avatar-stack .av {
+    width: 34px; height: 34px; border-radius: 50%; margin-left: -8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; border: 2px solid #fff;
+    text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  }
+  .avatar-stack .av:first-child { margin-left: 0; }
+  .av-c0 { background: #bae6fd; color: #0369a1; }
+  .av-c1 { background: #fed7aa; color: #c2410c; }
+  .av-c2 { background: #e9d5ff; color: #7e22ce; }
+  .av-c3 { background: #fecdd3; color: #be123c; }
+  .av-c4 { background: #bbf7d0; color: #15803d; }
+  .av-more { background: #e5e7eb; color: #475569; }
+
+  /* Inline action icon buttons */
+  .action-icons { display: flex; gap: 6px; justify-content: flex-end; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid #e5e7eb;
+    background: #fff; display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; color: #475569; transition: background .15s, color .15s, border-color .15s;
+  }
+  .icon-btn:hover { background: #f8fafc; color: #1e293b; }
+  .icon-btn.danger:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+
+  /* Modal sections */
+  .modal-section { margin-bottom: 26px; }
+  .modal-section:last-child { margin-bottom: 0; }
+  .modal-section-title {
+    font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 14px;
+    padding-bottom: 8px; border-bottom: 1px solid #f1f5f9;
+  }
+  .optional-tag { font-weight: 500; color: #94a3b8; font-size: 12px; }
+
+  /* Banner image dropzone */
+  .banner-drop {
+    border: 1.5px dashed #cbd5e1; border-radius: 10px; min-height: 120px;
+    display: flex; align-items: center; justify-content: center; position: relative;
+    cursor: pointer; overflow: hidden; background: #f8fafc; text-align: center;
+  }
+  .banner-drop:hover { border-color: #2563eb; background: #f0f6ff; }
+  .banner-drop img { max-height: 220px; max-width: 100%; object-fit: contain; }
+  .banner-placeholder { color: #94a3b8; font-size: 13px; padding: 24px; }
+  .banner-remove {
+    position: absolute; top: 12px; right: 12px; width: 36px; height: 36px; border-radius: 50%;
+    background: #ef4444; color: #fff; border: none; cursor: pointer; font-size: 18px;
+    display: none; align-items: center; justify-content: center; z-index: 2;
+  }
+  .banner-drop.has-image .banner-remove { display: flex; }
+  .banner-drop.has-image { border-style: solid; cursor: default; }
+
+  /* Recipients tag input */
+  .tag-input-row { display: flex; gap: 10px; }
+  .tag-input-row .form-control { flex: 1; }
+  .recip-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .recip-chip {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px 6px 12px;
+    border-radius: 999px; font-size: 12px; font-weight: 500;
+  }
+  .recip-chip .x { cursor: pointer; font-size: 14px; line-height: 1; opacity: .65; }
+  .recip-chip .x:hover { opacity: 1; }
+  .rc-0 { background: #e0f2fe; color: #0369a1; }
+  .rc-1 { background: #ffedd5; color: #c2410c; }
+  .rc-2 { background: #f3e8ff; color: #7e22ce; }
+  .rc-3 { background: #fee2e2; color: #b91c1c; }
+  .rc-4 { background: #dcfce7; color: #15803d; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="page-header page-header--flex">
   <div>
     <h1 class="page-title">Alerts Management</h1>
-    <p class="page-subtitle">Configure and manage media monitoring alerts</p>
+    <p class="page-subtitle">Configure and manage email alerts</p>
   </div>
   <div class="header-actions">
     <div class="search-input-wrap">
       <svg class="search-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input type="text" id="alertSearch" class="search-input-field" placeholder="Search alerts..." oninput="filterAlerts(this.value)" />
     </div>
-    <button class="btn btn-primary" onclick="openModal('addAlertModal')">
+    <button class="btn btn-primary" onclick="openCreateAlert()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Create Alert
     </button>
@@ -22,50 +95,69 @@
 {% if alerts %}
 <div class="table-card">
   <h3 class="table-section-title">Active Alerts ({{ alerts|length }})</h3>
+  <p class="page-subtitle" style="margin-top:-4px;">Manage your configured email alerts</p>
   <table class="data-table table table-hover" id="alertsTable">
     <thead>
       <tr>
-        <th>Alert Name</th>
-        <th>Keywords</th>
-        <th>Recipients</th>
-        <th>Schedule</th>
+        <th>Task Name</th>
+        <th>People</th>
         <th>Status</th>
-        <th></th>
+        <th>Schedule</th>
+        <th class="text-end">Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for a in alerts %}
-      <tr data-name="{{ a.name|lower }}">
+      <tr data-name="{{ a.name|lower }}"
+          data-id="{{ a.id }}"
+          data-alert-name="{{ a.name }}"
+          data-subject="{{ a.email_subject }}"
+          data-keywords="{{ a.keywords }}"
+          data-recipients="{{ a.recipient_list|join:', ' }}"
+          data-frequency="{{ a.frequency }}"
+          data-start="{{ a.start_date|date:'Y-m-d' }}"
+          data-time="{{ a.delivery_time|time:'H:i' }}"
+          data-banner="{% if a.banner_image %}{{ a.banner_image.url }}{% endif %}"
+          data-active="{{ a.is_active|yesno:'1,0' }}">
         <td>
           <div class="alert-name-cell">
             <span class="fw-medium">{{ a.name }}</span>
             {% if a.email_subject %}<span class="alert-subject">{{ a.email_subject|truncatechars:40 }}</span>{% endif %}
           </div>
         </td>
-        <td class="text-muted">{{ a.keywords|truncatechars:45 }}</td>
         <td>
-          <div class="recipients-cell">
-            {% if a.email %}
-            <div class="recipient-avatar" title="{{ a.email }}">{{ a.email|first|upper }}</div>
-            {% else %}
-            <span class="text-muted">—</span>
+          {% with recips=a.recipient_list %}
+          {% if recips %}
+          <div class="avatar-stack">
+            {% for email in recips|slice:":4" %}
+            <span class="av {% cycle 'av-c0' 'av-c1' 'av-c2' 'av-c3' 'av-c4' %}" title="{{ email }}">{{ email|slice:":2" }}</span>
+            {% endfor %}
+            {% if recips|length > 4 %}
+            <span class="av av-more" title="{{ recips|length|add:'-4' }} more">+{{ recips|length|add:'-4' }}</span>
             {% endif %}
           </div>
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+          {% endwith %}
+        </td>
+        <td>
+          <span class="badge badge--{% if a.is_active %}green{% else %}gray{% endif %}">
+            {% if a.is_active %}Active{% else %}Inactive{% endif %}
+          </span>
         </td>
         <td class="text-muted">{{ a.get_frequency_display }}</td>
         <td>
-          <span class="badge badge--{% if a.is_active %}green{% else %}gray{% endif %}">
-            {% if a.is_active %}Active{% else %}Paused{% endif %}
-          </span>
-        </td>
-        <td>
-          <div class="row-menu-wrap">
-            <button class="row-menu-btn" onclick="toggleRowMenu(this)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+          <div class="action-icons">
+            <button class="icon-btn" title="Send test email now" onclick="testAlert(this, {{ a.id }})">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
-            <div class="row-menu hidden">
-              <button class="row-menu-item row-menu-item--danger" onclick="closeMeAndRun(this, () => deleteAlert({{ a.id }}))">Delete</button>
-            </div>
+            <button class="icon-btn" title="Edit alert" onclick="editAlert(this)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="icon-btn danger" title="Delete alert" onclick="deleteAlert({{ a.id }})">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            </button>
           </div>
         </td>
       </tr>
@@ -78,56 +170,89 @@
   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
   <h3>No alerts configured</h3>
   <p>Create alerts to get notified when your keywords are mentioned in the media.</p>
-  <button class="btn btn-primary" onclick="openModal('addAlertModal')">Create your first alert</button>
+  <button class="btn btn-primary" onclick="openCreateAlert()">Create your first alert</button>
 </div>
 {% endif %}
 
-<!-- Create Alert Modal -->
+<!-- Create / Edit Alert Modal -->
 <div class="modal-overlay hidden" id="addAlertModal">
   <div class="modal modal--lg">
     <div class="modal-header">
       <div>
-        <h2 class="modal-title">Create Alert</h2>
-        <p class="modal-subtitle">Set up a new media monitoring alert</p>
+        <h2 class="modal-title" id="alertModalTitle">Create Alert</h2>
+        <p class="modal-subtitle" id="alertModalSubtitle">Set up a new media monitoring alert</p>
       </div>
       <button class="modal-close" onclick="closeModal('addAlertModal')">&times;</button>
     </div>
+    <input type="hidden" id="alertId" value="" />
     <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Alert Name *</label>
-        <input type="text" id="alertName" class="form-control" placeholder="e.g. Brand mentions" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Email Subject</label>
-        <input type="text" id="alertSubject" class="form-control" placeholder="e.g. Daily Media Digest — Brand Mentions" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Keywords (comma-separated)</label>
-        <input type="text" id="alertKeywords" class="form-control" placeholder="keyword1, keyword2, keyword3" />
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Notification Email</label>
-          <input type="email" id="alertEmail" class="form-control" placeholder="you@example.com" />
+
+      <!-- Basic Information -->
+      <div class="modal-section">
+        <h3 class="modal-section-title">Basic Information</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Alert Name <span style="color:#ef4444">*</span></label>
+            <input type="text" id="alertName" class="form-control" placeholder="e.g. Daily Alert" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email Subject <span style="color:#ef4444">*</span></label>
+            <input type="text" id="alertSubject" class="form-control" placeholder="e.g. Daily Media Update" />
+          </div>
         </div>
         <div class="form-group">
-          <label class="form-label">Schedule / Frequency</label>
-          <select id="alertFreq" class="form-select">
-            <option value="immediate">Immediate</option>
-            <option value="daily" selected>Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </select>
+          <label class="form-label">Banner Image <span class="optional-tag">(Optional)</span></label>
+          <div class="banner-drop" id="bannerDrop" onclick="bannerDropClick(event)">
+            <button type="button" class="banner-remove" onclick="removeBanner(event)" title="Remove image">&times;</button>
+            <span class="banner-placeholder" id="bannerPlaceholder">Click to upload a banner image</span>
+            <img id="bannerImg" style="display:none" />
+            <input type="file" id="bannerInput" accept="image/*" style="display:none" onchange="bannerSelected(this)" />
+          </div>
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Start Date</label>
-        <input type="date" id="alertStartDate" class="form-control" />
+
+      <!-- Scheduling -->
+      <div class="modal-section">
+        <h3 class="modal-section-title">Scheduling</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Start Date <span style="color:#ef4444">*</span></label>
+            <input type="date" id="alertStartDate" class="form-control" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Schedule <span style="color:#ef4444">*</span></label>
+            <select id="alertFreq" class="form-select">
+              <option value="immediate">Immediate</option>
+              <option value="daily" selected>Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Delivery Time</label>
+          <select id="alertTime" class="form-select"></select>
+        </div>
       </div>
+
+      <!-- Recipients -->
+      <div class="modal-section">
+        <h3 class="modal-section-title">Recipients</h3>
+        <div class="form-group">
+          <label class="form-label">Deliver To <span style="color:#ef4444">*</span></label>
+          <div class="tag-input-row">
+            <input type="email" id="recipInput" class="form-control" placeholder="Type an email and press Enter"
+                   onkeydown="recipKeydown(event)" />
+            <button type="button" class="btn btn-primary" onclick="addRecipient()">Add</button>
+          </div>
+          <div class="recip-chips" id="recipChips"></div>
+        </div>
+      </div>
+
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('addAlertModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="createAlert()">Create Alert</button>
+      <button class="btn btn-primary" id="alertSaveBtn" onclick="saveAlert()">Create Alert</button>
     </div>
   </div>
 </div>
@@ -136,18 +261,162 @@
 {% block extra_js %}
 <script>
 const ORG_ID = '{{ org.id }}';
+let _recipients = [];
+let _bannerFile = null;
+let _removeBanner = false;
 
-function createAlert() {
+// ── Delivery time options ───────────────────────────
+(function buildTimeOptions() {
+  const sel = document.getElementById('alertTime');
+  for (let h = 0; h < 24; h++) {
+    const val = String(h).padStart(2, '0') + ':00';
+    const label = (h % 12 === 0 ? 12 : h % 12) + ':00 ' + (h < 12 ? 'AM' : 'PM');
+    sel.insertAdjacentHTML('beforeend', `<option value="${val}">${label}</option>`);
+  }
+  sel.value = '08:00';
+})();
+
+// ── Recipients tag input ────────────────────────────
+function renderRecipients() {
+  const wrap = document.getElementById('recipChips');
+  wrap.innerHTML = _recipients.map((e, i) =>
+    `<span class="recip-chip rc-${i % 5}">${escapeHtml(e)}<span class="x" onclick="removeRecipient(${i})">&times;</span></span>`
+  ).join('');
+}
+function addRecipient() {
+  const input = document.getElementById('recipInput');
+  const val = input.value.trim();
+  if (!val) return;
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val)) { alert('Enter a valid email address'); return; }
+  if (_recipients.some(e => e.toLowerCase() === val.toLowerCase())) { input.value = ''; return; }
+  _recipients.push(val);
+  input.value = '';
+  renderRecipients();
+}
+function removeRecipient(i) { _recipients.splice(i, 1); renderRecipients(); }
+function recipKeydown(e) {
+  if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addRecipient(); }
+}
+
+// ── Banner image ────────────────────────────────────
+function bannerDropClick(e) {
+  if (e.target.closest('.banner-remove')) return;
+  document.getElementById('bannerInput').click();
+}
+function bannerSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  _bannerFile = file;
+  _removeBanner = false;
+  const reader = new FileReader();
+  reader.onload = ev => setBannerPreview(ev.target.result);
+  reader.readAsDataURL(file);
+}
+function setBannerPreview(url) {
+  const drop = document.getElementById('bannerDrop');
+  const img = document.getElementById('bannerImg');
+  if (url) {
+    img.src = url; img.style.display = 'block';
+    document.getElementById('bannerPlaceholder').style.display = 'none';
+    drop.classList.add('has-image');
+  } else {
+    img.removeAttribute('src'); img.style.display = 'none';
+    document.getElementById('bannerPlaceholder').style.display = 'block';
+    drop.classList.remove('has-image');
+  }
+}
+function removeBanner(e) {
+  e.stopPropagation();
+  _bannerFile = null;
+  _removeBanner = true;
+  document.getElementById('bannerInput').value = '';
+  setBannerPreview('');
+}
+
+// ── Open modal (create / edit) ──────────────────────
+function resetAlertForm() {
+  document.getElementById('alertId').value = '';
+  document.getElementById('alertName').value = '';
+  document.getElementById('alertSubject').value = '';
+  document.getElementById('alertStartDate').value = '';
+  document.getElementById('alertFreq').value = 'daily';
+  document.getElementById('alertTime').value = '08:00';
+  document.getElementById('recipInput').value = '';
+  _recipients = [];
+  _bannerFile = null;
+  _removeBanner = false;
+  setBannerPreview('');
+  renderRecipients();
+}
+
+function openCreateAlert() {
+  resetAlertForm();
+  document.getElementById('alertModalTitle').textContent = 'Create Alert';
+  document.getElementById('alertModalSubtitle').textContent = 'Set up a new media monitoring alert';
+  document.getElementById('alertSaveBtn').textContent = 'Create Alert';
+  openModal('addAlertModal');
+}
+
+function editAlert(btn) {
+  const row = btn.closest('tr');
+  resetAlertForm();
+  document.getElementById('alertId').value = row.dataset.id;
+  document.getElementById('alertName').value = row.dataset.alertName;
+  document.getElementById('alertSubject').value = row.dataset.subject;
+  document.getElementById('alertStartDate').value = row.dataset.start;
+  document.getElementById('alertFreq').value = row.dataset.frequency || 'daily';
+  if (row.dataset.time) document.getElementById('alertTime').value = row.dataset.time;
+  _recipients = (row.dataset.recipients || '').split(',').map(s => s.trim()).filter(Boolean);
+  renderRecipients();
+  if (row.dataset.banner) setBannerPreview(row.dataset.banner);
+  document.getElementById('alertModalTitle').textContent = 'Edit Alert';
+  document.getElementById('alertModalSubtitle').textContent = 'Update your alert settings';
+  document.getElementById('alertSaveBtn').textContent = 'Update Alert';
+  openModal('addAlertModal');
+}
+
+// ── Save (create / update) ──────────────────────────
+function saveAlert() {
   const name = document.getElementById('alertName').value.trim();
-  if (!name) return alert('Name is required');
-  apiRequest(`/api/${ORG_ID}/alerts/`, 'POST', {
-    name,
-    email_subject: document.getElementById('alertSubject').value.trim(),
-    keywords: document.getElementById('alertKeywords').value.trim(),
-    email: document.getElementById('alertEmail').value.trim(),
-    frequency: document.getElementById('alertFreq').value,
-    start_date: document.getElementById('alertStartDate').value || null,
-  }).then(() => { flashToast('Alert created', 'success'); location.reload(); });
+  if (!name) return alert('Alert name is required');
+  const subject = document.getElementById('alertSubject').value.trim();
+  if (!subject) return alert('Email subject is required');
+  if (!_recipients.length) return alert('Add at least one recipient');
+
+  const id = document.getElementById('alertId').value;
+  const fd = new FormData();
+  fd.append('name', name);
+  fd.append('email_subject', subject);
+  fd.append('recipients', _recipients.join(', '));
+  fd.append('frequency', document.getElementById('alertFreq').value);
+  fd.append('start_date', document.getElementById('alertStartDate').value || '');
+  fd.append('delivery_time', document.getElementById('alertTime').value || '');
+  if (_bannerFile) fd.append('banner_image', _bannerFile);
+  if (_removeBanner) fd.append('remove_banner', '1');
+
+  const csrf = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+  const url = id ? `/api/${ORG_ID}/alerts/${id}/` : `/api/${ORG_ID}/alerts/`;
+  fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrf }, body: fd })
+    .then(async r => {
+      if (r.redirected || r.url.includes('/login/')) { window.location.href = '/login/'; return; }
+      if (!r.ok) throw new Error('Request failed');
+      flashToast(id ? 'Alert updated' : 'Alert created', 'success');
+      location.reload();
+    })
+    .catch(() => alert('Could not save the alert. Please try again.'));
+}
+
+function testAlert(btn, id) {
+  if (!confirm('Send a test digest email for this alert now?')) return;
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  apiRequest(`/api/${ORG_ID}/alerts/${id}/test/`, 'POST', {})
+    .then(res => {
+      const to = (res && res.recipients && res.recipients.length) ? res.recipients.join(', ') : 'recipients';
+      alert(`Test email sent to ${to}.`);
+    })
+    .catch(err => alert(err.message || 'Could not send test email.'))
+    .finally(() => { btn.disabled = false; btn.style.opacity = ''; });
 }
 
 function deleteAlert(id) {
@@ -160,6 +429,10 @@ function filterAlerts(q) {
   rows.forEach(r => {
     r.style.display = r.dataset.name.includes(q.toLowerCase()) ? '' : 'none';
   });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 </script>
 {% endblock %}

@@ -348,6 +348,7 @@ class Alert(models.Model):
     name = models.CharField(max_length=200)
     keywords = models.TextField(blank=True, help_text='Comma-separated keywords')
     email = models.EmailField(blank=True)
+    recipients = models.TextField(blank=True, help_text='Comma-separated recipient emails')
     frequency = models.CharField(
         max_length=20,
         choices=[('immediate', 'Immediate'), ('daily', 'Daily'), ('weekly', 'Weekly'), ('monthly', 'Monthly')],
@@ -355,11 +356,18 @@ class Alert(models.Model):
     )
     email_subject = models.CharField(max_length=300, blank=True)
     start_date = models.DateField(null=True, blank=True)
+    delivery_time = models.TimeField(null=True, blank=True)
+    banner_image = models.FileField(upload_to='alert_banners/', blank=True, null=True)
     is_active = models.BooleanField(default=True)
+    last_sent_at = models.DateTimeField(null=True, blank=True, help_text='When the digest was last sent (watermark for new records)')
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
+
+    def recipient_list(self):
+        raw = self.recipients or self.email or ''
+        return [e.strip() for e in raw.split(',') if e.strip()]
 
     class Meta:
         ordering = ['name']
