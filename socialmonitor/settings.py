@@ -15,11 +15,15 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'django.contrib.humanize',
     'django.contrib.staticfiles',
+    'django_celery_beat',
+    'django_celery_results',
     'crispy_forms',
     'crispy_bootstrap5',
     'widget_tweaks',
     'monitor',
+    "anymail",
 ]
 
 CRISPY_ALLOWED_TEMPLATE_PACKS = 'bootstrap5'
@@ -53,6 +57,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'monitor.context_processors.all_orgs',
+                'monitor.context_processors.external_links',
             ],
         },
     },
@@ -60,11 +65,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'socialmonitor.wsgi.application'
 
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("POSTGRES_DB", "sociallight"),
+        "USER": os.getenv("POSTGRES_USER", "sociallight"),
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "sociallight_password"),
+        "HOST": os.getenv("POSTGRES_HOST", "db"),
+        "PORT": os.getenv("POSTGRES_PORT", "5432"),},
 }
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -92,12 +101,11 @@ ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN', '')
 
 DEFAULT_FROM_EMAIL  = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <noreply@sociallight.africa>')
-EMAIL_BACKEND       = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
-EMAIL_HOST          = os.getenv('EMAIL_HOST', '')
-EMAIL_PORT          = int(os.getenv('EMAIL_PORT', '587'))
-EMAIL_HOST_USER     = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-EMAIL_USE_TLS       = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
-SERVER_EMAIL        = os.getenv('SERVER_EMAIL', 'Social Light <noreply@sociallight.africa>')
+EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
 
+ANYMAIL = {
+    "RESEND_API_KEY": os.getenv("RESEND_API_KEY"),
+}
 MEDIA_MONITOR_WEBHOOK_SECRET = os.getenv('MEDIA_MONITOR_WEBHOOK_SECRET', '')
+
+ARTICLE_EXTRACTOR_URL = os.getenv('ARTICLE_EXTRACTOR_URL', 'https://extractor.sociallight.africa/')
