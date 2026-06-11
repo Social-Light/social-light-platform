@@ -2297,18 +2297,27 @@ def alert_delete(request, org_id, alert_id):
 @login_required
 @require_http_methods(['POST'])
 def alert_test_send(request, org_id, alert_id):
-    """Send the digest for one alert right now (force, ignoring the watermark)."""
+    """Send a test digest for one alert to the logged-in user only (not the real recipients)."""
     org = get_object_or_404(Organization, id=org_id)
     alert = get_object_or_404(Alert, id=alert_id, organization=org)
-    if not alert.recipient_list():
-        return JsonResponse({'error': 'Add at least one recipient first.'}, status=400)
+    test_to = (request.user.email or '').strip()
+    if not test_to:
+        return JsonResponse({'error': 'Your account has no email address set, so a test cannot be sent to you.'}, status=400)
     try:
-        result = build_and_send(alert, since=start_of_today(), force=True, update_watermark=False)
+        result = build_and_send(
+            alert,
+            since=start_of_today(),
+            force=True,
+            update_watermark=False,
+            recipients_override=[test_to],
+        )
     except Exception as exc:
+        import traceback
+        traceback.print_exc()
         return JsonResponse({'error': f'Send failed: {exc}'}, status=502)
     return JsonResponse({
         'ok': True,
-        'recipients': result.get('recipients', []),
+        'recipients': result.get('recipients', [test_to]),
         'total': result.get('total', 0),
     })
 

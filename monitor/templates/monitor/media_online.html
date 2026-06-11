@@ -118,7 +118,7 @@
             <span class="fw-medium">{{ a.source|title }}</span>
           </div>
         </td>
-        <td><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:45 }}</a></td>
+        <td>{% if a.url %}<a href="{{ a.url }}" target="_blank" rel="noopener" class="table-link">{{ a.headline|truncatechars:45 }}</a>{% else %}<span class="table-link">{{ a.headline|truncatechars:45 }}</span>{% endif %}</td>
         <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
         <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
         <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>

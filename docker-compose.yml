@@ -7,6 +7,7 @@ services:
   web:
     build: .
     container_name: sociallight_django
+    restart: always
     command: gunicorn socialmonitor.wsgi:application --bind 0.0.0.0:8000 --timeout 300 --workers 3
     volumes:
       - .:/app
@@ -27,7 +28,8 @@ services:
   celery_worker:
     build: .
     container_name: sociallight_celery_worker
-    command: celery -A socialmonitor worker -l info
+    restart: always
+    command: celery -A socialmonitor worker -l info --concurrency 2
     volumes:
       - .:/app
     env_file:
@@ -44,6 +46,7 @@ services:
   celery_beat:
     build: .
     container_name: sociallight_celery_beat
+    restart: always
     command: celery -A socialmonitor beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - .:/app
@@ -103,6 +106,7 @@ services:
   extractor:
     build: /opt/sociallight/article-extractor
     container_name: sociallight_extractor
+    restart: always
     command: gunicorn article_extractor.wsgi:application --bind 0.0.0.0:8001
     volumes:
       - ../article-extractor:/app
@@ -123,6 +127,7 @@ services:
     build: ../media-monitor
     image: media_monitor:latest
     container_name: crawler_web
+    restart: always
     command: gunicorn media_monitor.wsgi:application --bind 0.0.0.0:8002 --workers 3 --timeout 300
     env_file:
       - ../media-monitor/.env
@@ -140,7 +145,8 @@ services:
   crawler_worker:
     image: media_monitor:latest
     container_name: crawler_worker
-    command: celery -A media_monitor worker -l info --concurrency 4
+    restart: always
+    command: celery -A media_monitor worker -l info --concurrency 2
     env_file:
       - ../media-monitor/.env
     environment:
@@ -156,6 +162,7 @@ services:
   crawler_beat:
     image: media_monitor:latest
     container_name: crawler_beat
+    restart: always
     command: celery -A media_monitor beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     env_file:
       - ../media-monitor/.env

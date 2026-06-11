@@ -86,7 +86,7 @@
       {% for m in mentions %}
       <tr>
         <td><span class="fw-medium">{{ m.source|title }}</span></td>
-        <td><a href="{{ m.url }}" target="_blank" class="table-link">{{ m.headline|truncatechars:55 }}</a></td>
+        <td>{% if m.url %}<a href="{{ m.url }}" target="_blank" rel="noopener" class="table-link">{{ m.headline|truncatechars:55 }}</a>{% else %}<span class="table-link">{{ m.headline|truncatechars:55 }}</span>{% endif %}</td>
         <td><span class="type-badge type-badge--{{ m.broadcast_type|lower }}">{{ m.broadcast_type }}</span></td>
         <td class="text-muted">{{ m.country|default:"Unknown" }}</td>
         <td class="text-muted">{{ m.date_published|date:"M j, Y" }}</td>
