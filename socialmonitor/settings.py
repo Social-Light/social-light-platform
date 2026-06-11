@@ -109,3 +109,47 @@ ANYMAIL = {
 MEDIA_MONITOR_WEBHOOK_SECRET = os.getenv('MEDIA_MONITOR_WEBHOOK_SECRET', '')
 
 ARTICLE_EXTRACTOR_URL = os.getenv('ARTICLE_EXTRACTOR_URL', 'https://extractor.sociallight.africa/')
+
+# ── mediahost clips API ───────────────────────────────────────────────────────
+# Single global API key (x-api-key header). Imported clips route to organisations
+# by matching the clip's `search` term against each org's Keyword entries.
+MEDIAHOST_API_URL = os.getenv('MEDIAHOST_API_URL', 'http://mh-api.mediahost.co.za')
+MEDIAHOST_API_KEY = os.getenv('MEDIAHOST_API_KEY', '')
+MEDIAHOST_TIMEOUT = int(os.getenv('MEDIAHOST_TIMEOUT', '120'))  # per-request read timeout (s)
+
+
+SITE_URL = os.getenv('SITE_URL', 'https://sociallight.africa')
+
+# ── Celery ──────────────────────────────────────────────────────────────────
+from celery.schedules import crontab
+
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'django-db')
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = False
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_TASK_TIME_LIMIT = 600
+
+# Scheduled runs of the alert digest command. Beat reads these on startup and,
+# with the DatabaseScheduler, syncs them into the django-celery-beat tables.
+CELERY_BEAT_SCHEDULE = {
+    'send-daily-digests': {
+        'task': 'monitor.send_alerts',
+        'schedule': crontab(hour=8, minute=0),          # 08:00 Africa/Gaborone, daily
+        'kwargs': {'frequency': 'daily'},
+    },
+    'send-immediate-alerts': {
+        'task': 'monitor.send_alerts',
+        'schedule': crontab(minute='*/15'),             # every 15 min, picks up new records
+        'kwargs': {'frequency': 'immediate'},
+    },
+}
+
+# deployment doesn't log a failing task. Clips route to orgs by keyword match.
+if MEDIAHOST_API_KEY:
+    CELERY_BEAT_SCHEDULE['import-mediahost-clips'] = {
+        'task': 'monitor.import_mediahost_clips',
+        'schedule': crontab(hour='*/6', minute=15),     # every 6 hours
+        'kwargs': {'days': 1},
+    }
+
