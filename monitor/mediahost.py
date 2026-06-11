@@ -188,20 +188,27 @@ def _read_total_pages(payload):
     return None
 
 
+def _is_blank(value):
+    """True for None, '', or an N/A sentinel ("N/A", "-", "null", ...)."""
+    return value is None or _to_str(value).lower() in _NA_VALUES
+
+
 def _first(clip, keys, default=''):
-    """Return the first non-empty value among candidate keys (case-tolerant)."""
+    """First candidate value that isn't blank/an N/A sentinel (case-tolerant keys).
+
+    Crucially this skips "N/A" — so e.g. _first(('htmlLink','pdfLink')) returns the
+    real pdfLink even when htmlLink is the literal string "N/A".
+    """
     if not isinstance(clip, dict):
         return default
-    lowered = None
     for key in keys:
-        if key in clip and clip[key] not in (None, ''):
+        if key in clip and not _is_blank(clip[key]):
             return clip[key]
     # Fall back to a case-insensitive match.
     lowered = {k.lower(): v for k, v in clip.items()}
     for key in keys:
-        v = lowered.get(key.lower())
-        if v not in (None, ''):
-            return v
+        if not _is_blank(lowered.get(key.lower())):
+            return lowered[key.lower()]
     return default
 
 
