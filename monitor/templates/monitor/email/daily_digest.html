@@ -64,7 +64,7 @@
                 <tr>
                   <td style="padding:14px 16px;">
                     {% if a.url %}
-                    <a href="{{ a.url }}" style="color:#60a5fa;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</a>
+                    {% if a.url %}<a href="{{ a.url }}" style="color:#60a5fa;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</a>{% else %}<span style="color:#60a5fa;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</span>{% endif %}
                     {% else %}
                     <span style="color:#60a5fa;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</span>
                     {% endif %}
@@ -108,7 +108,7 @@
                 <tr>
                   <td style="padding:14px 16px;">
                     {% if p.url %}
-                    <a href="{{ p.url }}" style="color:#c4b5fd;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ p.headline|truncatechars:100 }}</a>
+                    {% if p.url %}<a href="{{ p.url }}" style="color:#c4b5fd;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ p.headline|truncatechars:100 }}</a>{% else %}<span style="color:#c4b5fd;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ p.headline|truncatechars:100 }}</span>{% endif %}
                     {% else %}
                     <span style="color:#c4b5fd;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ p.headline|truncatechars:100 }}</span>
                     {% endif %}
@@ -142,7 +142,7 @@
                 <tr>
                   <td style="padding:14px 16px;">
                     {% if a.url %}
-                    <a href="{{ a.url }}" style="color:#6ee7b7;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</a>
+                    {% if a.url %}<a href="{{ a.url }}" style="color:#6ee7b7;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</a>{% else %}<span style="color:#6ee7b7;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</span>{% endif %}
                     {% else %}
                     <span style="color:#6ee7b7;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ a.headline|truncatechars:100 }}</span>
                     {% endif %}
@@ -177,7 +177,7 @@
                 <tr>
                   <td style="padding:14px 16px;">
                     {% if b.url %}
-                    <a href="{{ b.url }}" style="color:#fdba74;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ b.headline|truncatechars:100 }}</a>
+                    {% if b.url %}<a href="{{ b.url }}" style="color:#fdba74;font-size:14px;font-weight:600;text-decoration:none;display:block;margin-bottom:4px;">{{ b.headline|truncatechars:100 }}</a>{% else %}<span style="color:#fdba74;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ b.headline|truncatechars:100 }}</span>{% endif %}
                     {% else %}
                     <span style="color:#fdba74;font-size:14px;font-weight:600;display:block;margin-bottom:4px;">{{ b.headline|truncatechars:100 }}</span>
                     {% endif %}

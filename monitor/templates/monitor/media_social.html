@@ -86,7 +86,7 @@
     <tbody>
       {% for p in posts %}
       <tr>
-        <td><a href="{{ p.url }}" target="_blank" class="table-link">{{ p.headline|truncatechars:50 }}</a></td>
+        <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener" class="table-link">{{ p.headline|truncatechars:50 }}</a>{% else %}<span class="table-link">{{ p.headline|truncatechars:50 }}</span>{% endif %}</td>
         <td class="fw-medium">{{ p.page_name|default:"—" }}</td>
         <td>
           <span class="type-badge type-badge--{{ p.platform|lower }}">{% if p.platform == 'Twitter' %}X{% else %}{{ p.platform|title }}{% endif %}</span>

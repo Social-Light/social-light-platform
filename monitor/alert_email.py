@@ -51,7 +51,7 @@ def start_of_today():
     return timezone.make_aware(datetime.combine(timezone.localdate(), time.min))
 
 
-def build_and_send(alert, *, since=None, force=False, update_watermark=True):
+def build_and_send(alert, *, since=None, force=False, update_watermark=True, recipients_override=None):
     """
     Build and send the digest email for a single alert.
 
@@ -60,11 +60,13 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True):
     - `force`: send even when there are no new records (used by the test button
       and daily digests); when False, an immediate alert with nothing new is skipped.
     - `update_watermark`: advance alert.last_sent_at after a successful send.
+    - `recipients_override`: send to these addresses instead of the alert's
+      configured recipients (used by the "send test to me" button).
 
     Returns a dict describing the outcome. Raises if the email backend fails to send.
     """
     org = alert.organization
-    recipients = alert.recipient_list()
+    recipients = recipients_override if recipients_override else alert.recipient_list()
     if not recipients:
         return {'sent': False, 'reason': 'no recipients', 'total': 0}
 
@@ -78,8 +80,8 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True):
     if not force and alert.frequency == 'immediate' and total == 0:
         return {'sent': False, 'reason': 'no new records', 'total': 0, 'recipients': recipients}
 
-    base = settings.SITE_URL.rstrip('/')
-    login_url = base + (settings.LOGIN_URL or '/login/')
+    base = getattr(settings, 'SITE_URL', 'https://sociallight.africa').rstrip('/')
+    login_url = base + (getattr(settings, 'LOGIN_URL', '/login/') or '/login/')
     subject = alert.email_subject or f"Social Light: {org.name} Daily Media Update"
     banner_url = (base + alert.banner_image.url) if alert.banner_image else ''
     logo_url = (base + org.logo.url) if org.logo else ''

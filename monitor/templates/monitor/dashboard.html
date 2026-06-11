@@ -186,7 +186,7 @@
                 </div>
               </div>
             </td>
-            <td class="headline-cell"><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:50 }}</a></td>
+            <td class="headline-cell">{% if a.url %}<a href="{{ a.url }}" target="_blank" rel="noopener" class="table-link">{{ a.headline|truncatechars:50 }}</a>{% else %}<span class="table-link">{{ a.headline|truncatechars:50 }}</span>{% endif %}</td>
             <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
             <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
             <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
@@ -260,7 +260,7 @@
           {% for a in latest_print %}
           <tr data-sentiment="{{ a.sentiment }}" data-country="{{ a.country|default:'Unknown' }}" data-section="{{ a.section|default:'Main' }}">
             <td class="text-muted">{{ a.source }}</td>
-            <td><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:50 }}</a></td>
+            <td>{% if a.url %}<a href="{{ a.url }}" target="_blank" rel="noopener" class="table-link">{{ a.headline|truncatechars:50 }}</a>{% else %}<span class="table-link">{{ a.headline|truncatechars:50 }}</span>{% endif %}</td>
             <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
             <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
             <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
@@ -334,7 +334,7 @@
           {% for b in latest_broadcast %}
           <tr data-sentiment="{{ b.sentiment }}" data-country="{{ b.country|default:'Unknown' }}" data-broadcast_type="{{ b.broadcast_type|lower }}">
             <td class="text-muted">{{ b.source }}</td>
-            <td><a href="{{ b.url }}" target="_blank" class="table-link">{{ b.headline|truncatechars:50 }}</a></td>
+            <td>{% if b.url %}<a href="{{ b.url }}" target="_blank" rel="noopener" class="table-link">{{ b.headline|truncatechars:50 }}</a>{% else %}<span class="table-link">{{ b.headline|truncatechars:50 }}</span>{% endif %}</td>
             <td class="text-muted">{{ b.date_published|date:"M j, Y" }}</td>
             <td class="text-muted">{{ b.country|default:"Unknown" }}</td>
             <td><span class="badge badge--{{ b.sentiment }}">{{ b.get_sentiment_display }}</span></td>
@@ -418,7 +418,7 @@
                 </div>
               </div>
             </td>
-            <td><a href="{{ p.url }}" target="_blank" class="table-link">{{ p.headline|truncatechars:50 }}</a></td>
+            <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener" class="table-link">{{ p.headline|truncatechars:50 }}</a>{% else %}<span class="table-link">{{ p.headline|truncatechars:50 }}</span>{% endif %}</td>
             <td class="text-muted">{{ p.page_name|default:"—" }}</td>
             <td class="text-muted">{{ p.date_published|date:"M j, Y" }}</td>
             <td class="text-muted">{{ p.country|default:"Unknown" }}</td>
