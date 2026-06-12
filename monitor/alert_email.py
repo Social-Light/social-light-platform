@@ -51,6 +51,32 @@ def start_of_today():
     return timezone.make_aware(datetime.combine(timezone.localdate(), time.min))
 
 
+# Used when a daily alert has no delivery_time set on the form.
+DEFAULT_DELIVERY_TIME = time(8, 0)
+
+
+def daily_alert_due(alert, now=None):
+    """
+    True when a daily alert should be sent on this run: the current local time has
+    reached the alert's delivery_time today (default 08:00 when unset), it hasn't
+    already been sent since that time today, and we're on/after its start_date.
+
+    The beat job runs every ~15 min and calls this for each daily alert, so each
+    one fires once per day at its chosen time. The last_sent_at watermark stops
+    repeats and gives automatic catch-up if a scheduled tick was missed.
+    """
+    now = now or timezone.localtime()
+    if alert.start_date and now.date() < alert.start_date:
+        return False
+    delivery = alert.delivery_time or DEFAULT_DELIVERY_TIME
+    scheduled = timezone.make_aware(datetime.combine(now.date(), delivery))
+    if now < scheduled:
+        return False
+    if alert.last_sent_at and alert.last_sent_at >= scheduled:
+        return False
+    return True
+
+
 def build_and_send(alert, *, since=None, force=False, update_watermark=True, recipients_override=None):
     """
     Build and send the digest email for a single alert.

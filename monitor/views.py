@@ -377,7 +377,8 @@ def _keyword_trends(org, start, end):
         count = (
             org.online_articles.filter(date_published__range=(start, end)).filter(q).count() +
             org.print_articles.filter(date_published__range=(start, end)).filter(q).count() +
-            org.social_posts.filter(date_published__range=(start, end)).filter(q).count()
+            org.social_posts.filter(date_published__range=(start, end)).filter(q).count() +
+            org.broadcast_mentions.filter(date_published__range=(start, end)).filter(q).count()
         )
         result.append({'label': kw, 'value': count})
     return result
