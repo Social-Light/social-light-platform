@@ -135,7 +135,7 @@ CELERY_TASK_TIME_LIMIT = 600
 CELERY_BEAT_SCHEDULE = {
     'send-daily-digests': {
         'task': 'monitor.send_alerts',
-        'schedule': crontab(hour=8, minute=0),          # 08:00 Africa/Gaborone, daily
+        'schedule': crontab(minute='*/15'),          # 08:00 Africa/Gaborone, daily
         'kwargs': {'frequency': 'daily'},
     },
     'send-immediate-alerts': {
