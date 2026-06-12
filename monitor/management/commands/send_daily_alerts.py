@@ -17,9 +17,10 @@ Usage:
 Schedule via Celery Beat (see CELERY_BEAT_SCHEDULE) or cron.
 """
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 
 from monitor.models import Alert
-from monitor.alert_email import build_and_send, gather, start_of_today
+from monitor.alert_email import build_and_send, gather, start_of_today, daily_alert_due
 
 
 class Command(BaseCommand):
@@ -53,6 +54,13 @@ class Command(BaseCommand):
 
         # Skip alerts with no recipients at all.
         alerts = [a for a in qs if a.recipient_list()]
+
+        # Daily alerts fire at each alert's own delivery_time (default 08:00). The
+        # beat job runs every ~15 min; only send the ones due now. A forced single
+        # --alert run or --test bypasses this so you can always send on demand.
+        if frequency == 'daily' and not alert_id and not test:
+            now = timezone.localtime()
+            alerts = [a for a in alerts if daily_alert_due(a, now)]
 
         if not alerts:
             self.stdout.write('No qualifying alerts found.')
