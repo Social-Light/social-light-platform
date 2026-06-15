@@ -53,3 +53,25 @@ def compute_relevancy(headline, summary='', keywords=None, org=None):
             score += weight + (occurrences - 1) * weight * REPEAT_BONUS
 
     return round(min(score, MAX_SCORE), 2)
+
+
+def relevance_threshold():
+    """The minimum relevancy score a mention must reach to be surfaced.
+
+    Read from settings each call so it can be tuned via the
+    ``MENTION_RELEVANCY_THRESHOLD`` env var without a restart of unrelated state.
+    Defaults to 0 (no filtering) when unset.
+    """
+    from django.conf import settings
+    return getattr(settings, 'MENTION_RELEVANCY_THRESHOLD', 0) or 0
+
+
+def filter_relevant(qs):
+    """Restrict a mention queryset to rows meeting the relevancy threshold.
+
+    A no-op when the threshold is 0, so callers can apply it unconditionally.
+    The queryset's model must have a ``relevancy`` field (all four mention
+    models do).
+    """
+    threshold = relevance_threshold()
+    return qs.filter(relevancy__gte=threshold) if threshold else qs

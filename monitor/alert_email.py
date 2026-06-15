@@ -12,6 +12,8 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from .relevancy import filter_relevant
+
 
 def _country_sort_key(obj, org_country):
     """Items from the org's country sort to the front (key=0), others to back (key=1)."""
@@ -35,7 +37,8 @@ def gather(org, since):
 
     def collect(manager):
         items = list(
-            manager.filter(created_at__gte=since).order_by('-date_published', '-created_at')[:50]
+            filter_relevant(manager.all())
+            .filter(created_at__gte=since).order_by('-date_published', '-created_at')[:50]
         )
         return sorted(items, key=lambda a: (_country_sort_key(a, oc), -_pub_ordinal(a)))
 

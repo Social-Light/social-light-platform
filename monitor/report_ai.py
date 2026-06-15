@@ -18,6 +18,8 @@ from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
 
+from .relevancy import filter_relevant
+
 logger = logging.getLogger(__name__)
 
 FRESH = timedelta(days=7)  # reuse a generated analysis for a week before re-prompting
@@ -145,6 +147,7 @@ def _gather(org, date_from, date_to):
         (org.social_posts, 'Social'),
         (org.broadcast_mentions, 'Broadcast'),
     ]:
+        qs = filter_relevant(qs.all())
         for a in qs.filter(**kw).order_by('-ave').values('headline', 'summary', 'sentiment')[:per_type]:
             text = (a['headline'] or '').strip()
             if a['summary']:
