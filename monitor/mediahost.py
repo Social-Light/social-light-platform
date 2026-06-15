@@ -463,9 +463,10 @@ def ingest_clips(date_from, date_to, media_type=None, dry_run=False,
     }
 
     # Per-org state, built lazily the first time an org is touched.
-    org_keywords = {}   # org.id -> [Keyword]  (for Online relevancy)
-    seen = {}           # (org.id, ctype) -> set of dedup keys (preloaded from DB)
-    buckets = {}        # (org.id, ctype) -> [model instances]
+    org_keywords = {}      # org.id -> [Keyword]     (for relevancy scoring)
+    org_competitors = {}   # org.id -> [Competitor]  (competitor coverage is relevant too)
+    seen = {}              # (org.id, ctype) -> set of dedup keys (preloaded from DB)
+    buckets = {}           # (org.id, ctype) -> [model instances]
     prepared = set()
 
     def _prepare(org):
@@ -473,6 +474,7 @@ def ingest_clips(date_from, date_to, media_type=None, dry_run=False,
             return
         prepared.add(org.id)
         org_keywords[org.id] = list(org.keywords.all())
+        org_competitors[org.id] = list(org.competitors.all())
         for ctype, model in model_for.items():
             existing = model.objects.filter(
                 organization=org, date_published__range=(win_from, win_to)
@@ -508,8 +510,10 @@ def ingest_clips(date_from, date_to, media_type=None, dry_run=False,
             row = dict(fields, organization=org)
             # Relevancy gates what's surfaced in the UI (see relevancy.filter_relevant).
             # All mention models carry the field, so score every type, not just Online.
+            # Competitors count too — coverage naming a tracked competitor is relevant.
             row['relevancy'] = compute_relevancy(
-                fields['headline'], fields['summary'], keywords=org_keywords[org.id])
+                fields['headline'], fields['summary'],
+                keywords=org_keywords[org.id], competitors=org_competitors[org.id])
             buckets[(org.id, ctype)].append(model_for[ctype](**row))
             summary['created'][ctype] += 1
             po = summary['per_org'].setdefault(org.name, {'Print': 0, 'Online': 0, 'Broadcast': 0})

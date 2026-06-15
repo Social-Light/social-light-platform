@@ -834,6 +834,7 @@ def online_article_csv_upload(request, org_id):
     errors = []
     to_create = []
     keywords = list(org.keywords.all())  # fetched once; reused for every row
+    competitors = list(org.competitors.all())  # competitor coverage counts toward relevancy
 
     for idx, row in enumerate(reader, start=2):
         title = (row.get('title') or row.get('headline') or '').strip()
@@ -874,7 +875,7 @@ def online_article_csv_upload(request, org_id):
             ave=ave_value,
             coverage=coverage or 'Not Set',
             reach=reach_value,
-            relevancy=compute_relevancy(title, summary, keywords=keywords),
+            relevancy=compute_relevancy(title, summary, keywords=keywords, competitors=competitors),
         ))
 
     if to_create:
