@@ -153,3 +153,4 @@ if MEDIAHOST_API_KEY:
         'kwargs': {'days': 1},
     }
 
+MENTION_RELEVANCY_THRESHOLD = float(os.getenv('MENTION_RELEVANCY_THRESHOLD', '0'))

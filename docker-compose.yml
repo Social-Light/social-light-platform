@@ -129,6 +129,8 @@ services:
     container_name: crawler_web
     restart: always
     command: gunicorn media_monitor.wsgi:application --bind 0.0.0.0:8002 --workers 3 --timeout 300
+    volumes:
+      - ../media-monitor:/app
     env_file:
       - ../media-monitor/.env
     environment:
