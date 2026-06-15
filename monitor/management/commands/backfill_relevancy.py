@@ -55,6 +55,7 @@ class Command(BaseCommand):
         grand_total = grand_changed = 0
         for org in orgs:
             keywords = list(org.keywords.all())
+            competitors = list(org.competitors.all())
             for mt in types:
                 model = MODELS[mt]
                 rows = model.objects.filter(organization=org).only(
@@ -62,7 +63,8 @@ class Command(BaseCommand):
                 changed, total = [], 0
                 for row in rows.iterator(chunk_size=batch_size):
                     total += 1
-                    score = compute_relevancy(row.headline, row.summary, keywords=keywords)
+                    score = compute_relevancy(row.headline, row.summary,
+                                              keywords=keywords, competitors=competitors)
                     if score != row.relevancy:
                         row.relevancy = score
                         changed.append(row)
