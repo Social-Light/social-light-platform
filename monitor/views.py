@@ -23,7 +23,7 @@ from .models import (
     SENTIMENT_CHOICES, COVERAGE_CHOICES, PLATFORM_CHOICES, INDUSTRY_CHOICES, ROLE_CHOICES,
     SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES,
 )
-from .relevancy import compute_relevancy
+from .relevancy import compute_relevancy, filter_relevant
 from .alert_email import build_and_send, start_of_today
 
 COMPETITOR_SUGGESTIONS = {
@@ -284,43 +284,50 @@ def dashboard(request, org_id):
     today = date.today()
     month_start = today.replace(day=1)
 
-    total_online = org.online_articles.count()
-    total_print = org.print_articles.count()
-    total_social = org.social_posts.count()
-    total_broadcast = org.broadcast_mentions.count()
+    # Relevance-filtered base querysets — everything below counts/lists only the
+    # mentions meeting the org's relevancy threshold (a no-op when threshold is 0).
+    online_qs = filter_relevant(org.online_articles.all())
+    print_qs = filter_relevant(org.print_articles.all())
+    social_qs = filter_relevant(org.social_posts.all())
+    broadcast_qs = filter_relevant(org.broadcast_mentions.all())
+
+    total_online = online_qs.count()
+    total_print = print_qs.count()
+    total_social = social_qs.count()
+    total_broadcast = broadcast_qs.count()
     total_mentions = total_online + total_print + total_social + total_broadcast
 
-    month_online = org.online_articles.filter(date_published__gte=month_start).count()
-    month_print = org.print_articles.filter(date_published__gte=month_start).count()
-    month_social = org.social_posts.filter(date_published__gte=month_start).count()
-    month_broadcast = org.broadcast_mentions.filter(date_published__gte=month_start).count()
+    month_online = online_qs.filter(date_published__gte=month_start).count()
+    month_print = print_qs.filter(date_published__gte=month_start).count()
+    month_social = social_qs.filter(date_published__gte=month_start).count()
+    month_broadcast = broadcast_qs.filter(date_published__gte=month_start).count()
     monthly_mentions = month_online + month_print + month_social + month_broadcast
 
     keywords = org.keywords.all()
 
     # Monthly chart data for current year
     months = list(calendar.month_abbr)[1:]
-    online_monthly = _monthly_counts(org.online_articles, today.year)
-    print_monthly = _monthly_counts(org.print_articles, today.year)
-    social_monthly = _monthly_counts(org.social_posts, today.year)
-    broadcast_monthly = _monthly_counts(org.broadcast_mentions, today.year)
+    online_monthly = _monthly_counts(online_qs, today.year)
+    print_monthly = _monthly_counts(print_qs, today.year)
+    social_monthly = _monthly_counts(social_qs, today.year)
+    broadcast_monthly = _monthly_counts(broadcast_qs, today.year)
 
     # Keyword trend data (from keywords + article counts this month)
     keyword_trends = _keyword_trends(org, month_start, today)
 
     # Latest articles (8 each)
-    latest_online = org.online_articles.all()[:8]
-    latest_print = org.print_articles.all()[:8]
-    latest_social = org.social_posts.all()[:8]
-    latest_broadcast = org.broadcast_mentions.all()[:8]
+    latest_online = online_qs[:8]
+    latest_print = print_qs[:8]
+    latest_social = social_qs[:8]
+    latest_broadcast = broadcast_qs[:8]
 
     # Distinct lists for dashboard filters
-    print_countries = list(org.print_articles.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
-    print_sections = list(org.print_articles.exclude(section='').values_list('section', flat=True).distinct().order_by('section'))
-    social_countries = list(org.social_posts.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
-    social_platforms = list(org.social_posts.exclude(platform='').values_list('platform', flat=True).distinct().order_by('platform'))
-    online_countries = list(org.online_articles.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
-    broadcast_countries = list(org.broadcast_mentions.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    print_countries = list(print_qs.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    print_sections = list(print_qs.exclude(section='').values_list('section', flat=True).distinct().order_by('section'))
+    social_countries = list(social_qs.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    social_platforms = list(social_qs.exclude(platform='').values_list('platform', flat=True).distinct().order_by('platform'))
+    online_countries = list(online_qs.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    broadcast_countries = list(broadcast_qs.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
     broadcast_types = BROADCAST_TYPE_CHOICES
 
     # Media types present
@@ -370,18 +377,41 @@ def _monthly_counts(queryset, year):
 
 
 def _keyword_trends(org, start, end):
-    keywords = list(org.keywords.values_list('keyword', flat=True))
+    """Distribution of this period's mentions across the org's tracked terms.
+
+    Counts every media type (online, print, social, broadcast) and includes both
+    the org's own keywords and its competitors (matched by name + aliases), so the
+    chart reflects the same coverage that drives the headline mention totals.
+    Terms that match nothing are dropped; the busiest 10 are returned.
+    """
+    querysets = [
+        filter_relevant(org.online_articles.all()),
+        filter_relevant(org.print_articles.all()),
+        filter_relevant(org.social_posts.all()),
+        filter_relevant(org.broadcast_mentions.all()),
+    ]
+
+    # (label, [match terms]) for every tracked entity: own keywords + competitors.
+    entities = [(kw, [kw]) for kw in org.keywords.values_list('keyword', flat=True)]
+    entities += [(c.name, c.match_terms()) for c in org.competitors.all()]
+
     result = []
-    for kw in keywords[:10]:
-        q = Q(headline__icontains=kw) | Q(summary__icontains=kw)
-        count = (
-            org.online_articles.filter(date_published__range=(start, end)).filter(q).count() +
-            org.print_articles.filter(date_published__range=(start, end)).filter(q).count() +
-            org.social_posts.filter(date_published__range=(start, end)).filter(q).count() +
-            org.broadcast_mentions.filter(date_published__range=(start, end)).filter(q).count()
+    for label, terms in entities:
+        q = Q()
+        for term in (t.strip() for t in terms):
+            if term:
+                q |= Q(headline__icontains=term) | Q(summary__icontains=term)
+        if not q:
+            continue
+        count = sum(
+            qs.filter(date_published__range=(start, end)).filter(q).count()
+            for qs in querysets
         )
-        result.append({'label': kw, 'value': count})
-    return result
+        if count:
+            result.append({'label': label, 'value': count})
+
+    result.sort(key=lambda r: r['value'], reverse=True)
+    return result[:10]
 
 
 # ── Analytics ─────────────────────────────────────────────────────────────────
@@ -404,6 +434,9 @@ def analytics(request, org_id):
     else:
         qs = org.social_posts.all()
         title = 'Social Posts'
+
+    # Surface only mentions meeting the relevancy threshold (no-op when 0).
+    qs = filter_relevant(qs)
 
     total = qs.count()
     month_start = today.replace(day=1)
@@ -479,7 +512,7 @@ def analytics(request, org_id):
 @login_required
 def media_online(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
-    qs = org.online_articles.all()
+    qs = filter_relevant(org.online_articles.all())
 
     q = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
@@ -583,7 +616,7 @@ def online_article_delete(request, org_id, article_id):
 @login_required
 def media_print(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
-    qs = org.print_articles.all()
+    qs = filter_relevant(org.print_articles.all())
 
     q = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
@@ -984,7 +1017,7 @@ def broadcast_csv_upload(request, org_id):
 @login_required
 def media_social(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
-    qs = org.social_posts.all()
+    qs = filter_relevant(org.social_posts.all())
 
     q = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
@@ -1086,7 +1119,7 @@ def social_post_delete(request, org_id, post_id):
 @login_required
 def media_broadcast(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
-    qs = org.broadcast_mentions.all()
+    qs = filter_relevant(org.broadcast_mentions.all())
 
     q = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')

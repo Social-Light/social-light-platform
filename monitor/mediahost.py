@@ -506,9 +506,10 @@ def ingest_clips(date_from, date_to, media_type=None, dry_run=False,
                 continue
             bucket_seen.add(key)
             row = dict(fields, organization=org)
-            if ctype == 'Online':
-                row['relevancy'] = compute_relevancy(
-                    fields['headline'], fields['summary'], keywords=org_keywords[org.id])
+            # Relevancy gates what's surfaced in the UI (see relevancy.filter_relevant).
+            # All mention models carry the field, so score every type, not just Online.
+            row['relevancy'] = compute_relevancy(
+                fields['headline'], fields['summary'], keywords=org_keywords[org.id])
             buckets[(org.id, ctype)].append(model_for[ctype](**row))
             summary['created'][ctype] += 1
             po = summary['per_org'].setdefault(org.name, {'Print': 0, 'Online': 0, 'Broadcast': 0})
