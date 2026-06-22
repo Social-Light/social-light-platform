@@ -154,3 +154,6 @@ if MEDIAHOST_API_KEY:
     }
 
 MENTION_RELEVANCY_THRESHOLD = float(os.getenv('MENTION_RELEVANCY_THRESHOLD', '0'))
+# TEMPORARY: drop YouTube clips at ingest time (source/link is YouTube). Set
+# MEDIAHOST_EXCLUDE_YOUTUBE=0 to re-enable YouTube coverage.
+MEDIAHOST_EXCLUDE_YOUTUBE = os.getenv('MEDIAHOST_EXCLUDE_YOUTUBE', '1') not in ('0', 'false', 'False', '')
