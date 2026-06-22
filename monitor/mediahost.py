@@ -342,6 +342,19 @@ def _broadcast_type(clip):
     return 'RADIO'
 
 
+def is_youtube_clip(clip):
+    """True when a clip originates from YouTube (by link host or source name).
+
+    Used to temporarily suppress YouTube coverage at ingest time. The same rule
+    is reused by the remove_youtube_articles management command for cleanup.
+    """
+    url = _clip_url(clip).lower()
+    if 'youtube.com' in url or 'youtu.be' in url:
+        return True
+    source = _clean(_first(clip, ('source', 'station', 'publication', 'client'))).lower()
+    return 'youtube' in source
+
+
 def _search_term(clip):
     """The mediahost search/brand a clip matched (e.g. "FNBB") — used to route it
     to the organisation(s) that track that term as a keyword."""
@@ -456,11 +469,14 @@ def ingest_clips(date_from, date_to, media_type=None, dry_run=False,
     summary = {
         'fetched': 0,
         'created': {'Print': 0, 'Online': 0, 'Broadcast': 0},
-        'skipped': {'duplicate': 0, 'invalid': 0, 'unknown_type': 0, 'unmapped': 0},
+        'skipped': {'duplicate': 0, 'invalid': 0, 'unknown_type': 0, 'unmapped': 0, 'youtube': 0},
         'per_org': {},
         'unmapped_searches': {},
         'sample': None,
     }
+
+    # TEMPORARY: suppress YouTube clips (toggle via settings.MEDIAHOST_EXCLUDE_YOUTUBE).
+    exclude_youtube = getattr(settings, 'MEDIAHOST_EXCLUDE_YOUTUBE', True)
 
     # Per-org state, built lazily the first time an org is touched.
     org_keywords = {}      # org.id -> [Keyword]     (for relevancy scoring)
@@ -486,6 +502,10 @@ def ingest_clips(date_from, date_to, media_type=None, dry_run=False,
         summary['fetched'] += 1
         if summary['sample'] is None:
             summary['sample'] = clip
+
+        if exclude_youtube and is_youtube_clip(clip):
+            summary['skipped']['youtube'] += 1
+            continue
 
         term = _search_term(clip)
         orgs = search_to_orgs.get(term.lower()) if term else None

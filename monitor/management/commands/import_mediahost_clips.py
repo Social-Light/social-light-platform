@@ -144,7 +144,8 @@ class Command(BaseCommand):
             self.stdout.write(f'  {org_name}: Print {c["Print"]}, Online {c["Online"]}, Broadcast {c["Broadcast"]}')
         self.stdout.write(
             f'Skipped: {skipped["duplicate"]} duplicate, {skipped["invalid"]} invalid, '
-            f'{skipped["unknown_type"]} unknown type, {skipped["unmapped"]} unmapped.'
+            f'{skipped["unknown_type"]} unknown type, {skipped["unmapped"]} unmapped, '
+            f'{skipped.get("youtube", 0)} youtube.'
         )
         if summary['unmapped_searches']:
             top = sorted(summary['unmapped_searches'].items(), key=lambda kv: -kv[1])[:10]
