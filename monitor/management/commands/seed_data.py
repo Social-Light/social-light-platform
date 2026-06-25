@@ -212,7 +212,7 @@ class Command(BaseCommand):
                     headline=f'Social post {months_back}-{i}',
                     date_published=d,
                     defaults={
-                        'platform': random.choice(['Facebook', 'Twitter', 'Instagram', 'LinkedIn']),
+                        'platform': random.choice(['Facebook', 'X', 'Instagram', 'LinkedIn']),
                         'page_name': random.choice(['FNBB Official', 'Business Daily', 'Financial Times BW']),
                         'country': random.choice(['Botswana', 'South Africa', 'Zimbabwe', 'Kenya']),
                         'sentiment': random.choice(['positive', 'neutral', 'negative']),

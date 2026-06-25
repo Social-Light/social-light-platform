@@ -273,7 +273,9 @@
         <div class="rep-card-src">&ndash; {{ r.source }}</div>
       </div>
       {% empty %}
-      {% if ai_enabled %}
+      {% if has_analysis %}
+      <p style="color:#9ca3af;font-size:.86rem;">No reputational risks identified in {{ td.label }} for this period.</p>
+      {% elif ai_enabled %}
       <p style="color:#9ca3af;font-size:.86rem;">Run <strong>Generate AI Analysis</strong> to surface the reputational risks for this period.</p>
       {% else %}
       <p style="color:#9ca3af;font-size:.86rem;">No reputational risks recorded for this period.</p>
@@ -313,7 +315,9 @@
         <div class="rep-card-src">&ndash; {{ o.source }}</div>
       </div>
       {% empty %}
-      {% if ai_enabled %}
+      {% if has_analysis %}
+      <p style="color:#9ca3af;font-size:.86rem;">No reputational opportunities identified in {{ td.label }} for this period.</p>
+      {% elif ai_enabled %}
       <p style="color:#9ca3af;font-size:.86rem;">Run <strong>Generate AI Analysis</strong> to surface the reputational opportunities for this period.</p>
       {% else %}
       <p style="color:#9ca3af;font-size:.86rem;">No reputational opportunities recorded for this period.</p>
@@ -456,7 +460,7 @@
         The dotted sentiment average line represents the average sentiment score for all KPIs. The dotted visibility average line represents average visibility for all KPIs.
       </p>
       {% else %}
-      <p style="color:#9ca3af;font-size:.86rem;">{% if ai_enabled %}Run <strong>Generate AI Analysis</strong> to plot KPI visibility vs sentiment.{% else %}No KPI data available for this period.{% endif %}</p>
+      <p style="color:#9ca3af;font-size:.86rem;">{% if has_analysis %}No significant {{ td.label }} KPI themes to plot for this period.{% elif ai_enabled %}Run <strong>Generate AI Analysis</strong> to plot KPI visibility vs sentiment.{% else %}No KPI data available for this period.{% endif %}</p>
       {% endif %}
     </div>
     <div class="slide-ftr">
@@ -494,8 +498,11 @@
           <span class="kpi-ins-text">{{ ins.text }}</span>
         </div>
         {% endfor %}
+        {% elif has_analysis %}
+        {# AI analysis exists but found no significant theme for this media type — clean message, not the shallow keyword counts. #}
+        <p style="color:#9ca3af;font-size:.86rem;">No significant {{ td.label }} coverage to summarise for this period.</p>
         {% else %}
-        {# Keyword-based fallback when no AI analysis has been generated. #}
+        {# Keyword-based fallback when no AI analysis has been generated at all. #}
         {% for ins in td.kpi_insights %}
         <div class="kpi-ins-row">
           <span class="kpi-pill kpi-pill--{{ ins.sentiment }}">

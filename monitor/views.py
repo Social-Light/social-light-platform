@@ -718,8 +718,8 @@ _SENTIMENT_MAP = {
 
 _PLATFORM_MAP = {
     'facebook': 'Facebook',
-    'twitter': 'Twitter',
-    'x': 'Twitter',
+    'twitter': 'X',
+    'x': 'X',
     'instagram': 'Instagram',
     'linkedin': 'LinkedIn',
     'youtube': 'YouTube',
@@ -927,7 +927,7 @@ def social_post_csv_upload(request, org_id):
         except ValueError:
             reach_value = 0
 
-        platform = (row.get('source') or row.get('platform') or '').strip() or 'Other'
+        platform = _normalize_platform(row.get('source') or row.get('platform') or '')
 
         to_create.append(SocialMediaPost(
             organization=org,
@@ -1070,7 +1070,7 @@ def social_post_create(request, org_id):
     data = json.loads(request.body)
     post = SocialMediaPost.objects.create(
         organization=org,
-        platform=data.get('platform', 'Facebook'),
+        platform=_normalize_platform(data.get('platform', 'Facebook')),
         page_name=data.get('page_name', '').strip(),
         headline=data.get('headline', '').strip(),
         summary=data.get('summary', '').strip(),
@@ -1092,7 +1092,7 @@ def social_post_update(request, org_id, post_id):
     org = get_object_or_404(Organization, id=org_id)
     post = get_object_or_404(SocialMediaPost, id=post_id, organization=org)
     data = json.loads(request.body)
-    post.platform = data.get('platform', post.platform)
+    post.platform = _normalize_platform(data.get('platform', post.platform))
     post.page_name = data.get('page_name', post.page_name).strip()
     post.headline = data.get('headline', post.headline).strip()
     post.url = data.get('url', post.url).strip()
@@ -1537,13 +1537,26 @@ def _type_stats(qs, src_field, has_reach=True):
 
     src_map = {}
     if src_field:
-        for row in qs.exclude(**{src_field: ''}).values(src_field).annotate(
+        rows = qs.exclude(**{src_field: ''}).values(src_field).annotate(
             total=Count('id'),
             pos=Count('id', filter=Q(sentiment='positive')),
             neu=Count('id', filter=Q(sentiment='neutral')),
             neg=Count('id', filter=Q(sentiment='negative')),
-        ).order_by('-total')[:8]:
-            src_map[row[src_field]] = {k: row[k] for k in ('total', 'pos', 'neu', 'neg')}
+        ).order_by('-total')
+        if src_field == 'platform':
+            # Merge platform name variants (e.g. "facebook"/"Facebook", "Twitter"/"X")
+            # into their canonical name so they're not counted separately.
+            merged = {}
+            for row in rows:
+                name = _normalize_platform(row[src_field])
+                bucket = merged.setdefault(name, {'total': 0, 'pos': 0, 'neu': 0, 'neg': 0})
+                for k in ('total', 'pos', 'neu', 'neg'):
+                    bucket[k] += row[k]
+            for name, v in sorted(merged.items(), key=lambda x: x[1]['total'], reverse=True)[:8]:
+                src_map[name] = v
+        else:
+            for row in rows[:8]:
+                src_map[row[src_field]] = {k: row[k] for k in ('total', 'pos', 'neu', 'neg')}
 
     top_source = next(iter(src_map), '')           # src_map is ordered by volume desc
     top_source_count = src_map[top_source]['total'] if top_source else 0
@@ -1945,6 +1958,7 @@ def report_full(request, org_id):
         'methodology_steps': _METHODOLOGY_STEPS,
         'glossary_terms': _GLOSSARY_TERMS,
         'analysis': analysis,
+        'has_analysis': bool(analysis),
         'ai_enabled': ai_enabled,
         'analysis_generated_at': analysis_generated_at,
         'analysis_stale': analysis_stale,
@@ -2531,7 +2545,7 @@ def faqs_view(request, org_id):
         {'q': 'What does sentiment mean?', 'a': 'Sentiment analysis categorises media mentions as Positive (favourable coverage), Neutral (factual/balanced coverage), or Negative (unfavourable coverage) based on the tone and content of the article.'},
         {'q': 'How do I add keywords for tracking?', 'a': 'Navigate to your organisation\'s dashboard and use the keywords section to add terms you want to track. The system will then flag articles containing those keywords.'},
         {'q': 'Can I export data to a report?', 'a': 'Yes. Navigate to the Reports section and click "Create Report". You can select date ranges, media types, and report formats to generate a downloadable summary.'},
-        {'q': 'What media types are tracked?', 'a': 'Social Light tracks four media types: Online Articles (digital publications and news websites), Print Media (newspapers and magazines), Social Media Posts (Facebook, Twitter, Instagram, LinkedIn), and Broadcast (TV and radio mentions).'},
+        {'q': 'What media types are tracked?', 'a': 'Social Light tracks four media types: Online Articles (digital publications and news websites), Print Media (newspapers and magazines), Social Media Posts (Facebook, X, Instagram, LinkedIn), and Broadcast (TV and radio mentions).'},
         {'q': 'How do I switch between organisations?', 'a': 'Click "Switch Organisations" in the top header bar. This will take you to the organisations list where you can select a different organisation to view.'},
         {'q': 'What is reach?', 'a': 'Reach refers to the estimated number of people who could have seen or read a particular piece of coverage, based on the publication\'s circulation or platform\'s audience size.'},
     ]

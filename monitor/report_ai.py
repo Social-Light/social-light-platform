@@ -182,16 +182,31 @@ def _gather(org, date_from, date_to):
                 mentions.append({'text': text[:240], 'sentiment': a['sentiment'],
                                  'media': mt, 'source': (a.get(src_field) or '').strip() or mt})
 
+    # Merge competitor records that refer to the same brand (e.g. "ABSA Botswana"
+    # and "Absa / Bank") so they aren't ranked as two separate players.
     competitors = []
-    for comp in org.competitors.all()[:8]:
+    by_key = {}
+    for comp in org.competitors.all():
         arts = comp.articles.all()
-        total = arts.count()
-        competitors.append({
+        entry = {
             'name': comp.name,
-            'mentions': total,
+            'mentions': arts.count(),
             'positive': arts.filter(sentiment='positive').count(),
             'negative': arts.filter(sentiment='negative').count(),
-        })
+        }
+        key = _competitor_key(comp.name)
+        if key and key in by_key:
+            existing = by_key[key]
+            # Keep the name of the better-evidenced/more complete record.
+            if (entry['mentions'], len(entry['name'])) > (existing['mentions'], len(existing['name'])):
+                existing['name'] = entry['name']
+            existing['mentions'] += entry['mentions']
+            existing['positive'] += entry['positive']
+            existing['negative'] += entry['negative']
+        else:
+            by_key[key] = entry
+            competitors.append(entry)
+    competitors = competitors[:8]
 
     return {'mentions': mentions[:MAX_MENTIONS], 'competitors': competitors}
 
@@ -327,10 +342,25 @@ def _normalise(data):
     comp = data.get('competitor') or {}
     if comp:
         ranked = []
-        for lv in (comp.get('ranked') or comp.get('levels') or [])[:8]:
+        seen_keys = {}
+        for lv in (comp.get('ranked') or comp.get('levels') or [])[:12]:
+            name = str(lv.get('name') or lv.get('label') or '')[:60]
             score = _sent(lv.get('score') if lv.get('score') is not None else lv.get('value'))
+            # Collapse any same-brand duplicates the model may still emit, keeping
+            # the higher-scored / better-described entry.
+            key = _competitor_key(name)
+            if key and key in seen_keys:
+                prev = ranked[seen_keys[key]]
+                if score > prev['score']:
+                    prev['score'] = score
+                    prev['tone'] = 'positive' if score > 0 else 'negative' if score < 0 else 'neutral'
+                if len(str(lv.get('description', ''))) > len(prev['description']):
+                    prev['description'] = str(lv.get('description', ''))[:400]
+                prev['is_org'] = prev['is_org'] or bool(lv.get('is_org'))
+                continue
+            seen_keys[key] = len(ranked)
             ranked.append({
-                'name': str(lv.get('name') or lv.get('label') or '')[:60],
+                'name': name,
                 'score': score,
                 'description': str(lv.get('description', ''))[:400],
                 'is_org': bool(lv.get('is_org')),
@@ -385,8 +415,28 @@ def _normalise(data):
     return out
 
 
-# media-type label (from the model) → the report's section key
-_MEDIA_KEYS = {'social': 'social', 'online': 'online', 'print': 'print', 'broadcast': 'broadcast'}
+# Generic words dropped when keying a competitor, so brand variants collapse
+# ("ABSA Botswana" / "Absa / Bank" → "absa") while distinct brands stay separate.
+_GENERIC_COMP_TOKENS = {'bank', 'botswana', 'limited', 'ltd', 'plc', 'the',
+                        'group', 'holdings', 'co', 'company', 'inc'}
+
+
+def _competitor_key(name):
+    """A normalised brand key for de-duplicating competitor records."""
+    tokens = re.findall(r'[a-z0-9]+', (name or '').lower())
+    core = [t for t in tokens if t not in _GENERIC_COMP_TOKENS]
+    return ''.join(core) or ''.join(tokens)
+
+
+def _media_key(value):
+    """Map a model-supplied media label to the report's section key. Tolerant of
+    variants like "Social Media", "Online Articles", "Broadcast Media" so items
+    aren't silently dropped (and lost from their section) on a labelling mismatch."""
+    s = str(value or '').strip().lower()
+    for key in ('social', 'online', 'print', 'broadcast'):
+        if key in s:
+            return key
+    return ''
 
 
 def _norm_reputational(rows):
@@ -401,7 +451,7 @@ def _norm_reputational(rows):
             'title': title,
             'description': str(row.get('description') or row.get('analysis') or '').strip()[:300],
             'score': _score10(row.get('score')),
-            'media_key': _MEDIA_KEYS.get(str(row.get('media') or '').strip().lower(), ''),
+            'media_key': _media_key(row.get('media')),
             'source': str(row.get('source') or '').strip()[:40],
         })
     return out
@@ -424,7 +474,7 @@ def _norm_kpi_insights(rows):
             'score_label': f'+{score}' if score > 0 else str(score),
             'sentiment': 'positive' if score > 0 else 'negative' if score < 0 else 'neutral',
             'mentions': _int(row.get('mentions')),
-            'media_key': _MEDIA_KEYS.get(str(row.get('media') or '').strip().lower(), ''),
+            'media_key': _media_key(row.get('media')),
         })
     return out
 
