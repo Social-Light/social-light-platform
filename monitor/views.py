@@ -1548,12 +1548,6 @@ def _type_stats(qs, src_field, has_reach=True):
     top_source = next(iter(src_map), '')           # src_map is ordered by volume desc
     top_source_count = src_map[top_source]['total'] if top_source else 0
 
-    risks = [{'headline': i.headline[:100], 'source': getattr(i, src_field, '') if src_field else '',
-              'ave': float(i.ave), 'date': i.date_published.strftime('%d %b %Y')}
-             for i in qs.filter(sentiment='negative').order_by('-ave')[:5]]
-    opps  = [{'headline': i.headline[:100], 'source': getattr(i, src_field, '') if src_field else '',
-              'ave': float(i.ave), 'date': i.date_published.strftime('%d %b %Y')}
-             for i in qs.filter(sentiment='positive').order_by('-ave')[:5]]
     issues = [{'label': i.headline[:55], 'ave': float(i.ave), 'sentiment': i.sentiment}
               for i in qs.order_by('-ave')[:8]]
 
@@ -1589,8 +1583,6 @@ def _type_stats(qs, src_field, has_reach=True):
                              'neg': [daily[d]['neg'] for d in dates]}),
         'sources_json': json.dumps([{'name': n, **v} for n, v in src_map.items()]),
         'key_events_json': json.dumps(key_events),
-        'risks': risks,
-        'opps': opps,
         'issues_json': json.dumps(issues),
         'words_json': json.dumps(words),
         'max_freq': words[0][1] if words else 1,
@@ -1875,10 +1867,53 @@ def report_full(request, org_id):
     # AI-generated analysis (ESG, stakeholder, sectorial competitor). Read from
     # cache only — generation is triggered on demand via the "Generate AI
     # Analysis" button (report_ai_generate) so report loads stay fast.
-    from .report_ai import get_cached_analysis, get_analysis_generated_at
+    from .report_ai import get_cached_analysis, get_analysis_generated_at, analysis_is_stale
     analysis = get_cached_analysis(org, date_from, date_to)
     analysis_generated_at = get_analysis_generated_at(org, date_from, date_to) if analysis else None
+    # The stored analysis is kept indefinitely; flag it when new mentions have been
+    # added since it was generated so the report can prompt a regenerate.
+    analysis_stale = bool(analysis) and analysis_is_stale(org, date_from, date_to)
     ai_enabled = bool(settings.ANTHROPIC_API_KEY)
+
+    # Distribute AI-generated reputational risks/opportunities into their media-type
+    # sections (each item is tagged with a media_key in the analysis payload).
+    for s in sections.values():
+        s['ai_risks'] = []
+        s['ai_opps'] = []
+        s['ai_kpi_insights'] = []
+    if analysis:
+        for item in analysis.get('reputational_risks', []):
+            sec = sections.get(item.get('media_key'))
+            if sec is not None:
+                sec['ai_risks'].append(item)
+        for item in analysis.get('reputational_opportunities', []):
+            sec = sections.get(item.get('media_key'))
+            if sec is not None:
+                sec['ai_opps'].append(item)
+        for item in analysis.get('kpi_insights', []):
+            sec = sections.get(item.get('media_key'))
+            if sec is not None:
+                sec['ai_kpi_insights'].append(item)
+
+    # KPI Visibility vs Sentiment scatter — one point per AI KPI insight
+    # (x = visibility/mentions, y = sentiment), with the KPI averages that
+    # split the plot into quadrants.
+    for s in sections.values():
+        pts = [{'label': i['category'], 'x': i.get('mentions', 0), 'y': i['score']}
+               for i in s['ai_kpi_insights']]
+        if pts:
+            avg_x = round(sum(p['x'] for p in pts) / len(pts), 1)
+            avg_y = round(sum(p['y'] for p in pts) / len(pts))
+        else:
+            avg_x = avg_y = 0
+        s['kpi_scatter_json'] = json.dumps({'points': pts, 'avg_x': avg_x, 'avg_y': avg_y})
+
+    # Executive summary draws on the same AI risks/opportunities (All Media),
+    # ranked by score, so it stays consistent with the per-section slides.
+    exec_opps = sorted(analysis.get('reputational_opportunities', []),
+                       key=lambda x: x.get('score', 0), reverse=True) if analysis else []
+    exec_risks = sorted(analysis.get('reputational_risks', []),
+                        key=lambda x: x.get('score', 0), reverse=True) if analysis else []
 
     # Module bar text (all selected modules, flagging those with no data)
     mod_bar_items = []
@@ -1912,6 +1947,9 @@ def report_full(request, org_id):
         'analysis': analysis,
         'ai_enabled': ai_enabled,
         'analysis_generated_at': analysis_generated_at,
+        'analysis_stale': analysis_stale,
+        'exec_opps': exec_opps,
+        'exec_risks': exec_risks,
     })
 
 

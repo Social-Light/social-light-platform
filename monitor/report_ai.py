@@ -1,9 +1,13 @@
-"""AI-generated report analysis: ESG, Stakeholder, and Sectorial Competitor.
+"""AI-generated report analysis: ESG, Stakeholder, Sectorial Competitor, and
+Reputational Risks / Opportunities.
 
 A single Anthropic call per (organisation, period) produces the structured data
-for three report sections that the raw models can't supply on their own. The
-result is persisted in the ReportAnalysis model and reused for a week (FRESH),
-so it survives restarts and the report never hits the API on a normal page view.
+for report sections that the raw models can't supply on their own. The result is
+persisted in the ReportAnalysis model and reused for the life of that record —
+there is no time-based expiry. It is regenerated only when new mentions have been
+added to the period (see ``_has_new_data`` / ``analysis_is_stale``) or when the
+user forces a regenerate. This survives restarts and keeps normal page views off
+the API.
 
 Generation is on demand (the report's "Generate AI Analysis" button); page loads
 call ``get_cached_analysis`` only. If the SDK/API key is missing or a generation
@@ -13,16 +17,13 @@ the AI sections instead of erroring.
 import json
 import logging
 import re
-from datetime import timedelta
 
 from django.conf import settings
-from django.utils import timezone
 
 from .relevancy import filter_relevant
 
 logger = logging.getLogger(__name__)
 
-FRESH = timedelta(days=7)  # reuse a generated analysis for a week before re-prompting
 MODEL = getattr(settings, 'REPORT_AI_MODEL', 'claude-sonnet-4-6')
 MAX_MENTIONS = 60  # cap the prompt size / token cost
 
@@ -74,29 +75,52 @@ def _store(org, date_from, date_to, payload):
 
 
 def get_cached_analysis(org, date_from, date_to):
-    """Return a previously-generated analysis dict if one exists and is still fresh
-    (< 1 week old), else None. Never calls the API — safe on every page load."""
+    """Return the stored analysis dict for this period, or None if none exists.
+    Persists for the life of the record (no time-based expiry). Never calls the
+    API — safe on every page load."""
     rec = _record(org, date_from, date_to)
-    if not rec or (timezone.now() - rec.updated_at) > FRESH:
+    if not rec:
         return None
     return rec.payload or None  # empty-dict sentinel → None
 
 
 def get_analysis_generated_at(org, date_from, date_to):
-    """Timestamp of the current fresh, non-empty analysis, or None."""
+    """Timestamp of the stored, non-empty analysis, or None."""
     rec = _record(org, date_from, date_to)
-    if rec and rec.payload and (timezone.now() - rec.updated_at) <= FRESH:
+    if rec and rec.payload:
         return rec.updated_at
     return None
 
 
+def _has_new_data(org, date_from, date_to, since):
+    """True if any mention in the period was added after ``since`` — i.e. the
+    analysis generated at that time no longer reflects all the coverage."""
+    kw = dict(date_published__gte=date_from, date_published__lte=date_to, created_at__gt=since)
+    for rel in (org.online_articles, org.print_articles, org.social_posts, org.broadcast_mentions):
+        if rel.filter(**kw).exists():
+            return True
+    return False
+
+
+def analysis_is_stale(org, date_from, date_to):
+    """True when a stored analysis exists but new mentions have been added to the
+    period since it was generated, so it should be regenerated to include them."""
+    rec = _record(org, date_from, date_to)
+    if not rec:
+        return False
+    return _has_new_data(org, date_from, date_to, rec.updated_at)
+
+
 def generate_analysis(org, date_from, date_to, force=False):
     """Generate (and persist) the analysis via the Anthropic API. Returns the dict,
-    or None when there's no coverage. Raises ReportAIError on config/API errors."""
+    or None when there's no coverage. Raises ReportAIError on config/API errors.
+
+    Unless ``force`` is set, an existing analysis is reused indefinitely and only
+    regenerated when new mentions have been added to the period (new data)."""
     if not force:
-        fresh = get_cached_analysis(org, date_from, date_to)
-        if fresh is not None:
-            return fresh
+        rec = _record(org, date_from, date_to)
+        if rec and not _has_new_data(org, date_from, date_to, rec.updated_at):
+            return rec.payload or None  # reuse stored result (empty-dict → no coverage)
 
     # Trim stray whitespace/quotes that often sneak in from .env files.
     api_key = (getattr(settings, 'ANTHROPIC_API_KEY', '') or '').strip().strip('"').strip("'")
@@ -141,19 +165,22 @@ def _gather(org, date_from, date_to):
     kw = dict(date_published__gte=date_from, date_published__lte=date_to)
     mentions = []
     per_type = max(8, MAX_MENTIONS // 4)
-    for qs, mt in [
-        (org.online_articles, 'Online'),
-        (org.print_articles, 'Print'),
-        (org.social_posts, 'Social'),
-        (org.broadcast_mentions, 'Broadcast'),
+    # src_field is the model's outlet/platform column, surfaced so the model can
+    # attribute each reputational risk/opportunity to a concrete source.
+    for qs, mt, src_field in [
+        (org.online_articles, 'Online', 'source'),
+        (org.print_articles, 'Print', 'source'),
+        (org.social_posts, 'Social', 'platform'),
+        (org.broadcast_mentions, 'Broadcast', 'source'),
     ]:
         qs = filter_relevant(qs.all())
-        for a in qs.filter(**kw).order_by('-ave').values('headline', 'summary', 'sentiment')[:per_type]:
+        for a in qs.filter(**kw).order_by('-ave').values('headline', 'summary', 'sentiment', src_field)[:per_type]:
             text = (a['headline'] or '').strip()
             if a['summary']:
                 text = f"{text} — {a['summary'].strip()[:160]}"
             if text:
-                mentions.append({'text': text[:240], 'sentiment': a['sentiment'], 'media': mt})
+                mentions.append({'text': text[:240], 'sentiment': a['sentiment'],
+                                 'media': mt, 'source': (a.get(src_field) or '').strip() or mt})
 
     competitors = []
     for comp in org.competitors.all()[:8]:
@@ -179,7 +206,7 @@ def _call_anthropic(api_key, org, date_from, date_to, payload):
     client = anthropic.Anthropic(api_key=api_key, timeout=120.0, max_retries=1)
 
     mentions_block = "\n".join(
-        f"- [{m['media']}/{m['sentiment']}] {m['text']}" for m in payload['mentions']
+        f"- [{m['media']}/{m['sentiment']}] ({m['source']}) {m['text']}" for m in payload['mentions']
     )
     comp_block = "\n".join(
         f"- {c['name']}: {c['mentions']} mentions ({c['positive']} positive, {c['negative']} negative)"
@@ -208,6 +235,7 @@ Produce a JSON object with EXACTLY these keys:
     {{"dimension": "Employees", "score": <0-100>, "sentiment": "...", "note": "..."}},
     {{"dimension": "Investors", "score": <0-100>, "sentiment": "...", "note": "..."}},
     {{"dimension": "Regulators", "score": <0-100>, "sentiment": "...", "note": "..."}},
+    {{"dimension": "Government & Politics", "score": <0-100>, "sentiment": "...", "note": "..."}},
     {{"dimension": "Community", "score": <0-100>, "sentiment": "...", "note": "..."}},
     {{"dimension": "Media", "score": <0-100>, "sentiment": "...", "note": "..."}}
   ],
@@ -218,14 +246,27 @@ Produce a JSON object with EXACTLY these keys:
       {{"name": "{org.name}", "score": <-100 to 100>, "description": "<1-2 sentence assessment of this player's coverage>", "is_org": true}},
       {{"name": "<competitor>", "score": <-100 to 100>, "description": "<1-2 sentence assessment>", "is_org": false}}
     ]
-  }}
+  }},
+  "reputational_risks": [
+    {{"title": "<2-4 word issue name, e.g. 'Service Disruption'>", "description": "<1-2 sentence explanation of the reputational risk this coverage poses>", "score": <1-10 severity>, "media": "Social|Online|Print|Broadcast", "source": "<the outlet/platform from the mention, e.g. Facebook>"}}
+  ],
+  "reputational_opportunities": [
+    {{"title": "<2-4 word opportunity name, e.g. 'Sports Event Sponsorship'>", "description": "<1-2 sentence explanation of the reputational opportunity this coverage presents>", "score": <1-10 strength>, "media": "Social|Online|Print|Broadcast", "source": "<the outlet/platform from the mention>"}}
+  ],
+  "kpi_insights": [
+    {{"category": "<2-4 word business theme, e.g. 'Compliance', 'Customer Experience', 'Innovation'>", "score": <-100 to 100>, "mentions": <number of mentions relating to this theme>, "media": "Social|Online|Print|Broadcast", "text": "<2-4 sentence detailed analysis of what the coverage actually said about this theme, naming specifics (initiatives, people, events) from the mentions>"}}
+  ]
 }}
 
-The "esg" array MUST contain one object for EACH of these issues, in this exact order: Financial Inclusion & Access; Fair Lending & Responsible Finance; Data Security & Customer Privacy; Business Ethics & Transparency; Customer Welfare & Product Responsibility; Employee Diversity & Wellbeing; Community Investment & Development; Environmental & Climate Impact. For each issue, score the sentiment from each stakeholder's perspective on a -100..100 scale (0 = not covered or neutral) based on the mentions, and write a short analysis. Include {org.name} AND each competitor above in "ranked", each with its own description and a score. Stakeholder "score" is a 0–100 favourability index (50 = neutral). Competitor and ESG "score" values are a -100..100 sentiment index (0 = neutral). Do NOT include comments or any text outside the JSON. Return ONLY the JSON object."""
+The "esg" array MUST contain one object for EACH of these issues, in this exact order: Financial Inclusion & Access; Fair Lending & Responsible Finance; Data Security & Customer Privacy; Business Ethics & Transparency; Customer Welfare & Product Responsibility; Employee Diversity & Wellbeing; Community Investment & Development; Environmental & Climate Impact. For each issue, score the sentiment from each stakeholder's perspective on a -100..100 scale (0 = not covered or neutral) based on the mentions, and write a short analysis. Include {org.name} AND each competitor above in "ranked", each with its own description and a score. Stakeholder "score" is a 0–100 favourability index (50 = neutral). Competitor and ESG "score" values are a -100..100 sentiment index (0 = neutral).
+
+For "reputational_risks" and "reputational_opportunities": derive each item from the negative (risks) and positive (opportunities) mentions respectively. Give a short, abstracted issue title (NOT the raw headline), a clear one to two sentence description, a 1-10 score (severity for risks, strength for opportunities), and set "media" to the mention's media type and "source" to its outlet/platform. Return 2-4 of the most significant items per media type that has coverage; omit a media type entirely if it has no relevant coverage.
+
+For "kpi_insights": identify the business/performance themes that the coverage actually speaks to (e.g. Compliance, Customer Experience, Innovation, Community Investment) and, for each, write a detailed 2-4 sentence narrative grounded in the specific mentions — name the initiatives, people, products or events involved and explain the implication. Set "score" to the theme's sentiment on a -100..100 scale (0 = neutral/balanced), "mentions" to how many mentions relate to the theme (its visibility), and "media" to the media type the insight is drawn from. Return 2-5 substantive insights per media type that has relevant coverage; omit a media type with no relevant coverage. Do NOT include comments or any text outside the JSON. Return ONLY the JSON object."""
 
     msg = client.messages.create(
         model=MODEL,
-        max_tokens=4096,
+        max_tokens=8192,  # headroom for ESG + competitor + risks/opps + detailed KPI insights
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )
@@ -255,7 +296,8 @@ def _parse_json(text):
 # ── Normalisation (defensive — never trust the model's shape blindly) ─────────
 
 def _normalise(data):
-    out = {'esg': [], 'stakeholders': [], 'competitor': None}
+    out = {'esg': [], 'stakeholders': [], 'competitor': None,
+           'reputational_risks': [], 'reputational_opportunities': [], 'kpi_insights': []}
 
     for row in (data.get('esg') or [])[:12]:
         scores = row.get('scores') or {}
@@ -310,6 +352,10 @@ def _normalise(data):
             'ranked': ranked,
         }
 
+    out['reputational_risks'] = _norm_reputational(data.get('reputational_risks'))
+    out['reputational_opportunities'] = _norm_reputational(data.get('reputational_opportunities'))
+    out['kpi_insights'] = _norm_kpi_insights(data.get('kpi_insights'))
+
     # stakeholder radar chart config (consumed by the report's lazy chart builder)
     if out['stakeholders']:
         out['stakeholder_chart'] = json.dumps({
@@ -332,8 +378,54 @@ def _normalise(data):
             },
         })
 
-    if not (out['esg'] or out['stakeholders'] or out['competitor']):
+    if not (out['esg'] or out['stakeholders'] or out['competitor']
+            or out['reputational_risks'] or out['reputational_opportunities']
+            or out['kpi_insights']):
         return {}
+    return out
+
+
+# media-type label (from the model) → the report's section key
+_MEDIA_KEYS = {'social': 'social', 'online': 'online', 'print': 'print', 'broadcast': 'broadcast'}
+
+
+def _norm_reputational(rows):
+    """Normalise a reputational risks/opportunities array. Each item carries a
+    media_key so the view can drop it into the matching media-type section."""
+    out = []
+    for row in (rows or [])[:16]:
+        title = str(row.get('title') or row.get('issue') or '').strip()[:60]
+        if not title:
+            continue
+        out.append({
+            'title': title,
+            'description': str(row.get('description') or row.get('analysis') or '').strip()[:300],
+            'score': _score10(row.get('score')),
+            'media_key': _MEDIA_KEYS.get(str(row.get('media') or '').strip().lower(), ''),
+            'source': str(row.get('source') or '').strip()[:40],
+        })
+    return out
+
+
+def _norm_kpi_insights(rows):
+    """Normalise detailed KPI insights. Each carries a -100..100 sentiment score
+    (with a display label and sentiment band) and a media_key for its section."""
+    out = []
+    for row in (rows or [])[:24]:
+        category = str(row.get('category') or row.get('theme') or '').strip()[:50]
+        text = str(row.get('text') or row.get('analysis') or '').strip()[:600]
+        if not category or not text:
+            continue
+        score = _sent(row.get('score'))
+        out.append({
+            'category': category,
+            'text': text,
+            'score': score,
+            'score_label': f'+{score}' if score > 0 else str(score),
+            'sentiment': 'positive' if score > 0 else 'negative' if score < 0 else 'neutral',
+            'mentions': _int(row.get('mentions')),
+            'media_key': _MEDIA_KEYS.get(str(row.get('media') or '').strip().lower(), ''),
+        })
     return out
 
 
@@ -349,6 +441,14 @@ def _clamp(v):
         return max(0, min(100, int(round(float(v)))))
     except (TypeError, ValueError):
         return 50
+
+
+def _score10(v):
+    """Clamp to a 1..10 magnitude score (used for risk severity / opportunity strength)."""
+    try:
+        return max(1, min(10, int(round(abs(float(v))))))
+    except (TypeError, ValueError):
+        return 5
 
 
 def _sent(v):
