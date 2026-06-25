@@ -100,19 +100,27 @@
 .issue-box.neg .issue-box-hdr { color:#dc2626; }
 .issue-item { font-size:.78rem; color:#374151; margin-bottom:6px; line-height:1.5; }
 
-/* Rep cards */
-.rep-card { border-radius:8px; padding:13px 15px; margin-bottom:9px; display:grid; grid-template-columns:1fr auto; gap:14px; align-items:start; }
-.rep-card.risk { border:1.5px dashed #fca5a5; }
-.rep-card.oppty { border:1.5px dashed #86efac; }
-.rep-card-title { font-size:.8rem; font-weight:700; margin-bottom:4px; }
+/* Rep cards — issue title + description + impact/score dials + source */
+.rep-card { border-radius:10px; padding:16px 18px; margin-bottom:12px;
+  display:grid; grid-template-columns:170px 1fr auto auto; gap:18px; align-items:center; }
+.rep-card.risk  { border:2px solid #ef4444; }
+.rep-card.oppty { border:2px solid #22c55e; }
+.rep-card-title { font-size:.92rem; font-weight:800; display:flex; align-items:center; gap:8px; line-height:1.25; }
 .rep-card.risk  .rep-card-title { color:#dc2626; }
 .rep-card.oppty .rep-card-title { color:#16a34a; }
-.rep-card-desc { font-size:.76rem; color:#374151; line-height:1.5; }
-.rep-card-meta { text-align:right; }
-.rep-card-ave { font-size:.76rem; font-weight:700; }
-.rep-card.risk  .rep-card-ave { color:#dc2626; }
-.rep-card.oppty .rep-card-ave { color:#16a34a; }
-.rep-card-src { font-size:.68rem; color:#9ca3af; }
+.rep-tri { width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; flex-shrink:0; }
+.rep-card.risk  .rep-tri { border-top:9px solid #dc2626; }
+.rep-card.oppty .rep-tri { border-bottom:9px solid #16a34a; }
+.rep-card-desc { font-size:.78rem; color:#374151; line-height:1.5; }
+.rep-dials { display:flex; align-items:center; gap:12px; }
+.rep-dial { width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-size:.95rem; font-weight:800; flex-shrink:0; }
+.rep-dial--bound { width:42px; height:42px; border:2px dashed; background:transparent; font-size:.82rem; }
+.rep-dial--score { border:2px solid; }
+.rep-card.risk  .rep-dial { color:#dc2626; border-color:#ef4444; }
+.rep-card.oppty .rep-dial { color:#16a34a; border-color:#22c55e; }
+.rep-card-src { font-size:.78rem; color:#6b7280; white-space:nowrap; }
+@media(max-width:760px){ .rep-card { grid-template-columns:1fr; gap:10px; } }
 
 /* Journalists */
 .journ-table { width:100%; border-collapse:collapse; font-size:.8rem; }
@@ -263,7 +271,10 @@
     <span class="rf-page-label" id="pageLabel">Page 1 of <span id="totalPages"></span></span>
     <div style="display:flex;align-items:center;gap:8px;">
       {% if analysis_generated_at %}
-      <span class="rf-page-label" title="Reused for a week before regeneration is needed">AI analysis: {{ analysis_generated_at|date:"d M Y" }}</span>
+      <span class="rf-page-label" title="Saved and reused until you regenerate it">AI analysis: {{ analysis_generated_at|date:"d M Y" }}</span>
+      {% endif %}
+      {% if analysis_stale %}
+      <span class="rf-page-label" style="color:#b45309;" title="New mentions were added to this period after the analysis was generated">⚠ New data — regenerate to update</span>
       {% endif %}
       {% if ai_enabled %}
       <button id="aiBtn" onclick="generateAi(this)" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:6px;">
@@ -326,11 +337,11 @@
                 Positive Issues
                 <span style="margin-left:auto;font-size:.68rem;color:#9ca3af;font-weight:400;">Sentiment impact*</span>
               </div>
-              {% for s in sections.social.opps|slice:":2" %}
+              {% for s in exec_opps|slice:":3" %}
               <div class="issue-item"><span style="font-weight:700;margin-right:3px;">{{ forloop.counter }}</span>
-                <strong style="color:#15803d;">{{ s.headline|truncatechars:75 }}</strong>
-                <span style="color:#9ca3af;"> — {{ s.source }}</span></div>
-              {% empty %}<div class="issue-item" style="color:#9ca3af;">No positive mentions.</div>
+                <strong style="color:#15803d;">{{ s.title }}</strong>
+                <span style="color:#9ca3af;"> — {{ s.source }} (+{{ s.score }})</span></div>
+              {% empty %}<div class="issue-item" style="color:#9ca3af;">{% if ai_enabled %}Run Generate AI Analysis to surface positive issues.{% else %}No positive issues.{% endif %}</div>
               {% endfor %}
             </div>
             <div class="issue-box neg">
@@ -339,11 +350,11 @@
                 Negative Issues
                 <span style="margin-left:auto;font-size:.68rem;color:#9ca3af;font-weight:400;">Sentiment impact*</span>
               </div>
-              {% for s in sections.social.risks|slice:":2" %}
+              {% for s in exec_risks|slice:":3" %}
               <div class="issue-item"><span style="font-weight:700;margin-right:3px;">{{ forloop.counter }}</span>
-                <strong style="color:#dc2626;">{{ s.headline|truncatechars:75 }}</strong>
-                <span style="color:#9ca3af;"> — {{ s.source }}</span></div>
-              {% empty %}<div class="issue-item" style="color:#9ca3af;">No negative mentions.</div>
+                <strong style="color:#dc2626;">{{ s.title }}</strong>
+                <span style="color:#9ca3af;"> — {{ s.source }} (-{{ s.score }})</span></div>
+              {% empty %}<div class="issue-item" style="color:#9ca3af;">{% if ai_enabled %}Run Generate AI Analysis to surface negative issues.{% else %}No negative issues.{% endif %}</div>
               {% endfor %}
             </div>
           </div>
