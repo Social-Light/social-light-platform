@@ -6,6 +6,7 @@
 .ke-label { font-size:.8rem; font-weight:700; }
 .ke-date { font-size:.75rem; color:#9ca3af; }
 .ke-desc { font-size:.78rem; color:#374151; line-height:1.55; }
+.ke-sub { font-size:.72rem; color:#9ca3af; line-height:1.5; margin-top:3px; }
 .div-chart { width:100%; }
 .div-chart-row { display:grid; grid-template-columns:1fr 220px 1fr; align-items:center; margin-bottom:7px; gap:6px; }
 .div-bar-cell { display:flex; }
@@ -698,8 +699,9 @@
                 '<span class="ke-label" style="color:'+lblColor+'">'+lblText+'</span>'+ 
               '</div>'+ 
               '<span class="ke-date">'+d+'</span>'+ 
-            '</div>'+ 
-            (ev.summary ? '<div class="ke-desc">*'+ev.summary+'</div>' : '<div class="ke-desc" style="color:#9ca3af;">'+ev.headline+'</div>');
+            '</div>'+
+            (ev.headline ? '<div class="ke-desc">'+ev.headline+'</div>' : '<div class="ke-desc" style="color:#9ca3af;">No headline.</div>')+
+            (ev.summary && ev.summary !== ev.headline ? '<div class="ke-sub">'+ev.summary+'</div>' : '');
           keList.appendChild(card);
         });
       } catch(e){ console.warn('key-events',e); }
