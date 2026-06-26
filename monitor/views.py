@@ -739,6 +739,23 @@ def _normalize_platform(platform_raw):
     return platform_raw.strip().title()
 
 
+# Confirmed Botswana broadcast stations (matched on a normalised station name),
+# used to infer country when the source feed omits it. Extend as more are confirmed.
+_BW_BROADCAST_STATIONS = ('gabzfm', 'gabz', 'dumafm', 'duma')
+
+
+def _broadcast_country(station, country=''):
+    """Use the supplied country if present, else infer 'Botswana' for known local
+    stations (Gabz FM, Duma FM). Otherwise leave blank — don't assume."""
+    country = (country or '').strip()
+    if country:
+        return country
+    key = re.sub(r'[^a-z0-9]', '', (station or '').lower())
+    if key and any(key.startswith(s) for s in _BW_BROADCAST_STATIONS):
+        return 'Botswana'
+    return ''
+
+
 
 def _parse_csv_date(value):
     if not value:
@@ -968,6 +985,8 @@ def broadcast_csv_upload(request, org_id):
     created = 0
     errors = []
     to_create = []
+    keywords = list(org.keywords.all())          # fetched once; reused for every row
+    competitors = list(org.competitors.all())    # competitor coverage counts toward relevancy
 
     for idx, row in enumerate(reader, start=2):
         mention = (row.get('mention') or row.get('headline') or '').strip()
@@ -992,18 +1011,21 @@ def broadcast_csv_upload(request, org_id):
             rev = {v.upper(): k for k, v in BROADCAST_TYPE_CHOICES}
             btype = rev.get(btype_raw.upper(), 'RADIO')
 
+        station = (row.get('station') or row.get('client') or '').strip()
+        summary = (row.get('keyword') or row.get('search') or '').strip()
         to_create.append(BroadcastMention(
             organization=org,
-            source=(row.get('station') or row.get('client') or '').strip(),
+            source=station,
             headline=mention,
-            summary=(row.get('keyword') or row.get('search') or '').strip(),
+            summary=summary,
             url=(row.get('url') or '').strip(),
             date_published=published,
-            country=(row.get('country') or '').strip(),
+            country=_broadcast_country(station, row.get('country')),
             sentiment='neutral',
             ave=ave_value,
             duration=(row.get('duration') or '').strip(),
             broadcast_type=btype,
+            relevancy=compute_relevancy(mention, summary, keywords=keywords, competitors=competitors),
         ))
 
     if to_create:
@@ -1682,10 +1704,12 @@ def report_full(request, org_id):
     month_label = f"{_fmt_date(date_from)} – {_fmt_date(date_to)}"
     kw = dict(date_published__gte=date_from, date_published__lte=date_to)
 
-    oa = org.online_articles.filter(**kw)
-    pa = org.print_articles.filter(**kw)
-    sp = org.social_posts.filter(**kw)
-    bm = org.broadcast_mentions.filter(**kw)
+    # Apply the relevancy filter so the report reflects the same coverage the AI
+    # analysis uses (a no-op until MENTION_RELEVANCY_THRESHOLD is configured).
+    oa = filter_relevant(org.online_articles.filter(**kw))
+    pa = filter_relevant(org.print_articles.filter(**kw))
+    sp = filter_relevant(org.social_posts.filter(**kw))
+    bm = filter_relevant(org.broadcast_mentions.filter(**kw))
 
     oa_c, pa_c, sp_c, bm_c = oa.count(), pa.count(), sp.count(), bm.count()
     total_vol = oa_c + pa_c + sp_c + bm_c
