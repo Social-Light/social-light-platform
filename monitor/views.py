@@ -24,6 +24,7 @@ from .models import (
     SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES,
 )
 from .relevancy import compute_relevancy, filter_relevant
+from .print_metrics import estimate_print_reach as _print_reach
 from .alert_email import build_and_send, start_of_today
 
 COMPETITOR_SUGGESTIONS = {
@@ -679,6 +680,7 @@ def print_article_create(request, org_id):
         country=data.get('country', '').strip(),
         sentiment=data.get('sentiment', 'neutral'),
         ave=float(data.get('ave', 0) or 0),
+        reach=int(float(data.get('reach') or 0)) or _print_reach(data.get('source', '')),
     )
     return JsonResponse({'id': article.id, 'headline': article.headline[:60]})
 
@@ -694,6 +696,8 @@ def print_article_update(request, org_id, article_id):
             setattr(article, field, data[field].strip() if isinstance(data[field], str) else data[field])
     if 'ave' in data:
         article.ave = float(data['ave'] or 0)
+    if 'reach' in data:
+        article.reach = int(float(data['reach'] or 0)) or _print_reach(article.source)
     if 'date_published' in data and data['date_published']:
         article.date_published = data['date_published']
     article.save()
@@ -756,7 +760,6 @@ def _broadcast_country(station, country=''):
     return ''
 
 
-
 def _parse_csv_date(value):
     if not value:
         return None
@@ -813,9 +816,14 @@ def print_article_csv_upload(request, org_id):
         except ValueError:
             ave_value = 0
 
+        publication = (row.get('publication') or '').strip()
+        try:
+            reach_value = int(float((row.get('reach') or '0').strip() or 0))
+        except ValueError:
+            reach_value = 0
         to_create.append(PrintArticle(
             organization=org,
-            source=(row.get('publication') or '').strip(),
+            source=publication,
             headline=headline,
             author=(row.get('byline') or '').strip(),
             section=(row.get('section') or '').strip(),
@@ -824,6 +832,7 @@ def print_article_csv_upload(request, org_id):
             country=(row.get('country') or '').strip(),
             sentiment=sentiment,
             ave=ave_value,
+            reach=reach_value or _print_reach(publication),  # use given reach, else estimate
         ))
 
     if to_create:
@@ -1872,7 +1881,7 @@ def report_full(request, org_id):
         'social':    {'qs': sp, 'src': 'platform', 'reach': True,  'label': 'Social Media',    'color': '#1d4ed8'},
         'online':    {'qs': oa, 'src': 'source',   'reach': True,  'label': 'Online Media',    'color': '#0f766e'},
         'broadcast': {'qs': bm, 'src': 'source',   'reach': False, 'label': 'Broadcast Media', 'color': '#9333ea'},
-        'print':     {'qs': pa, 'src': 'source',   'reach': False, 'label': 'Print Media',     'color': '#c2410c'},
+        'print':     {'qs': pa, 'src': 'source',   'reach': True,  'label': 'Print Media',     'color': '#c2410c'},
     }
     # Concise period label for KPI insights ("April 2026" for a single month, else the range).
     if date_from.year == date_to.year and date_from.month == date_to.month:
@@ -1887,6 +1896,10 @@ def report_full(request, org_id):
         # Which modules are selected for this type
         stats['sel_mods'] = [m for m in ALL_MOD_IDS if _sel(key, m)]
         sections[key] = stats
+
+    # Print reach is an estimate (circulation × readers-per-copy, stored per row),
+    # so flag it for a clear "Estimated Reach" label in the template.
+    sections['print']['reach_estimated'] = True
 
     # Journalists (print only)
     journalists = list(pa.exclude(author='').values('author').annotate(
@@ -3358,6 +3371,10 @@ def media_monitor_webhook(request, org_id):
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
     org = get_object_or_404(Organization, id=org_id)
+
+    # Disabled (inactive) organisations receive no new mentions.
+    if org.status != 'active':
+        return JsonResponse({'ok': True, 'skipped': 'organization inactive'})
 
     try:
         body = json.loads(request.body)

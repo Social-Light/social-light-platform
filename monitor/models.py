@@ -213,6 +213,7 @@ class PrintArticle(models.Model):
     country = models.CharField(max_length=100, blank=True)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    reach = models.IntegerField(default=0, help_text='Estimated readership (circulation × readers-per-copy).')
     relevancy = models.FloatField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 

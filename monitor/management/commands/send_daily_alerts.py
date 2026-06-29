@@ -46,7 +46,10 @@ class Command(BaseCommand):
         if alert_id:
             qs = Alert.objects.filter(id=alert_id).select_related('organization')
         else:
-            qs = Alert.objects.filter(is_active=True).select_related('organization')
+            # Disabled (inactive) organisations receive no scheduled alerts.
+            qs = Alert.objects.filter(
+                is_active=True, organization__status='active'
+            ).select_related('organization')
             if frequency != 'all':
                 qs = qs.filter(frequency=frequency)
             if org_filter:
