@@ -70,7 +70,7 @@
         {{ td.vol }} mention{{ td.vol|pluralize }}
         &nbsp;·&nbsp;
         BWP {{ td.ave|floatformat:0 }} AVE
-        {% if td.reach %}&nbsp;·&nbsp; {{ td.reach|floatformat:0 }} Reach{% endif %}
+        {% if td.reach %}&nbsp;·&nbsp; {{ td.reach|floatformat:0 }} {% if td.reach_estimated %}Est. Reach{% else %}Reach{% endif %}{% endif %}
       </p>
     </div>
     <div class="slide-footer">
@@ -104,9 +104,9 @@
         </div>
         {% if td.reach %}
         <div class="kpi-card">
-          <div class="kpi-lbl">Total Reach</div>
+          <div class="kpi-lbl">{% if td.reach_estimated %}Estimated Reach{% else %}Total Reach{% endif %}</div>
           <div class="kpi-val">{{ td.reach|floatformat:0 }}</div>
-          <div class="kpi-sub">Estimated audience</div>
+          <div class="kpi-sub">{% if td.reach_estimated %}Est. from circulation{% else %}Estimated audience{% endif %}</div>
         </div>
         {% else %}
         <div class="kpi-card">

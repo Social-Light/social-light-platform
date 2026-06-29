@@ -41,6 +41,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from .relevancy import compute_relevancy
+from .print_metrics import estimate_print_reach
 
 
 # mediahost datetime format for the from/to query params. All times are South
@@ -361,6 +362,16 @@ def _search_term(clip):
     return _clean(_first(clip, ('search', 'searchName', 'searchTerm', 'keyword')))
 
 
+def _print_section(clip):
+    """Section name for a print clip (e.g. Main, Business, Sport).
+
+    The feed sometimes carries a bare page number in 'section', or only a numeric
+    'page' — a section is a name, not a number, so don't fall back to 'page' and
+    drop purely-numeric values (they leave the section blank → shown as 'Main')."""
+    value = _clean(_first(clip, ('section',)))
+    return '' if value.isdigit() else value
+
+
 def _map_clip(clip):
     """Map a raw clip to (ctype, fields, dedup_key, error).
 
@@ -388,10 +399,14 @@ def _map_clip(clip):
         'ave': _to_float(_first(clip, ('ave', 'AVE'))),
     }
     if ctype == 'Print':
+        publication = _clean(_first(clip, ('source', 'publication', 'station')))
         fields.update(
-            source=_clean(_first(clip, ('source', 'publication', 'station'))),
+            source=publication,
             author=_clean(_first(clip, ('byline', 'author'))),
-            section=_clean(_first(clip, ('section', 'page'))),
+            section=_print_section(clip),
+            # Print has no measured reach — estimate it from circulation, unless the
+            # feed supplies one.
+            reach=_to_int(_first(clip, ('reach', 'audience'))) or estimate_print_reach(publication),
         )
     elif ctype == 'Online':
         fields.update(
@@ -416,10 +431,14 @@ def _build_search_map(restrict_org=None):
     Built from the Keyword table so a clip's `search` value (e.g. "FNBB") routes
     to the org(s) owning that keyword. A term tracked by several orgs routes to
     all of them. `restrict_org` limits the map to a single org (for testing).
+
+    Inactive (disabled) organisations are excluded, so a disabled org receives no
+    new mentions until it is reactivated.
     """
     from .models import Keyword
 
-    kw_qs = Keyword.objects.select_related('organization')
+    kw_qs = Keyword.objects.select_related('organization').filter(
+        organization__status='active')
     if restrict_org is not None:
         kw_qs = kw_qs.filter(organization=restrict_org)
 
