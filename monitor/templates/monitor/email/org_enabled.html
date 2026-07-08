@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ subject }}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
+
+          <!-- Logo -->
+          <tr>
+            <td align="center" style="padding-bottom:24px;">
+              {% if logo_url %}
+              <img src="{{ logo_url }}" alt="{{ org.name }}" style="max-height:60px;max-width:200px;" />
+              {% else %}
+              <div style="background:linear-gradient(135deg,{{ org.gradient_color1 }},{{ org.gradient_color2 }});border-radius:8px;padding:14px 28px;display:inline-block;">
+                <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.5px;">{{ org.name }}</span>
+              </div>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background-color:#ffffff;border-radius:12px;padding:32px;">
+              <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#0f172a;">
+                Monitoring resumed for {{ org.name }}
+              </h1>
+              <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;">
+                Media monitoring for <strong>{{ org.name }}</strong> has resumed.
+                From now on:
+              </p>
+              <ul style="margin:0 0 16px;padding-left:20px;font-size:15px;line-height:1.7;color:#334155;">
+                <li>New mentions are being collected again across online, print, broadcast, and social.</li>
+                <li>Alert emails will be sent as scheduled.</li>
+              </ul>
+              <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#334155;">
+                Log in to view your latest coverage.
+              </p>
+              <a href="{{ login_url }}" target="_blank"
+                 style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 24px;border-radius:8px;">
+                Open Social Light
+              </a>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding-top:24px;">
+              <p style="margin:0;font-size:12px;color:#94a3b8;">
+                Social Light &middot; <a href="{{ login_url }}" style="color:#2563eb;text-decoration:none;">sociallight.africa</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
