@@ -26,6 +26,7 @@ from .models import (
 from .relevancy import compute_relevancy, filter_relevant
 from .print_metrics import estimate_print_reach as _print_reach
 from .alert_email import build_and_send, start_of_today
+from .org_email import send_org_disabled_email, send_org_enabled_email
 
 COMPETITOR_SUGGESTIONS = {
     'Banking & Financial Services': [
@@ -205,6 +206,7 @@ def organization_create(request):
 @require_http_methods(['PUT', 'POST'])
 def organization_update(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
+    was_active = org.status == 'active'
     if request.content_type and 'multipart' in request.content_type:
         data = request.POST
         org.name = data.get('name', org.name).strip()
@@ -230,6 +232,23 @@ def organization_update(request, org_id):
         org.country = data.get('country', org.country)
         org.status = data.get('status', org.status)
     org.save()
+
+    # Notify org admins when the organisation's monitoring is paused or resumed.
+    # A mail failure must not fail the update itself.
+    is_active = org.status == 'active'
+    if was_active and not is_active:
+        notify = send_org_disabled_email
+    elif is_active and not was_active:
+        notify = send_org_enabled_email
+    else:
+        notify = None
+    if notify:
+        try:
+            notify(org)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+
     return JsonResponse({'ok': True})
 
 
