@@ -1118,12 +1118,17 @@ def media_social(request, org_id):
 def social_post_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
+    headline = data.get('headline', '').strip()
+    summary = data.get('summary', '').strip()
+    # Score relevancy so a manually added post isn't hidden by the display-time
+    # relevancy filter (a form-supplied 0 would fall below any threshold > 0).
+    relevancy = float(data.get('relevancy', 0) or 0) or compute_relevancy(headline, summary, org=org)
     post = SocialMediaPost.objects.create(
         organization=org,
         platform=_normalize_platform(data.get('platform', 'Facebook')),
         page_name=data.get('page_name', '').strip(),
-        headline=data.get('headline', '').strip(),
-        summary=data.get('summary', '').strip(),
+        headline=headline,
+        summary=summary,
         url=data.get('url', '').strip(),
         date_published=data.get('date_published') or date.today(),
         country=data.get('country', '').strip(),
@@ -1131,7 +1136,7 @@ def social_post_create(request, org_id):
         ave=float(data.get('ave', 0) or 0),
         rank=float(data.get('rank', 0) or 0),
         reach=int(data.get('reach', 0) or 0),
-        relevancy=float(data.get('relevancy', 0) or 0),
+        relevancy=relevancy,
     )
     return JsonResponse({'id': post.id})
 
@@ -1151,7 +1156,10 @@ def social_post_update(request, org_id, post_id):
     post.sentiment = data.get('sentiment', post.sentiment)
     post.ave = float(data.get('ave', post.ave) or 0)
     post.reach = int(data.get('reach', post.reach) or 0)
-    post.relevancy = float(data.get('relevancy', post.relevancy) or 0)
+    # Keep the post visible under the relevancy filter: fall back to a computed
+    # score when neither the form nor the existing row carries one.
+    post.relevancy = (float(data.get('relevancy', post.relevancy) or 0)
+                      or compute_relevancy(post.headline, post.summary, org=org))
     post.save()
     return JsonResponse({'ok': True})
 
