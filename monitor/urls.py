@@ -74,6 +74,10 @@ urlpatterns = [
     path('app/reports/<uuid:org_id>/competitor/pptx/', views.report_competitor_pptx, name='report_competitor_pptx'),
     path('api/<uuid:org_id>/reports/save/', views.report_save, name='report_save'),
     path('api/<uuid:org_id>/reports/<uuid:report_id>/delete/', views.report_delete, name='report_delete'),
+    # Issue-focused ("saga") reports
+    path('app/reports/<uuid:org_id>/issue/<uuid:report_id>/', views.report_issue, name='report_issue'),
+    path('api/<uuid:org_id>/reports/issue/', views.report_issue_generate, name='report_issue_generate'),
+    path('api/<uuid:org_id>/reports/issue/<uuid:report_id>/delete/', views.report_issue_delete, name='report_issue_delete'),
 
     # Alerts
     path('app/alerts/<uuid:org_id>/', views.alerts_view, name='alerts'),

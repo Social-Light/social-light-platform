@@ -346,6 +346,46 @@ class ReportAnalysis(models.Model):
         return f"{self.organization.name} analysis {self.date_from}–{self.date_to}"
 
 
+class IssueReport(models.Model):
+    """A saga/issue-focused special report: from all mentions in a period, an AI
+    selects only those relevant to a named issue (issue_query) and writes the
+    issue-specific narrative (executive summary, timeline, framing, risks,
+    recommendations).
+
+    Unlike ReportAnalysis (keyed only by period), each IssueReport is a distinct
+    saga. ``candidate_ids`` holds every mention the keyword pre-filter surfaced;
+    ``selected_ids`` holds the AI's on-topic subset, editable afterwards so a
+    human can add back an excluded candidate or drop a wrong include. Displayed
+    figures are always recomputed from the selected DB rows — ``payload`` never
+    carries coverage the model invented.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='issue_reports')
+    title = models.CharField(max_length=300)
+    issue_query = models.TextField(help_text='The saga/issue the report isolates coverage for.')
+    date_from = models.DateField()
+    date_to = models.DateField()
+    # {"online": [id, …], "print": […], "social": […], "broadcast": […]}
+    candidate_ids = models.JSONField(default=dict)
+    selected_ids = models.JSONField(default=dict)
+    payload = models.JSONField(default=dict)
+    created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} ({self.date_from}–{self.date_to})"
+
+    @property
+    def media_type_keys(self):
+        """Media types with at least one selected mention — for the reports list."""
+        order = ['social', 'online', 'print', 'broadcast']
+        return [k for k in order if (self.selected_ids or {}).get(k)]
+
+
 class Alert(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='alerts')
     name = models.CharField(max_length=200)
