@@ -1,0 +1,390 @@
+{% extends 'monitor/base.html' %}
+{% load static %}
+{% load humanize %}
+{% block title %}{{ report.title }} — Special Insight Report{% endblock %}
+
+{% block extra_head %}
+<style>
+:root { --teal:#00A99D; --teal-dk:#006B7A; --teal-deep:#003D4A; }
+
+.ir-shell { max-width:940px; margin:0 auto; }
+.ir-controls { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:10px; }
+.ir-back { font-size:.85rem; color:#6b7280; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+.ir-actions { display:flex; gap:8px; }
+
+.ir-page { background:#fff; border-radius:14px; box-shadow:0 4px 24px rgba(0,0,0,.08); overflow:hidden; margin-bottom:20px; }
+
+/* Cover */
+.ir-cover { background:linear-gradient(155deg,#004D58 0%,#006B7A 45%,#003240 100%); padding:64px 48px; text-align:center; position:relative; }
+.ir-cover-logo { width:64px; border-radius:50%; margin-bottom:40px; opacity:.95; }
+.ir-cover-kicker { font-size:.74rem; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.6); margin-bottom:14px; }
+.ir-cover-title { font-size:2.4rem; font-weight:800; color:#fff; margin:0 0 12px; letter-spacing:-.5px; }
+.ir-cover-sub { font-size:1rem; color:rgba(255,255,255,.78); margin:0; }
+.ir-cover-date { font-size:.85rem; color:rgba(255,255,255,.6); margin-top:28px; }
+
+/* Section shell */
+.ir-sec { padding:30px 40px; border-bottom:1px solid #f3f4f6; }
+.ir-sec:last-child { border-bottom:none; }
+.ir-sec-kicker { font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:#9ca3af; margin-bottom:4px; }
+.ir-sec-title { font-size:1.5rem; font-weight:800; color:var(--teal); margin:0 0 16px; }
+.ir-sec-title.neg { color:#dc2626; }
+.ir-lead { font-size:.92rem; color:#374151; line-height:1.7; margin:0 0 18px; }
+
+/* KPI cards */
+.ir-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
+.ir-kpi { border:1px solid #e5e7eb; border-radius:12px; padding:16px 18px; }
+.ir-kpi-label { font-size:.7rem; letter-spacing:.06em; text-transform:uppercase; color:#9ca3af; margin-bottom:8px; }
+.ir-kpi-value { font-size:1.7rem; font-weight:800; color:var(--teal); line-height:1; }
+.ir-kpi-value.neg { color:#dc2626; }
+.ir-kpi-sub { font-size:.72rem; color:#9ca3af; margin-top:8px; }
+
+/* At-a-glance */
+.ir-glance { border:1px solid #e5e7eb; border-radius:12px; padding:6px 20px; }
+.ir-glance-row { display:grid; grid-template-columns:150px 1fr; gap:16px; padding:12px 0; border-bottom:1px solid #f3f4f6; }
+.ir-glance-row:last-child { border-bottom:none; }
+.ir-glance-label { font-weight:700; color:var(--teal); font-size:.85rem; }
+.ir-glance-text { font-size:.86rem; color:#374151; line-height:1.6; }
+.ir-glance-src { color:#9ca3af; font-size:.75rem; }
+
+/* Timeline */
+.ir-tl { position:relative; padding-left:8px; }
+.ir-tl-row { display:grid; grid-template-columns:120px 1fr; gap:16px; padding:10px 0; }
+.ir-tl-date { text-align:right; font-size:.8rem; font-weight:700; color:#374151; white-space:nowrap; padding-top:2px; }
+.ir-tl-body { border-left:2px solid #e5e7eb; padding:0 0 6px 18px; position:relative; }
+.ir-tl-dot { position:absolute; left:-7px; top:4px; width:12px; height:12px; border-radius:50%; background:#9ca3af; border:2px solid #fff; }
+.ir-tl-dot.positive { background:#16a34a; } .ir-tl-dot.negative { background:#dc2626; } .ir-tl-dot.neutral { background:#f59e0b; }
+.ir-tl-text { font-size:.86rem; color:#374151; line-height:1.6; }
+.ir-tl-src { color:#9ca3af; font-size:.74rem; }
+
+/* Table */
+.ir-table { width:100%; border-collapse:collapse; font-size:.82rem; }
+.ir-table th { text-align:left; font-size:.68rem; letter-spacing:.05em; text-transform:uppercase; color:#9ca3af; font-weight:600; padding:8px 10px; border-bottom:2px solid #f3f4f6; }
+.ir-table td { padding:10px; border-bottom:1px solid #f3f4f6; color:#374151; vertical-align:top; }
+.ir-table td.num { text-align:right; white-space:nowrap; }
+.ir-src { font-weight:600; color:#111827; }
+.ir-link { color:#374151; text-decoration:none; } .ir-link:hover { color:var(--teal); text-decoration:underline; }
+
+/* Sentiment badge */
+.ir-badge { display:inline-block; padding:.12rem .5rem; border-radius:9999px; font-size:.72rem; font-weight:600; }
+.ir-badge.positive { background:#dcfce7; color:#15803d; }
+.ir-badge.negative { background:#fee2e2; color:#b91c1c; }
+.ir-badge.neutral  { background:#fef3c7; color:#92400e; }
+.ir-badge.mixed    { background:#e0e7ff; color:#3730a3; }
+
+/* Media section */
+.ir-media-item { padding:12px 0; border-bottom:1px solid #f3f4f6; }
+.ir-media-item:last-child { border-bottom:none; }
+.ir-media-head { display:flex; justify-content:space-between; gap:12px; align-items:baseline; }
+.ir-media-title { font-size:.9rem; font-weight:600; color:#111827; }
+.ir-media-meta { font-size:.76rem; color:#9ca3af; white-space:nowrap; }
+
+/* Framing / recommendations */
+.ir-cols { display:grid; grid-template-columns:1fr 1fr; gap:18px 28px; }
+.ir-block-title { font-size:.9rem; font-weight:700; color:#111827; margin:0 0 4px; display:flex; align-items:center; gap:7px; }
+.ir-block-title::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--teal); flex-shrink:0; }
+.ir-block-text { font-size:.84rem; color:#4b5563; line-height:1.6; margin:0; }
+
+/* Risk cards */
+.ir-risk { border:1px solid #fecaca; border-radius:10px; padding:12px 16px; margin-bottom:10px; display:flex; justify-content:space-between; gap:14px; }
+.ir-risk-score { font-size:1.1rem; font-weight:800; color:#dc2626; white-space:nowrap; }
+
+/* Stakeholder bars */
+.ir-stk { display:grid; grid-template-columns:180px 1fr 48px; gap:12px; align-items:center; padding:7px 0; }
+.ir-stk-label { font-size:.84rem; font-weight:600; color:#374151; }
+.ir-stk-track { background:#f3f4f6; border-radius:9999px; height:10px; overflow:hidden; }
+.ir-stk-fill { height:100%; border-radius:9999px; background:var(--teal); }
+.ir-stk-val { font-size:.82rem; font-weight:700; color:#374151; text-align:right; }
+
+/* Numbered recommendations */
+.ir-rec { display:grid; grid-template-columns:30px 1fr; gap:14px; padding:12px 0; border-bottom:1px solid #f3f4f6; }
+.ir-rec:last-child { border-bottom:none; }
+.ir-rec-num { width:26px; height:26px; border-radius:50%; background:var(--teal); color:#fff; font-size:.8rem; font-weight:700; display:flex; align-items:center; justify-content:center; }
+
+.ir-empty { color:#9ca3af; font-size:.85rem; font-style:italic; }
+
+/* Explanatory note box */
+.ir-note { background:#f9fafb; border:1px solid #eef0f2; border-radius:12px; padding:14px 18px; margin-top:18px; }
+.ir-note-title { font-size:.85rem; font-weight:700; color:#111827; margin:0 0 6px; }
+.ir-note-text { font-size:.78rem; color:#6b7280; line-height:1.6; margin:0; }
+
+/* Methodology step grid */
+.ir-method-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.ir-method-card { border:1px solid #e5e7eb; border-radius:12px; padding:16px 18px; display:flex; gap:14px; }
+.ir-method-num { width:26px; height:26px; border-radius:50%; color:#fff; font-size:.82rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ir-method-name { font-size:.9rem; font-weight:700; color:#0f172a; margin:0 0 5px; }
+.ir-method-text { font-size:.82rem; color:#6b7280; line-height:1.55; margin:0; }
+.ir-method-note { font-size:.76rem; color:#9ca3af; line-height:1.6; margin:16px 0 0; }
+
+/* Thank-you closing panel */
+.ir-thanks { background:linear-gradient(155deg,#004D58 0%,#006B7A 45%,#003240 100%); padding:70px 48px; text-align:center; }
+.ir-thanks-logo { width:60px; border-radius:50%; margin-bottom:26px; opacity:.95; }
+.ir-thanks-title { font-size:2.2rem; font-weight:800; color:#fff; margin:0 0 10px; }
+.ir-thanks-sub { font-size:.95rem; color:rgba(255,255,255,.75); margin:0 0 22px; }
+.ir-thanks-contact { font-size:.82rem; color:rgba(255,255,255,.6); }
+
+@media print {
+  .ir-controls { display:none; }
+  .ir-page { box-shadow:none; border:1px solid #e5e7eb; }
+}
+@media (max-width:720px) {
+  .ir-kpis { grid-template-columns:1fr 1fr; }
+  .ir-cols, .ir-method-grid { grid-template-columns:1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ir-shell">
+
+  <div class="ir-controls">
+    <a href="{% url 'monitor:reports' org.id %}" class="ir-back">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      Back to Reports
+    </a>
+    <div class="ir-actions">
+      <button class="btn btn-secondary" onclick="window.print()">Print / PDF</button>
+    </div>
+  </div>
+
+  <div class="ir-page">
+
+    <!-- Cover -->
+    <div class="ir-cover">
+      <img src="{% static 'images/social_light_logo.png' %}" class="ir-cover-logo" alt="Social Light"/>
+      <div class="ir-cover-kicker">Special Media Insights Report · Issue-Focused Edition</div>
+      <h1 class="ir-cover-title">{{ report.title }}</h1>
+      <p class="ir-cover-sub">Prepared for {{ org.name }}</p>
+      <div class="ir-cover-date">{{ report.date_from|date:"M j, Y" }} – {{ report.date_to|date:"M j, Y" }}</div>
+    </div>
+
+    <!-- Executive Summary -->
+    <div class="ir-sec">
+      <div class="ir-sec-kicker">All Media · Issue-Filtered</div>
+      <h2 class="ir-sec-title">Executive Summary</h2>
+      {% if exec_summary %}<p class="ir-lead">{{ exec_summary }}</p>{% endif %}
+
+      <div class="ir-kpis">
+        <div class="ir-kpi">
+          <div class="ir-kpi-label">Issue Mentions</div>
+          <div class="ir-kpi-value">{{ mentions_total }}</div>
+          <div class="ir-kpi-sub">Social {{ sections.social|length }} · Online {{ sections.online|length }} · Print {{ sections.print|length }} · Broadcast {{ sections.broadcast|length }}</div>
+        </div>
+        <div class="ir-kpi">
+          <div class="ir-kpi-label">Tracked AVE</div>
+          <div class="ir-kpi-value">BWP {{ ave_total|floatformat:2|intcomma }}</div>
+          <div class="ir-kpi-sub">Platform-recorded values</div>
+        </div>
+        <div class="ir-kpi">
+          <div class="ir-kpi-label">Cumulative Reach</div>
+          <div class="ir-kpi-value">{{ reach_total|intcomma }}</div>
+          <div class="ir-kpi-sub">Potential audience</div>
+        </div>
+        <div class="ir-kpi">
+          <div class="ir-kpi-label">Negative Share</div>
+          <div class="ir-kpi-value {% if neg_pct >= 50 %}neg{% endif %}">{{ neg_pct }}%</div>
+          <div class="ir-kpi-sub">{{ neg_total }} neg · {{ neu_total }} neu · {{ pos_total }} pos</div>
+        </div>
+      </div>
+
+      {% if at_a_glance %}
+      <div class="ir-glance">
+        {% for a in at_a_glance %}
+        <div class="ir-glance-row">
+          <div class="ir-glance-label">{{ a.label }}</div>
+          <div class="ir-glance-text">{{ a.text }}{% if a.source_name %} <span class="ir-glance-src">— {{ a.source_name }}</span>{% endif %}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Case Timeline -->
+    {% if timeline %}
+    <div class="ir-sec">
+      <div class="ir-sec-kicker">All Media · Issue-Filtered</div>
+      <h2 class="ir-sec-title">How the Story Unfolded</h2>
+      <div class="ir-tl">
+        {% for e in timeline %}
+        <div class="ir-tl-row">
+          <div class="ir-tl-date">{{ e.date }}</div>
+          <div class="ir-tl-body">
+            <span class="ir-tl-dot {{ e.tone }}"></span>
+            <div class="ir-tl-text">{{ e.text }}{% if e.source_name %} <span class="ir-tl-src">({{ e.source_name }})</span>{% endif %}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Issue Coverage Log -->
+    <div class="ir-sec">
+      <div class="ir-sec-kicker">All Media · Issue-Filtered</div>
+      <h2 class="ir-sec-title">Issue Coverage Log</h2>
+      <table class="ir-table">
+        <thead>
+          <tr><th>Source</th><th>Headline</th><th>Channel</th><th>Date</th><th>Sentiment</th><th class="num">AVE (BWP)</th><th class="num">Reach</th></tr>
+        </thead>
+        <tbody>
+          {% for r in coverage_log %}
+          <tr>
+            <td class="ir-src">{{ r.source }}</td>
+            <td>{% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener" class="ir-link">{{ r.headline|truncatechars:70 }}</a>{% else %}{{ r.headline|truncatechars:70 }}{% endif %}</td>
+            <td>{{ r.channel }}</td>
+            <td style="white-space:nowrap;">{{ r.date|date:"j M" }}</td>
+            <td><span class="ir-badge {{ r.sentiment }}">{{ r.sentiment_label }}</span></td>
+            <td class="num">{{ r.ave|floatformat:2|intcomma }}</td>
+            <td class="num">{{ r.reach|intcomma }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="ir-empty">No coverage selected for this issue.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Per-media sections -->
+    {% for grp in media_sections %}
+    {% if grp.items %}
+    <div class="ir-sec">
+      <div class="ir-sec-kicker">{{ grp.label }} · Issue-Filtered</div>
+      <h2 class="ir-sec-title">{{ grp.label }}</h2>
+      {% for r in grp.items %}
+      <div class="ir-media-item">
+        <div class="ir-media-head">
+          <div class="ir-media-title">{% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener" class="ir-link">{{ r.headline }}</a>{% else %}{{ r.headline }}{% endif %}</div>
+          <div class="ir-media-meta">{{ r.date|date:"j M Y" }}</div>
+        </div>
+        <div class="ir-media-meta" style="margin-top:4px;">
+          <span class="ir-badge {{ r.sentiment }}">{{ r.sentiment_label }}</span>
+          &nbsp;{{ r.source }}
+          {% if r.ave %} · AVE BWP {{ r.ave|floatformat:2|intcomma }}{% endif %}
+          {% if r.reach %} · Reach {{ r.reach|intcomma }}{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    <!-- Narrative & Framing -->
+    {% if framing %}
+    <div class="ir-sec">
+      <div class="ir-sec-kicker">All Media · AI-Assisted</div>
+      <h2 class="ir-sec-title">Narrative &amp; Framing Analysis</h2>
+      <div class="ir-cols">
+        {% for f in framing %}
+        <div>
+          <p class="ir-block-title">{{ f.title }}</p>
+          <p class="ir-block-text">{{ f.text }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Reputational Risk -->
+    {% if risks %}
+    <div class="ir-sec">
+      <div class="ir-sec-kicker">All Media · AI-Assisted</div>
+      <h2 class="ir-sec-title neg">Reputational Risk</h2>
+      {% for x in risks %}
+      <div class="ir-risk">
+        <div>
+          <p class="ir-block-title" style="margin-bottom:3px;">&#9660; {{ x.title }}{% if x.media %} <span class="ir-glance-src">· {{ x.media }}</span>{% endif %}</p>
+          <p class="ir-block-text">{{ x.note }}</p>
+        </div>
+        <div class="ir-risk-score">{{ x.score }}</div>
+      </div>
+      {% endfor %}
+      <div class="ir-note">
+        <p class="ir-note-title">How these scores are calculated</p>
+        <p class="ir-note-text">Each mention is scored for sentiment on a &minus;100 to +100 scale (0 = neutral) and weighted by
+        the influence of the source, the prominence and relevance of {{ org.name }} in the item, and its audience. Issue-level risk
+        scores aggregate these sentiment-weighted impacts across all mentions of an issue, where a more negative score signals a more
+        severe effect on total sentiment. All scores are AI-assessed from the coverage and recalculated as new mentions enter the dataset.</p>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Stakeholder Impact -->
+    {% if stakeholders %}
+    <div class="ir-sec">
+      <div class="ir-sec-kicker">All Media · AI-Assisted</div>
+      <h2 class="ir-sec-title neg">Stakeholder Impact</h2>
+      {% for s in stakeholders %}
+      <div class="ir-stk">
+        <div class="ir-stk-label">{{ s.dimension }}</div>
+        <div class="ir-stk-track"><div class="ir-stk-fill" style="width:{{ s.score }}%;{% if s.score < 50 %}background:#dc2626;{% endif %}"></div></div>
+        <div class="ir-stk-val">{{ s.score }}/100</div>
+      </div>
+      {% if s.note %}<div class="ir-block-text" style="margin:-2px 0 8px 192px;font-size:.78rem;">{{ s.note }}</div>{% endif %}
+      {% endfor %}
+      <div class="ir-note">
+        <p class="ir-note-title">How favourability is calculated</p>
+        <p class="ir-note-text">An AI-assessed index from 0&ndash;100 per stakeholder group, where 50 is neutral. Scores below 50
+        indicate coverage during the period is likely to erode that group's confidence; they combine the sentiment, volume and
+        influence of the mentions most relevant to each group.</p>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Recommendations -->
+    {% if recommendations %}
+    <div class="ir-sec">
+      <div class="ir-sec-kicker">Strategic Response</div>
+      <h2 class="ir-sec-title">Recommendations</h2>
+      {% for rec in recommendations %}
+      <div class="ir-rec">
+        <div class="ir-rec-num">{{ forloop.counter }}</div>
+        <div>
+          <p class="ir-block-title" style="margin-bottom:3px;">{{ rec.title }}</p>
+          <p class="ir-block-text">{{ rec.text }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Methodology -->
+    <div class="ir-sec">
+      <div class="ir-sec-kicker">Read This First</div>
+      <h2 class="ir-sec-title">Our Methodology</h2>
+      <div class="ir-method-grid">
+        <div class="ir-method-card">
+          <div class="ir-method-num" style="background:#1d4ed8;">1</div>
+          <div><p class="ir-method-name">Collection</p><p class="ir-method-text">Coverage is gathered across online, print, broadcast and social media sources.</p></div>
+        </div>
+        <div class="ir-method-card">
+          <div class="ir-method-num" style="background:#047857;">2</div>
+          <div><p class="ir-method-name">Classification</p><p class="ir-method-text">Each mention is tagged by media type, source, country and reach.</p></div>
+        </div>
+        <div class="ir-method-card">
+          <div class="ir-method-num" style="background:#7c3aed;">3</div>
+          <div><p class="ir-method-name">Sentiment Analysis</p><p class="ir-method-text">Every mention &mdash; social, online, print and broadcast &mdash; is scored positive, neutral or negative based on tone toward the brand.</p></div>
+        </div>
+        <div class="ir-method-card">
+          <div class="ir-method-num" style="background:#c2410c;">4</div>
+          <div><p class="ir-method-name">Valuation</p><p class="ir-method-text">Advertising Value Equivalency (AVE) and audience reach are calculated per mention.</p></div>
+        </div>
+        <div class="ir-method-card">
+          <div class="ir-method-num" style="background:#0d9488;">5</div>
+          <div><p class="ir-method-name">Issue Filtering</p><p class="ir-method-text">The full period dataset was filtered to mentions relating to <strong>{{ report.title }}</strong>; all unrelated coverage was excluded.</p></div>
+        </div>
+      </div>
+      <p class="ir-method-note">Figures are drawn from the SocialLight monitoring platform for {{ report.date_from|date:"M j, Y" }} &ndash; {{ report.date_to|date:"M j, Y" }}.
+      An AI classifier selected the on-topic mentions; every figure above is computed from those selected records. AVE reflects platform-recorded
+      equivalency at the time of extraction.</p>
+    </div>
+
+    <!-- Thank You -->
+    <div class="ir-thanks">
+      <img src="{% static 'images/social_light_logo.png' %}" class="ir-thanks-logo" alt="Social Light"/>
+      <h2 class="ir-thanks-title">Thank You</h2>
+      <p class="ir-thanks-sub">Prepared for {{ org.name }} · {{ report.date_from|date:"M j, Y" }} &ndash; {{ report.date_to|date:"M j, Y" }}</p>
+      <div class="ir-thanks-contact">© Social Light Botswana | {% now "Y" %} &nbsp;·&nbsp; info@sociallightbw.com</div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

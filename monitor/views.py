@@ -19,7 +19,7 @@ from django.utils import timezone
 from .models import (
     Organization, User, Keyword, Competitor, CompetitorArticle,
     OnlineArticle, PrintArticle, SocialMediaPost, BroadcastMention, Alert, MediaSource,
-    GeneratedReport,
+    GeneratedReport, IssueReport,
     SENTIMENT_CHOICES, COVERAGE_CHOICES, PLATFORM_CHOICES, INDUSTRY_CHOICES, ROLE_CHOICES,
     SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES,
 )
@@ -2117,6 +2117,7 @@ _MODULE_LIST = [
 def reports_view(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     generated_reports = org.generated_reports.select_related('created_by').all()
+    issue_reports = org.issue_reports.select_related('created_by').all()
     country_set = set()
     for qs in [org.online_articles, org.print_articles, org.social_posts, org.broadcast_mentions]:
         for c in qs.exclude(country='').values_list('country', flat=True).distinct():
@@ -2125,6 +2126,7 @@ def reports_view(request, org_id):
         'org': org,
         'page': 'reports',
         'generated_reports': generated_reports,
+        'issue_reports': issue_reports,
         'media_types_def': _MEDIA_TYPES_DEF,
         'module_list': _MODULE_LIST,
         'country_choices': sorted(country_set),
@@ -2180,6 +2182,168 @@ def report_delete(request, org_id, report_id):
         return JsonResponse({'error': 'POST required'}, status=405)
     org = get_object_or_404(Organization, id=org_id)
     report = get_object_or_404(GeneratedReport, id=report_id, organization=org)
+    report.delete()
+    return JsonResponse({'ok': True})
+
+
+# ── Issue-focused ("saga") report ─────────────────────────────────────────────
+
+_SENTIMENT_LABELS = dict(SENTIMENT_CHOICES)
+# key → (model, outlet/platform field, channel label). Order matches the deck.
+_ISSUE_MEDIA = [
+    ('online',    OnlineArticle,    'source',   'Online'),
+    ('print',     PrintArticle,     'source',   'Print'),
+    ('social',    SocialMediaPost,  'platform', 'Social'),
+    ('broadcast', BroadcastMention, 'source',   'Broadcast'),
+]
+
+
+def _issue_report_context(report):
+    """Build the render context for an IssueReport: the selected mentions read
+    back from the DB (never from the model's output), the summary cards computed
+    from those rows, a coverage log, per-media sections, and the AI narrative with
+    its source refs resolved to real outlets."""
+    selected = report.selected_ids or {}
+    sections = {}          # key → list of row dicts
+    ref_map = {}           # "online-12" → row dict
+    coverage_log = []
+    mentions_total = ave_total = reach_total = 0
+    pos = neu = neg = 0
+
+    for key, model, src_field, label in _ISSUE_MEDIA:
+        ids = selected.get(key) or []
+        rows = []
+        if ids:
+            qs = model.objects.filter(id__in=ids, organization=report.organization)
+            for obj in qs.order_by('date_published'):
+                reach = getattr(obj, 'reach', 0) or 0
+                ave = float(obj.ave or 0)
+                row = {
+                    'ref': f'{key}-{obj.id}',
+                    'source': (getattr(obj, src_field, '') or '').strip() or label,
+                    'headline': obj.headline,
+                    'url': getattr(obj, 'url', '') or '',
+                    'channel': label,
+                    'date': obj.date_published,
+                    'sentiment': obj.sentiment,
+                    'sentiment_label': _SENTIMENT_LABELS.get(obj.sentiment, obj.sentiment),
+                    'ave': ave,
+                    'reach': reach,
+                }
+                rows.append(row)
+                ref_map[row['ref']] = row
+                coverage_log.append(row)
+                mentions_total += 1
+                ave_total += ave
+                reach_total += reach
+                if obj.sentiment == 'positive':
+                    pos += 1
+                elif obj.sentiment == 'negative':
+                    neg += 1
+                else:
+                    neu += 1
+        sections[key] = rows
+
+    coverage_log.sort(key=lambda r: (r['date'] or date.min))
+    neg_pct = round(neg / mentions_total * 100) if mentions_total else 0
+
+    payload = report.payload or {}
+
+    # Resolve each narrative source ref to its outlet/headline for linking.
+    def _resolve(items):
+        out = []
+        for it in items:
+            src = ref_map.get(it.get('source', ''))
+            out.append({**it,
+                        'source_name': src['source'] if src else '',
+                        'source_url': src['url'] if src else ''})
+        return out
+
+    timeline = _resolve(payload.get('timeline', []))
+    at_a_glance = _resolve(payload.get('at_a_glance', []))
+
+    # Per-media groups in the deck's order, with display labels for the template.
+    _labels = {'social': 'Social Media', 'online': 'Online Media',
+               'print': 'Print Media', 'broadcast': 'Broadcast'}
+    media_sections = [{'key': k, 'label': _labels[k], 'items': sections.get(k, [])}
+                      for k in ('social', 'online', 'print', 'broadcast')]
+
+    return {
+        'report': report,
+        'org': report.organization,
+        'page': 'reports',
+        'sections': sections,
+        'media_sections': media_sections,
+        'coverage_log': coverage_log,
+        'mentions_total': mentions_total,
+        'ave_total': ave_total,
+        'reach_total': reach_total,
+        'pos_total': pos, 'neu_total': neu, 'neg_total': neg,
+        'neg_pct': neg_pct,
+        'exec_summary': payload.get('exec_summary', ''),
+        'at_a_glance': at_a_glance,
+        'timeline': timeline,
+        'framing': payload.get('framing', []),
+        'risks': payload.get('risks', []),
+        'stakeholders': payload.get('stakeholders', []),
+        'recommendations': payload.get('recommendations', []),
+    }
+
+
+@login_required
+def report_issue(request, org_id, report_id):
+    """Render a saved issue-focused report."""
+    org = get_object_or_404(Organization, id=org_id)
+    report = get_object_or_404(IssueReport, id=report_id, organization=org)
+    return render(request, 'monitor/report_issue.html', _issue_report_context(report))
+
+
+@login_required
+def report_issue_generate(request, org_id):
+    """Create an issue-focused report: the AI selects the coverage relevant to the
+    saga and writes the issue narrative. Returns the new report's id and view URL."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    from .issue_report_ai import generate_issue_report
+    from .report_ai import ReportAIError
+    org = get_object_or_404(Organization, id=org_id)
+    data = json.loads(request.body)
+
+    title = (data.get('title') or '').strip()
+    issue_query = (data.get('issue_query') or '').strip()
+    if not issue_query:
+        return JsonResponse({'ok': False, 'error': 'An issue description is required.'}, status=400)
+
+    def _d(raw, default):
+        try:
+            return date.fromisoformat(raw) if raw else default
+        except ValueError:
+            return default
+
+    today = date.today()
+    date_from = _d(data.get('date_from', ''), today.replace(day=1))
+    date_to = _d(data.get('date_to', ''), today)
+
+    try:
+        report = generate_issue_report(
+            org, title, issue_query, date_from, date_to, created_by=request.user)
+    except ReportAIError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+
+    from django.urls import reverse
+    return JsonResponse({
+        'ok': True,
+        'id': str(report.id),
+        'url': reverse('monitor:report_issue', args=[org.id, report.id]),
+    })
+
+
+@login_required
+def report_issue_delete(request, org_id, report_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    org = get_object_or_404(Organization, id=org_id)
+    report = get_object_or_404(IssueReport, id=report_id, organization=org)
     report.delete()
     return JsonResponse({'ok': True})
 
