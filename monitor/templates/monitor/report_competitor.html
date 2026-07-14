@@ -326,7 +326,10 @@
   .main-content > *:not(#reportPage) { display: none !important; }
   .main-content { margin: 0 !important; padding: 0 !important; }
   .report-page { box-shadow: none !important; padding: 24px !important; background: #fff !important; }
-  canvas { max-width: 100% !important; }
+  /* Bound chart height so responsive canvases don't balloon and split across
+     pages (which left large blank regions in the generated PDF). */
+  .rpt-chart-wrap { height: 360px !important; min-height: 0 !important; }
+  canvas { max-width: 100% !important; max-height: 360px !important; }
   img[data-canvas-replacement] { display: block !important; max-width: 100% !important; height: auto !important; }
   @page { margin: 0; size: A4; }
 }
@@ -812,25 +815,34 @@ var PDF_MODE = {{ pdf_mode|yesno:'true,false' }};
   // canvas to an image, wait for those images to decode, THEN print — so the
   // generated PDF actually contains the rendered charts.
   if (PDF_MODE) {
-    window.addEventListener('load', function () {
+    // Charts are built synchronously above and, under emulated print media, draw
+    // into their height-bounded containers. We capture the LIVE canvases (Chromium
+    // rasterises them into the PDF), so we only need to flag readiness once layout
+    // + paint have settled. No canvas→image conversion / window.print() here.
+    var flagReady = function () {
       requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-          replaceCanvasWithImage(function () {
-            setTimeout(function () { window.print(); }, 50);
-          });
-        });
+        requestAnimationFrame(function () { window.__pdfReady = true; });
       });
-    });
+    };
+    if (document.readyState === 'complete') flagReady();
+    else window.addEventListener('load', flagReady);
   }
 })();
 
 function downloadPDF() {
   var params = new URLSearchParams(window.location.search);
-  params.set('format', 'pdf');
-  window.open(window.location.pathname + '?' + params.toString(), '_blank');
+  params.set('download', 'pdf');
+  var btn = document.querySelector('.report-controls .btn-primary'); var label = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  fetch(window.location.pathname + '?' + params.toString())
+    .then(function(r){ if(!r.ok) throw new Error('PDF generation failed'); return r.blob(); })
+    .then(function(blob){
+      var u = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = u; a.download = 'competitor-report.pdf';
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
+    })
+    .catch(function(e){ (window.showToast||window.alert)(e.message); })
+    .finally(function(){ if (btn) { btn.disabled = false; btn.innerHTML = label; } });
 }
-
-// (PDF auto-print is handled inside the chart IIFE above, after the canvases
-//  have been snapshotted to images and those images have finished loading.)
 </script>
 {% endblock %}

@@ -390,7 +390,7 @@ function triggerPrint() {
   if (printFired) return;
   printFired = true;
   canvasesToImages();
-  setTimeout(window.print, 350);
+  setTimeout(function () { window.__pdfReady = true; window.print(); }, 350);
 }
 
 function onChartDone() {

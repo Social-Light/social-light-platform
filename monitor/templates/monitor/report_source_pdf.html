@@ -283,7 +283,7 @@ function triggerPrint() {
     img.style.display = 'block';
     c.parentNode.replaceChild(img, c);
   });
-  setTimeout(window.print, 350);
+  setTimeout(function () { window.__pdfReady = true; window.print(); }, 350);
 }
 
 function onChartDone() {
