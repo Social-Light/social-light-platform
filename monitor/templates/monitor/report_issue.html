@@ -1,4 +1,4 @@
-{% extends 'monitor/base.html' %}
+{% extends layout_template|default:'monitor/base.html' %}
 {% load static %}
 {% load humanize %}
 {% block title %}{{ report.title }} — Special Insight Report{% endblock %}
@@ -15,7 +15,7 @@
 .ir-page { background:#fff; border-radius:14px; box-shadow:0 4px 24px rgba(0,0,0,.08); overflow:hidden; margin-bottom:20px; }
 
 /* Cover */
-.ir-cover { background:linear-gradient(155deg,#004D58 0%,#006B7A 45%,#003240 100%); padding:64px 48px; text-align:center; position:relative; }
+.ir-cover { background:linear-gradient(155deg,#004D58 0%,#006B7A 45%,#003240 100%); padding:64px 48px; text-align:center; position:relative; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 .ir-cover-logo { width:64px; border-radius:50%; margin-bottom:40px; opacity:.95; }
 .ir-cover-kicker { font-size:.74rem; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.6); margin-bottom:14px; }
 .ir-cover-title { font-size:2.4rem; font-weight:800; color:#fff; margin:0 0 12px; letter-spacing:-.5px; }
@@ -116,7 +116,7 @@
 .ir-method-note { font-size:.76rem; color:#9ca3af; line-height:1.6; margin:16px 0 0; }
 
 /* Thank-you closing panel */
-.ir-thanks { background:linear-gradient(155deg,#004D58 0%,#006B7A 45%,#003240 100%); padding:70px 48px; text-align:center; }
+.ir-thanks { background:linear-gradient(155deg,#004D58 0%,#006B7A 45%,#003240 100%); padding:70px 48px; text-align:center; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 .ir-thanks-logo { width:60px; border-radius:50%; margin-bottom:26px; opacity:.95; }
 .ir-thanks-title { font-size:2.2rem; font-weight:800; color:#fff; margin:0 0 10px; }
 .ir-thanks-sub { font-size:.95rem; color:rgba(255,255,255,.75); margin:0 0 22px; }
@@ -136,21 +136,41 @@
 {% block content %}
 <div class="ir-shell">
 
+  {% if not pdf %}
   <div class="ir-controls">
     <a href="{% url 'monitor:reports' org.id %}" class="ir-back">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
       Back to Reports
     </a>
     <div class="ir-actions">
-      <button class="btn btn-secondary" onclick="window.print()">Print / PDF</button>
+      <button class="btn btn-primary" id="dlPdfBtn" onclick="downloadReportPdf()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download PDF
+      </button>
     </div>
   </div>
+  <script>
+    function downloadReportPdf() {
+      var b = document.getElementById('dlPdfBtn'), t = b.innerHTML;
+      b.disabled = true; b.textContent = 'Preparing…';
+      fetch("{% url 'monitor:report_issue_pdf' org.id report.id %}")
+        .then(function(r){ if(!r.ok) throw new Error('PDF generation failed'); return r.blob(); })
+        .then(function(blob){
+          var u = URL.createObjectURL(blob), a = document.createElement('a');
+          a.href = u; a.download = "{{ report.title|slugify }}-report.pdf";
+          document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
+        })
+        .catch(function(e){ (window.showToast||alert)(e.message); })
+        .finally(function(){ b.disabled=false; b.innerHTML=t; });
+    }
+  </script>
+  {% endif %}
 
   <div class="ir-page">
 
     <!-- Cover -->
     <div class="ir-cover">
-      <img src="{% static 'images/social_light_logo.png' %}" class="ir-cover-logo" alt="Social Light"/>
+      <img src="{{ logo_src }}" class="ir-cover-logo" alt="Social Light"/>
       <div class="ir-cover-kicker">Special Media Insights Report · Issue-Focused Edition</div>
       <h1 class="ir-cover-title">{{ report.title }}</h1>
       <p class="ir-cover-sub">Prepared for {{ org.name }}</p>
@@ -176,7 +196,7 @@
         </div>
         <div class="ir-kpi">
           <div class="ir-kpi-label">Cumulative Reach</div>
-          <div class="ir-kpi-value">{{ reach_total|intcomma }}</div>
+          <div class="ir-kpi-value">{{ reach_total|floatformat:2|intcomma }}</div>
           <div class="ir-kpi-sub">Potential audience</div>
         </div>
         <div class="ir-kpi">
@@ -379,7 +399,7 @@
 
     <!-- Thank You -->
     <div class="ir-thanks">
-      <img src="{% static 'images/social_light_logo.png' %}" class="ir-thanks-logo" alt="Social Light"/>
+      <img src="{{ logo_src }}" class="ir-thanks-logo" alt="Social Light"/>
       <h2 class="ir-thanks-title">Thank You</h2>
       <p class="ir-thanks-sub">Prepared for {{ org.name }} · {{ report.date_from|date:"M j, Y" }} &ndash; {{ report.date_to|date:"M j, Y" }}</p>
       <div class="ir-thanks-contact">© Social Light Botswana | {% now "Y" %} &nbsp;·&nbsp; support@sociallightbw.com</div>

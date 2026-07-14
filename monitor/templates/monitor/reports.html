@@ -252,10 +252,14 @@
       </thead>
       <tbody id="reportsBody">
         {% for report in issue_reports %}
-        <tr data-title="{{ report.title|lower }}" data-type="issue-focused">
+        <tr data-title="{{ report.title|lower }}" data-type="{{ report.type_label|lower }}">
           <td style="font-weight:500;">{{ report.title }}</td>
           <td>
+            {% if report.kind == 'campaign' %}
+            <span style="display:inline-block;padding:.2rem .65rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:9999px;font-size:.78rem;font-weight:500;color:#1d4ed8;">Campaign</span>
+            {% else %}
             <span style="display:inline-block;padding:.2rem .65rem;background:#fef2f2;border:1px solid #fecaca;border-radius:9999px;font-size:.78rem;font-weight:500;color:#b91c1c;">Issue-Focused</span>
+            {% endif %}
           </td>
           <td>
             <div style="display:flex;flex-wrap:wrap;gap:.3rem;">

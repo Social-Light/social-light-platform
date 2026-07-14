@@ -362,6 +362,9 @@ class IssueReport(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='issue_reports')
     title = models.CharField(max_length=300)
+    # 'issue' for a manually-created special edition; 'campaign' when generated
+    # from a Campaign — controls the type label shown in the reports list.
+    kind = models.CharField(max_length=20, default='issue')
     issue_query = models.TextField(help_text='The saga/issue the report isolates coverage for.')
     date_from = models.DateField()
     date_to = models.DateField()
@@ -384,6 +387,50 @@ class IssueReport(models.Model):
         """Media types with at least one selected mention — for the reports list."""
         order = ['social', 'online', 'print', 'broadcast']
         return [k for k in order if (self.selected_ids or {}).get(k)]
+
+    @property
+    def type_label(self):
+        return 'Campaign' if self.kind == 'campaign' else 'Issue-Focused'
+
+
+class Campaign(models.Model):
+    """A tracked marketing/PR campaign for an organisation. Coverage is matched by
+    the campaign's own ``terms`` (keywords and #hashtags) in the message/summary,
+    within its optional date window. Distinct from the org-wide ``campaign``
+    keyword category: each Campaign is a named entity with its own terms so its
+    mentions, reach and sentiment can be tracked and reported on individually.
+    A campaign report reuses the Issue-Focused report engine, seeded with these
+    terms.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='campaigns')
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    # Keywords and #hashtags matched against message/summary text.
+    terms = models.JSONField(default=list)
+    date_from = models.DateField(null=True, blank=True)
+    date_to = models.DateField(null=True, blank=True)
+    created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def is_active(self):
+        """True when today falls within the campaign's window (open-ended if a
+        bound is unset)."""
+        from datetime import date as _date
+        today = _date.today()
+        if self.date_from and today < self.date_from:
+            return False
+        if self.date_to and today > self.date_to:
+            return False
+        return True
 
 
 class Alert(models.Model):

@@ -1,0 +1,198 @@
+{% extends 'monitor/base.html' %}
+{% load humanize %}
+{% block title %}Campaigns{% endblock %}
+
+{% block extra_head %}
+<style>
+.cmp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+.cmp-card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; gap:12px; transition:box-shadow .15s, transform .15s; }
+.cmp-card:hover { box-shadow:0 8px 22px rgba(0,0,0,.07); }
+.cmp-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.cmp-name { font-size:1rem; font-weight:700; color:#0f172a; margin:0; }
+.cmp-dates { font-size:.76rem; color:#9ca3af; margin-top:2px; }
+.cmp-badge { font-size:.68rem; font-weight:600; padding:.15rem .55rem; border-radius:9999px; white-space:nowrap; }
+.cmp-badge.active { background:#dcfce7; color:#15803d; }
+.cmp-badge.ended  { background:#f3f4f6; color:#6b7280; }
+.cmp-terms { display:flex; flex-wrap:wrap; gap:5px; }
+.cmp-term { font-size:.72rem; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:9999px; padding:.1rem .5rem; }
+.cmp-stats { display:flex; gap:18px; padding-top:4px; border-top:1px solid #f3f4f6; }
+.cmp-stat-val { font-size:1.2rem; font-weight:800; color:#0f172a; }
+.cmp-stat-lbl { font-size:.68rem; color:#9ca3af; text-transform:uppercase; letter-spacing:.04em; }
+.cmp-senti { display:flex; height:7px; border-radius:9999px; overflow:hidden; background:#f3f4f6; }
+.cmp-senti i { display:block; height:100%; }
+.cmp-actions { display:flex; gap:14px; align-items:center; }
+.cmp-link { font-size:.82rem; color:#374151; text-decoration:none; font-weight:500; display:inline-flex; align-items:center; gap:4px; cursor:pointer; background:none; border:none; padding:0; }
+.cmp-link:hover { color:#1d4ed8; }
+.cmp-link.danger:hover { color:#dc2626; }
+.cmp-input { width:100%; padding:9px 12px; border:1.5px solid #e5e7eb; border-radius:8px; font-size:.85rem; box-sizing:border-box; outline:none; }
+.cmp-input:focus { border-color:#1d4ed8; }
+.cmp-label { font-size:.8rem; font-weight:600; color:#111827; margin:0 0 6px; display:block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header page-header--flex">
+  <div>
+    <h1 class="page-title">Campaign Tracking &amp; Reporting</h1>
+    <p class="page-subtitle">Real-time mentions, reach, and sentiment for each campaign — with instant, client-ready reports.</p>
+  </div>
+  <button class="btn btn-primary" onclick="openCampaignModal()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    New Campaign
+  </button>
+</div>
+
+<div class="cmp-grid">
+  {% for c in campaigns %}
+  {% with total=c.pos|add:c.neu|add:c.neg %}
+  <div class="cmp-card">
+    <div class="cmp-card-head">
+      <div>
+        <a href="{% url 'monitor:campaign_detail' org.id c.obj.id %}" style="text-decoration:none;"><h3 class="cmp-name">{{ c.obj.name }}</h3></a>
+        <div class="cmp-dates">
+          {% if c.obj.date_from or c.obj.date_to %}{{ c.obj.date_from|date:"d M Y"|default:"…" }} – {{ c.obj.date_to|date:"d M Y"|default:"ongoing" }}{% else %}No date range{% endif %}
+        </div>
+      </div>
+      <span class="cmp-badge {% if c.obj.is_active %}active{% else %}ended{% endif %}">{% if c.obj.is_active %}Active{% else %}Ended{% endif %}</span>
+    </div>
+
+    {% if c.obj.terms %}
+    <div class="cmp-terms">
+      {% for t in c.obj.terms|slice:":6" %}<span class="cmp-term">{{ t }}</span>{% endfor %}
+      {% if c.obj.terms|length > 6 %}<span class="cmp-term">+{{ c.obj.terms|length|add:"-6" }}</span>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="cmp-stats">
+      <div><div class="cmp-stat-val">{{ c.mentions }}</div><div class="cmp-stat-lbl">Mentions</div></div>
+      <div><div class="cmp-stat-val">{{ c.reach|floatformat:2|intcomma }}</div><div class="cmp-stat-lbl">Reach</div></div>
+    </div>
+    {% if total %}
+    <div class="cmp-senti" title="{{ c.pos }} positive · {{ c.neu }} neutral · {{ c.neg }} negative">
+      <i style="width:{% widthratio c.pos total 100 %}%;background:#16a34a;"></i>
+      <i style="width:{% widthratio c.neu total 100 %}%;background:#f59e0b;"></i>
+      <i style="width:{% widthratio c.neg total 100 %}%;background:#dc2626;"></i>
+    </div>
+    {% endif %}
+
+    <div class="cmp-actions">
+      <a class="cmp-link" href="{% url 'monitor:campaign_detail' org.id c.obj.id %}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> View
+      </a>
+      <button class="cmp-link" onclick="openCampaignModal(null, this)" data-id="{{ c.obj.id }}"
+        data-name="{{ c.obj.name|escapejs }}" data-desc="{{ c.obj.description|escapejs }}"
+        data-terms="{{ c.obj.terms|join:", "|escapejs }}" data-from="{{ c.obj.date_from|date:'Y-m-d' }}" data-to="{{ c.obj.date_to|date:'Y-m-d' }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit
+      </button>
+      <button class="cmp-link danger" onclick="deleteCampaign('{{ c.obj.id }}')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg> Delete
+      </button>
+    </div>
+  </div>
+  {% endwith %}
+  {% empty %}
+  <div class="cmp-card" style="grid-column:1/-1; align-items:center; text-align:center; padding:48px;">
+    <p style="color:#9ca3af; margin:0;">No campaigns yet. Click <strong>New Campaign</strong> to start tracking mentions, reach and sentiment for a campaign.</p>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Create / Edit Modal -->
+<div class="modal-overlay hidden" id="campaignModal">
+  <div class="modal modal--lg">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title" id="cmpModalTitle">New Campaign</h2>
+        <p class="modal-subtitle">Track a campaign by its keywords and #hashtags</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('campaignModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cmpId" />
+      <div class="form-group">
+        <label class="cmp-label">Campaign Name *</label>
+        <input type="text" id="cmpName" class="cmp-input" placeholder="e.g. Golden Grand Prix 2026" />
+      </div>
+      <div class="form-group">
+        <label class="cmp-label">Description</label>
+        <textarea id="cmpDesc" class="cmp-input" rows="2" placeholder="Optional context for the campaign report"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="cmp-label">Keywords &amp; Hashtags *
+          <span style="font-weight:400;color:#9ca3af;font-size:.74rem;">— comma or line separated, e.g. Golden Grand Prix, #FNBGrandPrix</span></label>
+        <textarea id="cmpTerms" class="cmp-input" rows="3" placeholder="Golden Grand Prix, #FNBGrandPrix, #Gaborone26"></textarea>
+      </div>
+      <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label class="cmp-label">Start date</label>
+          <input type="date" id="cmpFrom" class="cmp-input" />
+        </div>
+        <div class="form-group">
+          <label class="cmp-label">End date <span style="font-weight:400;color:#9ca3af;font-size:.74rem;">(blank = ongoing)</span></label>
+          <input type="date" id="cmpTo" class="cmp-input" />
+        </div>
+      </div>
+      <p id="cmpError" style="display:none;color:#dc2626;font-size:.8rem;margin:6px 0 0;"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('campaignModal')">Cancel</button>
+      <button class="btn btn-primary" id="cmpSaveBtn" onclick="saveCampaign()">Save Campaign</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ORG_ID = '{{ org.id }}';
+function getCookie(name){ var v=document.cookie.match('(^|;) ?'+name+'=([^;]*)(;|$)'); return v?v[2]:''; }
+
+function openCampaignModal(_ignore, btn) {
+  document.getElementById('cmpError').style.display = 'none';
+  if (btn) {
+    document.getElementById('cmpModalTitle').textContent = 'Edit Campaign';
+    document.getElementById('cmpId').value = btn.getAttribute('data-id');
+    document.getElementById('cmpName').value = btn.getAttribute('data-name') || '';
+    document.getElementById('cmpDesc').value = btn.getAttribute('data-desc') || '';
+    document.getElementById('cmpTerms').value = btn.getAttribute('data-terms') || '';
+    document.getElementById('cmpFrom').value = btn.getAttribute('data-from') || '';
+    document.getElementById('cmpTo').value = btn.getAttribute('data-to') || '';
+  } else {
+    document.getElementById('cmpModalTitle').textContent = 'New Campaign';
+    ['cmpId','cmpName','cmpDesc','cmpTerms','cmpFrom','cmpTo'].forEach(function(id){ document.getElementById(id).value=''; });
+  }
+  openModal('campaignModal');
+}
+
+function saveCampaign() {
+  var name = document.getElementById('cmpName').value.trim();
+  var terms = document.getElementById('cmpTerms').value.trim();
+  var err = document.getElementById('cmpError');
+  err.style.display = 'none';
+  if (!name) { err.textContent = 'Campaign name is required.'; err.style.display='block'; return; }
+  if (!terms) { err.textContent = 'Add at least one keyword or hashtag.'; err.style.display='block'; return; }
+
+  var btn = document.getElementById('cmpSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  fetch('/api/'+ORG_ID+'/campaigns/save/', {
+    method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')},
+    body: JSON.stringify({
+      id: document.getElementById('cmpId').value || null,
+      name: name,
+      description: document.getElementById('cmpDesc').value.trim(),
+      terms: terms,
+      date_from: document.getElementById('cmpFrom').value,
+      date_to: document.getElementById('cmpTo').value,
+    })
+  }).then(async function(r){ var d=await r.json().catch(function(){return {};}); if(!r.ok||!d.ok) throw new Error(d.error||'Save failed'); return d; })
+    .then(function(d){ flashToast('Campaign saved','success'); window.location.href = d.url; })
+    .catch(function(e){ err.textContent=e.message; err.style.display='block'; btn.disabled=false; btn.textContent='Save Campaign'; });
+}
+
+function deleteCampaign(id) {
+  if (!confirm('Delete this campaign? Coverage is not deleted.')) return;
+  fetch('/api/'+ORG_ID+'/campaigns/'+id+'/delete/', { method:'POST', headers:{'X-CSRFToken':getCookie('csrftoken')} })
+    .then(function(r){return r.json();}).then(function(){ flashToast('Campaign deleted','success'); window.location.reload(); });
+}
+</script>
+{% endblock %}
