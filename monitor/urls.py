@@ -76,8 +76,16 @@ urlpatterns = [
     path('api/<uuid:org_id>/reports/<uuid:report_id>/delete/', views.report_delete, name='report_delete'),
     # Issue-focused ("saga") reports
     path('app/reports/<uuid:org_id>/issue/<uuid:report_id>/', views.report_issue, name='report_issue'),
+    path('app/reports/<uuid:org_id>/issue/<uuid:report_id>/pdf/', views.report_issue_pdf, name='report_issue_pdf'),
     path('api/<uuid:org_id>/reports/issue/', views.report_issue_generate, name='report_issue_generate'),
     path('api/<uuid:org_id>/reports/issue/<uuid:report_id>/delete/', views.report_issue_delete, name='report_issue_delete'),
+
+    # Campaign tracking & reporting
+    path('app/campaigns/<uuid:org_id>/', views.campaigns_view, name='campaigns'),
+    path('app/campaigns/<uuid:org_id>/<uuid:campaign_id>/', views.campaign_detail, name='campaign_detail'),
+    path('api/<uuid:org_id>/campaigns/save/', views.campaign_save, name='campaign_save'),
+    path('api/<uuid:org_id>/campaigns/<uuid:campaign_id>/delete/', views.campaign_delete, name='campaign_delete'),
+    path('api/<uuid:org_id>/campaigns/<uuid:campaign_id>/report/', views.campaign_generate_report, name='campaign_generate_report'),
 
     # Alerts
     path('app/alerts/<uuid:org_id>/', views.alerts_view, name='alerts'),

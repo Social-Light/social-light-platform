@@ -19,7 +19,7 @@ from django.utils import timezone
 from .models import (
     Organization, User, Keyword, Competitor, CompetitorArticle,
     OnlineArticle, PrintArticle, SocialMediaPost, BroadcastMention, Alert, MediaSource,
-    GeneratedReport, IssueReport,
+    GeneratedReport, IssueReport, Campaign,
     SENTIMENT_CHOICES, COVERAGE_CHOICES, PLATFORM_CHOICES, INDUSTRY_CHOICES, ROLE_CHOICES,
     SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES,
 )
@@ -2268,10 +2268,12 @@ def _issue_report_context(report):
     media_sections = [{'key': k, 'label': _labels[k], 'items': sections.get(k, [])}
                       for k in ('social', 'online', 'print', 'broadcast')]
 
+    from django.templatetags.static import static as _static
     return {
         'report': report,
         'org': report.organization,
         'page': 'reports',
+        'logo_src': _static('images/social_light_logo.png'),
         'sections': sections,
         'media_sections': media_sections,
         'coverage_log': coverage_log,
@@ -2296,6 +2298,49 @@ def report_issue(request, org_id, report_id):
     org = get_object_or_404(Organization, id=org_id)
     report = get_object_or_404(IssueReport, id=report_id, organization=org)
     return render(request, 'monitor/report_issue.html', _issue_report_context(report))
+
+
+def _pdf_download(request, template, ctx, filename, wait_ms=1100,
+                  wait_for='window.__pdfReady === true'):
+    """Render a self-contained report template to a downloadable PDF via headless
+    Chromium. Waits for the template's chart-ready flag (``wait_for``) so no chart
+    is snapshotted blank, falling back to ``wait_ms``."""
+    from django.template.loader import render_to_string
+    from .pdf import render_html_to_pdf, PDFError
+    html = render_to_string(template, ctx, request=request)
+    try:
+        pdf_bytes = render_html_to_pdf(html, wait_ms=wait_ms, wait_for=wait_for)
+    except PDFError as exc:
+        return JsonResponse({'error': str(exc)}, status=503)
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+@login_required
+def report_issue_pdf(request, org_id, report_id):
+    """Download the issue/campaign report as a self-contained, server-rendered PDF
+    (headless Chromium) — no browser print chrome, theme colours preserved."""
+    from django.template.loader import render_to_string
+    from django.utils.text import slugify
+    from .pdf import render_html_to_pdf, static_data_uri, PDFError
+    org = get_object_or_404(Organization, id=org_id)
+    report = get_object_or_404(IssueReport, id=report_id, organization=org)
+
+    ctx = _issue_report_context(report)
+    ctx['pdf'] = True                                   # hide app chrome / controls
+    ctx['layout_template'] = 'monitor/base_print.html'  # bare skeleton, no sidebar
+    ctx['logo_src'] = static_data_uri('images/social_light_logo.png')  # embed, offline
+    html = render_to_string('monitor/report_issue.html', ctx, request=request)
+
+    try:
+        pdf_bytes = render_html_to_pdf(html)
+    except PDFError as exc:
+        return JsonResponse({'error': str(exc)}, status=503)
+
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = f'attachment; filename="{slugify(report.title) or "report"}.pdf"'
+    return resp
 
 
 @login_required
@@ -2346,6 +2391,228 @@ def report_issue_delete(request, org_id, report_id):
     report = get_object_or_404(IssueReport, id=report_id, organization=org)
     report.delete()
     return JsonResponse({'ok': True})
+
+
+# ── Campaign Tracking & Reporting ─────────────────────────────────────────────
+
+# (key, model, outlet/platform field, channel label) in the deck's order.
+_CAMPAIGN_MEDIA = [
+    ('social',    SocialMediaPost,  'platform', 'Social'),
+    ('online',    OnlineArticle,    'source',   'Online'),
+    ('print',     PrintArticle,     'source',   'Print'),
+    ('broadcast', BroadcastMention, 'source',   'Broadcast'),
+]
+
+
+def _campaign_terms(campaign):
+    return [t.strip() for t in (campaign.terms or []) if t and t.strip()]
+
+
+def _campaign_qs(campaign, model):
+    """Relevant mentions of one media type that match any campaign term (as
+    entered, so a '#tag' matches only the hashtag form) within the campaign's
+    optional date window. Returns an empty queryset when no terms are set."""
+    terms = _campaign_terms(campaign)
+    if not terms:
+        return model.objects.none()
+    qs = filter_relevant(model.objects.filter(organization=campaign.organization))
+    if campaign.date_from:
+        qs = qs.filter(date_published__gte=campaign.date_from)
+    if campaign.date_to:
+        qs = qs.filter(date_published__lte=campaign.date_to)
+    term_q = Q()
+    for t in terms:
+        term_q |= Q(headline__icontains=t) | Q(summary__icontains=t)
+    return qs.filter(term_q)
+
+
+def _campaign_metrics(campaign):
+    """Aggregate mentions / reach / sentiment for a campaign across all media,
+    plus per-term and per-source breakdowns and a recent coverage list."""
+    mentions = ave = reach = pos = neu = neg = 0
+    by_media = {}
+    coverage = []
+    src_map = {}
+    daily = defaultdict(lambda: {'pos': 0, 'neu': 0, 'neg': 0})
+
+    for key, model, src_field, label in _CAMPAIGN_MEDIA:
+        qs = _campaign_qs(campaign, model)
+        rows = list(qs.values('id', 'headline', 'sentiment', src_field, 'date_published',
+                              'ave', 'url', *(['reach'] if key != 'broadcast' else [])))
+        by_media[key] = len(rows)
+        for r in rows:
+            mentions += 1
+            ave += float(r.get('ave') or 0)
+            rc = int(r.get('reach') or 0)
+            reach += rc
+            s = r['sentiment']
+            if s == 'positive':
+                pos += 1
+            elif s == 'negative':
+                neg += 1
+            else:
+                neu += 1
+            d = str(r['date_published'])
+            daily[d]['pos' if s == 'positive' else 'neg' if s == 'negative' else 'neu'] += 1
+            src = (r.get(src_field) or '').strip() or label
+            src_map[src] = src_map.get(src, 0) + 1
+            coverage.append({
+                'source': src, 'headline': r['headline'], 'channel': label,
+                'date': r['date_published'], 'sentiment': s,
+                'sentiment_label': _SENTIMENT_LABELS.get(s, s),
+                'ave': float(r.get('ave') or 0), 'reach': rc, 'url': r.get('url') or '',
+            })
+
+    # Per-term mention counts (how much each keyword/hashtag drove coverage).
+    per_term = []
+    for t in _campaign_terms(campaign):
+        c = 0
+        for _key, model, _sf, _lb in _CAMPAIGN_MEDIA:
+            base = filter_relevant(model.objects.filter(organization=campaign.organization))
+            if campaign.date_from:
+                base = base.filter(date_published__gte=campaign.date_from)
+            if campaign.date_to:
+                base = base.filter(date_published__lte=campaign.date_to)
+            c += base.filter(Q(headline__icontains=t) | Q(summary__icontains=t)).count()
+        per_term.append({'term': t, 'count': c})
+    per_term.sort(key=lambda x: x['count'], reverse=True)
+
+    coverage.sort(key=lambda r: (r['date'] or date.min), reverse=True)
+    top_sources = sorted(src_map.items(), key=lambda x: x[1], reverse=True)[:8]
+    sorted_days = sorted(daily.keys())
+    trend = json.dumps({
+        'labels': sorted_days,
+        'pos': [daily[d]['pos'] for d in sorted_days],
+        'neu': [daily[d]['neu'] for d in sorted_days],
+        'neg': [daily[d]['neg'] for d in sorted_days],
+    })
+    total_sent = pos + neu + neg
+    return {
+        'mentions': mentions, 'ave': ave, 'reach': reach,
+        'pos': pos, 'neu': neu, 'neg': neg,
+        'pos_pct': round(pos / total_sent * 100) if total_sent else 0,
+        'neg_pct': round(neg / total_sent * 100) if total_sent else 0,
+        'by_media': by_media,
+        'per_term': per_term,
+        'top_sources': [{'name': n, 'count': c} for n, c in top_sources],
+        'coverage': coverage[:60],
+        'trend': trend,
+    }
+
+
+@login_required
+def campaigns_view(request, org_id):
+    """Campaign list with a quick mention/sentiment summary per campaign."""
+    org = get_object_or_404(Organization, id=org_id)
+    campaigns = []
+    for c in org.campaigns.select_related('created_by').all():
+        m = _campaign_metrics(c)
+        campaigns.append({'obj': c, 'mentions': m['mentions'], 'pos': m['pos'],
+                          'neu': m['neu'], 'neg': m['neg'], 'reach': m['reach']})
+    return render(request, 'monitor/campaigns.html', {
+        'org': org, 'page': 'campaigns', 'campaigns': campaigns,
+    })
+
+
+@login_required
+def campaign_detail(request, org_id, campaign_id):
+    org = get_object_or_404(Organization, id=org_id)
+    campaign = get_object_or_404(Campaign, id=campaign_id, organization=org)
+    metrics = _campaign_metrics(campaign)
+    return render(request, 'monitor/campaign_detail.html', {
+        'org': org, 'page': 'campaigns', 'campaign': campaign, 'm': metrics,
+    })
+
+
+def _parse_terms(raw):
+    """Accept a list or a comma/newline-separated string of terms; dedupe, keep order."""
+    if isinstance(raw, list):
+        items = raw
+    else:
+        items = re.split(r'[,\n]', str(raw or ''))
+    out, seen = [], set()
+    for t in items:
+        t = t.strip()
+        if t and t.lower() not in seen:
+            seen.add(t.lower())
+            out.append(t)
+    return out
+
+
+@login_required
+def campaign_save(request, org_id):
+    """Create or update a campaign. Pass ``id`` to update."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    org = get_object_or_404(Organization, id=org_id)
+    data = json.loads(request.body)
+    name = (data.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'ok': False, 'error': 'A campaign name is required.'}, status=400)
+
+    def _d(raw):
+        try:
+            return date.fromisoformat(raw) if raw else None
+        except ValueError:
+            return None
+
+    fields = {
+        'name': name,
+        'description': (data.get('description') or '').strip(),
+        'terms': _parse_terms(data.get('terms')),
+        'date_from': _d(data.get('date_from')),
+        'date_to': _d(data.get('date_to')),
+    }
+    cid = data.get('id')
+    if cid:
+        campaign = get_object_or_404(Campaign, id=cid, organization=org)
+        for k, v in fields.items():
+            setattr(campaign, k, v)
+        campaign.save()
+    else:
+        campaign = Campaign.objects.create(organization=org, created_by=request.user, **fields)
+    from django.urls import reverse
+    return JsonResponse({'ok': True, 'id': str(campaign.id),
+                         'url': reverse('monitor:campaign_detail', args=[org.id, campaign.id])})
+
+
+@login_required
+def campaign_delete(request, org_id, campaign_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    org = get_object_or_404(Organization, id=org_id)
+    campaign = get_object_or_404(Campaign, id=campaign_id, organization=org)
+    campaign.delete()
+    return JsonResponse({'ok': True})
+
+
+@login_required
+def campaign_generate_report(request, org_id, campaign_id):
+    """Generate an Issue-Focused report for the campaign, seeded with its terms."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    from .issue_report_ai import generate_issue_report
+    from .report_ai import ReportAIError
+    org = get_object_or_404(Organization, id=org_id)
+    campaign = get_object_or_404(Campaign, id=campaign_id, organization=org)
+
+    today = date.today()
+    df = campaign.date_from or (today - timedelta(days=90))
+    dt = campaign.date_to or today
+    # Seed the issue query with the campaign's own terms so the report isolates
+    # exactly this campaign's coverage.
+    query = ' '.join(filter(None, [campaign.description.strip(), ', '.join(_campaign_terms(campaign))]))
+    if not query.strip():
+        return JsonResponse({'ok': False, 'error': 'Add campaign terms before generating a report.'}, status=400)
+
+    try:
+        report = generate_issue_report(org, campaign.name, query, df, dt, created_by=request.user)
+    except ReportAIError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+    report.kind = 'campaign'
+    report.save(update_fields=['kind'])
+    from django.urls import reverse
+    return JsonResponse({'ok': True, 'url': reverse('monitor:report_issue', args=[org.id, report.id])})
 
 
 @login_required
@@ -2449,6 +2716,8 @@ def report_sentiment(request, org_id):
         'top_positive': top_positive,
         'top_negative': top_negative,
     }
+    if request.GET.get('download') == 'pdf':
+        return _pdf_download(request, 'monitor/report_sentiment_pdf.html', ctx, 'sentiment-report.pdf')
     if request.GET.get('format') == 'pdf':
         return render(request, 'monitor/report_sentiment_pdf.html', ctx)
     return render(request, 'monitor/report_sentiment.html', ctx)
@@ -2520,6 +2789,8 @@ def report_source(request, org_id):
             {'label': s['label'], 'chart': s['chart_json']} for s in sections
         ]),
     }
+    if request.GET.get('download') == 'pdf':
+        return _pdf_download(request, 'monitor/report_source_pdf.html', ctx, 'source-report.pdf')
     if request.GET.get('format') == 'pdf':
         return render(request, 'monitor/report_source_pdf.html', ctx)
     return render(request, 'monitor/report_source.html', ctx)
@@ -3064,8 +3335,33 @@ def report_competitor(request, org_id):
         'print_json': print_json,
         'pub_json': pub_json,
         # PDF mode flag
-        'pdf_mode': request.GET.get('format') == 'pdf',
+        'pdf_mode': request.GET.get('format') in ('pdf',) or request.GET.get('download') == 'pdf',
     }
+    if request.GET.get('download') == 'pdf':
+        from .pdf import render_url_to_pdf, PDFError
+        # This report depends on app static assets + live charts, so we navigate a
+        # headless browser to the print view (its @media print CSS hides the chrome).
+        params = request.GET.copy()
+        params['format'] = 'pdf'
+        params.pop('download', None)
+        # Prod can set PDF_RENDER_BASE_URL (e.g. http://127.0.0.1:8000) so the
+        # headless browser reaches the app directly instead of round-tripping via
+        # the public URL. Falls back to the request's own absolute URL.
+        base = getattr(settings, 'PDF_RENDER_BASE_URL', '') or ''
+        if base:
+            url = f"{base.rstrip('/')}{request.path}?{params.urlencode()}"
+        else:
+            url = request.build_absolute_uri(f'{request.path}?{params.urlencode()}')
+        sid = request.COOKIES.get(settings.SESSION_COOKIE_NAME)
+        cookies = [{'name': settings.SESSION_COOKIE_NAME, 'value': sid, 'url': url}] if sid else []
+        try:
+            pdf_bytes = render_url_to_pdf(url, cookies=cookies, wait_ms=1600,
+                                          wait_for='window.__pdfReady === true')
+        except PDFError as exc:
+            return JsonResponse({'error': str(exc)}, status=503)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = 'attachment; filename="competitor-report.pdf"'
+        return resp
     return render(request, 'monitor/report_competitor.html', context)
 
 
