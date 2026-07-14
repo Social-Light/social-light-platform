@@ -120,6 +120,12 @@ MEDIAHOST_TIMEOUT = int(os.getenv('MEDIAHOST_TIMEOUT', '120'))  # per-request re
 
 SITE_URL = os.getenv('SITE_URL', 'https://sociallight.africa')
 
+# Base URL the headless-Chromium PDF renderer uses to reach the app for reports
+# that must load live (charts + static assets), e.g. Competitor Analysis. Set to
+# the in-container address (http://127.0.0.1:8000) to avoid a public round-trip.
+# Leave blank to use the request's own absolute URL.
+PDF_RENDER_BASE_URL = os.getenv('PDF_RENDER_BASE_URL', '')
+
 # ── Celery ──────────────────────────────────────────────────────────────────
 from celery.schedules import crontab
 
