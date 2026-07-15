@@ -19,6 +19,10 @@ COPY requirements.txt /app/
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
+# Install the headless Chromium browser (+ its system libraries) that Playwright
+# drives to render reports to PDF server-side.
+RUN python -m playwright install --with-deps chromium
+
 # Copy project
 COPY . /app/
 
