@@ -2802,10 +2802,18 @@ def report_source(request, org_id):
 def alerts_view(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     alerts = org.alerts.all()
+    # Org admins of this organisation, offered as recipient suggestions.
+    seen, admin_recipients = set(), []
+    for u in org.members.filter(role='org_admin').exclude(email='').order_by('email'):
+        key = u.email.lower()
+        if key not in seen:
+            seen.add(key)
+            admin_recipients.append({'email': u.email, 'name': u.get_full_name()})
     return render(request, 'monitor/alerts.html', {
         'org': org,
         'page': 'alerts',
         'alerts': alerts,
+        'admin_recipients': admin_recipients,
     })
 
 
