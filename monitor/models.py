@@ -51,6 +51,9 @@ INDUSTRY_CHOICES = [
     ('Government', 'Government'),
     ('Energy', 'Energy'),
     ('Technology', 'Technology'),
+    ('Marketing', 'Marketing'),
+    ('Cosmetics, Beauty & Personal Care', 'Cosmetics, Beauty & Personal Care'),
+    ('Public Relations', 'Public Relations'),
     ('Other', 'Other'),
 ]
 
