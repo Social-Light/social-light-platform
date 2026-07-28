@@ -102,7 +102,7 @@
                 data-id="{{ m.id }}" data-source="{{ m.source|escapejs }}" data-headline="{{ m.headline|escapejs }}"
                 data-url="{{ m.url|escapejs }}" data-btype="{{ m.broadcast_type }}" data-duration="{{ m.duration|escapejs }}"
                 data-country="{{ m.country|escapejs }}" data-sentiment="{{ m.sentiment }}" data-ave="{{ m.ave }}"
-                data-date="{{ m.date_published|date:'Y-m-d' }}"
+                data-relevancy="{{ m.relevancy }}" data-date="{{ m.date_published|date:'Y-m-d' }}"
                 onclick="closeMeAndRun(this, function(){ editMentionFromBtn(this); }.bind(this))"><i class="bi bi-pencil"></i> Edit</button>
               <button class="row-menu-item row-menu-item--danger"
                 data-id="{{ m.id }}"
@@ -211,9 +211,15 @@
           <input type="number" id="editBAve" class="form-control" placeholder="0" step="0.01" />
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Date</label>
-        <input type="date" id="editBDate" class="form-control" />
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Relevancy</label>
+          <input type="number" id="editBRelevancy" class="form-control" placeholder="0.00" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date</label>
+          <input type="date" id="editBDate" class="form-control" />
+        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -323,10 +329,11 @@ function editMentionFromBtn(btn) {
     btn.getAttribute('data-country'),
     btn.getAttribute('data-sentiment'),
     btn.getAttribute('data-ave'),
+    btn.getAttribute('data-relevancy'),
     btn.getAttribute('data-date')
   );
 }
-function editMention(id, source, headline, url, btype, duration, country, sentiment, ave, date) {
+function editMention(id, source, headline, url, btype, duration, country, sentiment, ave, relevancy, date) {
   document.getElementById('editBId').value = id;
   document.getElementById('editBSource').value = source;
   document.getElementById('editBHeadline').value = headline;
@@ -336,6 +343,7 @@ function editMention(id, source, headline, url, btype, duration, country, sentim
   document.getElementById('editBCountry').value = country;
   document.getElementById('editBSentiment').value = sentiment;
   document.getElementById('editBAve').value = ave;
+  document.getElementById('editBRelevancy').value = relevancy;
   document.getElementById('editBDate').value = date;
   openModal('editBroadcastModal');
 }
@@ -350,6 +358,7 @@ function saveMention() {
     country: document.getElementById('editBCountry').value.trim(),
     sentiment: document.getElementById('editBSentiment').value,
     ave: document.getElementById('editBAve').value || 0,
+    relevancy: document.getElementById('editBRelevancy').value || 0,
     date_published: document.getElementById('editBDate').value,
   }).then(() => { flashToast('Broadcast mention updated', 'success'); location.reload(); });
 }
