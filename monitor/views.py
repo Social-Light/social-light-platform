@@ -1227,11 +1227,16 @@ def media_broadcast(request, org_id):
 def broadcast_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
+    headline = data.get('headline', '').strip()
+    summary = data.get('summary', '').strip()
+    # Score relevancy so a manually added mention isn't hidden by the display-time
+    # relevancy filter (a form-supplied 0 would fall below any threshold > 0).
+    relevancy = float(data.get('relevancy', 0) or 0) or compute_relevancy(headline, summary, org=org)
     mention = BroadcastMention.objects.create(
         organization=org,
         source=data.get('source', '').strip(),
-        headline=data.get('headline', '').strip(),
-        summary=data.get('summary', '').strip(),
+        headline=headline,
+        summary=summary,
         url=data.get('url', '').strip(),
         date_published=data.get('date_published') or date.today(),
         country=data.get('country', '').strip(),
@@ -1239,6 +1244,7 @@ def broadcast_create(request, org_id):
         ave=float(data.get('ave', 0) or 0),
         duration=data.get('duration', '').strip(),
         broadcast_type=data.get('broadcast_type', 'RADIO'),
+        relevancy=relevancy,
     )
     return JsonResponse({'id': mention.id})
 
@@ -1258,6 +1264,10 @@ def broadcast_update(request, org_id, mention_id):
     mention.country = data.get('country', mention.country).strip()
     mention.sentiment = data.get('sentiment', mention.sentiment)
     mention.ave = float(data.get('ave', mention.ave) or 0)
+    # Keep it visible under the relevancy filter: fall back to a computed score
+    # when neither the form nor the existing row carries one.
+    mention.relevancy = (float(data.get('relevancy', mention.relevancy) or 0)
+                         or compute_relevancy(mention.headline, mention.summary, org=org))
     mention.save()
     return JsonResponse({'ok': True})
 
