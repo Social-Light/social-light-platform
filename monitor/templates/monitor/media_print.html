@@ -366,13 +366,19 @@ function uploadPrintCsv() {
       return data;
     })
     .then((data) => {
-      let html = `<div style="color:#059669;">Imported ${data.created} article(s).</div>`;
-      if (data.errors && data.errors.length) {
-        html += `<details style="margin-top:8px;"><summary>${data.errors.length} row(s) skipped</summary><ul style="margin:6px 0 0 18px;">` +
+      const hasErrors = data.errors && data.errors.length > 0;
+      let html = `<div style="color:${data.created > 0 ? '#059669' : '#dc2626'};">Imported ${data.created} article(s).</div>`;
+      if (hasErrors) {
+        html += `<details open style="margin-top:8px;"><summary>${data.errors.length} row(s) skipped</summary><ul style="margin:6px 0 0 18px;">` +
           data.errors.slice(0, 20).map(e => `<li>${e}</li>`).join('') + '</ul></details>';
+        html += `<button type="button" class="btn btn-secondary" style="margin-top:10px;" onclick="location.reload()">Reload page</button>`;
       }
       resultEl.innerHTML = html;
-      setTimeout(() => { closeModal('uploadPrintModal'); location.reload(); }, 1200);
+      // Only auto-close on a clean import — if rows were skipped, leave the
+      // modal open so the reasons stay readable instead of vanishing in 1.2s.
+      if (!hasErrors) {
+        setTimeout(() => { closeModal('uploadPrintModal'); location.reload(); }, 1200);
+      }
     })
     .catch((err) => {
       resultEl.innerHTML = `<span style="color:#dc2626;">${err.message}</span>`;

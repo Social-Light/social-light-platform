@@ -779,6 +779,17 @@ def _broadcast_country(station, country=''):
     return ''
 
 
+def _normalize_csv_row(row):
+    """Case/whitespace-insensitive header lookup for CSV bulk imports.
+
+    Clipping-service exports vary wildly in header casing (SOURCE vs source
+    vs Source) even when the underlying column is the one we expect.
+    Normalize once per row so `row.get('some_key')` below matches regardless
+    of how the source file capitalized its header.
+    """
+    return {(k or '').strip().lower(): v for k, v in row.items() if k}
+
+
 def _parse_csv_date(value):
     if not value:
         return None
@@ -790,7 +801,12 @@ def _parse_csv_date(value):
         return datetime.fromisoformat(value.replace('Z', '+00:00')).date()
     except ValueError:
         pass
-    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y'):
+    for fmt in (
+        '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y',
+        '%b %d %Y', '%d %b %Y',      # "Aug 03 2026" / "03 Aug 2026"
+        '%b %d, %Y', '%d %b, %Y',    # with a comma before the year
+        '%B %d %Y', '%d %B %Y',      # full month name variants
+    ):
         try:
             return datetime.strptime(value, fmt).date()
         except ValueError:
@@ -815,14 +831,25 @@ def print_article_csv_upload(request, org_id):
     created = 0
     errors = []
     to_create = []
+    keywords = list(org.keywords.all())
+    competitors = list(org.competitors.all())
 
     for idx, row in enumerate(reader, start=2):  # row 1 is header
-        headline = (row.get('headline') or '').strip()
+        row = _normalize_csv_row(row)
+
+        summary = (row.get('summary') or row.get('snippet') or '').strip()
+        headline = (row.get('headline') or row.get('title') or '').strip()
+        if not headline:
+            # Some clipping-service exports only give a summary/snippet with
+            # no separate headline column — fall back rather than drop the row.
+            headline = summary[:200]
         if not headline:
             errors.append(f'Row {idx}: missing headline')
             continue
 
-        published = _parse_csv_date(row.get('publicationDate'))
+        published = _parse_csv_date(
+            row.get('publicationdate') or row.get('date published') or row.get('date') or row.get('createdat')
+        )
         if not published:
             errors.append(f'Row {idx}: invalid or missing publicationDate')
             continue
@@ -835,7 +862,7 @@ def print_article_csv_upload(request, org_id):
         except ValueError:
             ave_value = 0
 
-        publication = (row.get('publication') or '').strip()
+        publication = (row.get('publication') or row.get('source') or '').strip()
         try:
             reach_value = int(float((row.get('reach') or '0').strip() or 0))
         except ValueError:
@@ -844,14 +871,16 @@ def print_article_csv_upload(request, org_id):
             organization=org,
             source=publication,
             headline=headline,
+            summary=summary,
             author=(row.get('byline') or '').strip(),
             section=(row.get('section') or '').strip(),
-            url=(row.get('url') or '').strip(),
+            url=(row.get('url') or row.get('link') or '').strip(),
             date_published=published,
             country=(row.get('country') or '').strip(),
             sentiment=sentiment,
             ave=ave_value,
             reach=reach_value or _print_reach(publication),  # use given reach, else estimate
+            relevancy=compute_relevancy(headline, summary, keywords=keywords, competitors=competitors),
         ))
 
     if to_create:
@@ -947,14 +976,17 @@ def social_post_csv_upload(request, org_id):
     created = 0
     errors = []
     to_create = []
+    keywords = list(org.keywords.all())
+    competitors = list(org.competitors.all())
 
     for idx, row in enumerate(reader, start=2):
+        row = _normalize_csv_row(row)
         message = (row.get('message') or row.get('headline') or '').strip()
         if not message:
             errors.append(f'Row {idx}: missing message')
             continue
 
-        published = _parse_csv_date(row.get('createdTime') or row.get('createdAt'))
+        published = _parse_csv_date(row.get('createdtime') or row.get('createdat'))
         if not published:
             errors.append(f'Row {idx}: invalid or missing createdTime')
             continue
@@ -973,20 +1005,22 @@ def social_post_csv_upload(request, org_id):
             reach_value = 0
 
         platform = _normalize_platform(row.get('source') or row.get('platform') or '')
+        summary = (row.get('group') or '').strip()
 
         to_create.append(SocialMediaPost(
             organization=org,
             platform=platform,
-            page_name=(row.get('pageName') or '').strip(),
+            page_name=(row.get('pagename') or '').strip(),
             headline=message,
-            summary=(row.get('group') or '').strip(),
-            url=(row.get('link') or '').strip(),
+            summary=summary,
+            url=(row.get('link') or row.get('url') or '').strip(),
             date_published=published,
             country=(row.get('country') or '').strip(),
             sentiment=sentiment,
             ave=ave_value,
             rank=float((row.get('rank') or 0) or 0),
             reach=reach_value,
+            relevancy=compute_relevancy(message, summary, keywords=keywords, competitors=competitors),
         ))
 
     if to_create:
