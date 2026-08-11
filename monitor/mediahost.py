@@ -463,11 +463,18 @@ def ingest_clips(date_from, date_to, media_type=None, dry_run=False,
         {
           'fetched': int,
           'created': {'Print': n, 'Online': n, 'Broadcast': n},   # totals across orgs
-          'skipped': {'duplicate': n, 'invalid': n, 'unknown_type': n, 'unmapped': n},
+          'skipped': {'duplicate': n, 'invalid': n, 'unknown_type': n, 'unmapped': n,
+                      'youtube': n, 'low_relevancy': n},
           'per_org': {org_name: {'Print': n, 'Online': n, 'Broadcast': n}},
           'unmapped_searches': {search_term: count},
           'sample': <first raw clip or None>,
         }
+
+    'low_relevancy' counts clips that matched an org's Keyword-routed `search`
+    term but scored 0 via compute_relevancy() against that org's actual
+    keywords/competitors, and were skipped rather than inserted — routing above
+    only checks Mediahost's own `search` label, never the clip's content, so
+    this is the only content-based check before a row is written.
 
     When `dry_run` is True nothing is written; counts reflect what *would* be
     created. `media_type` restricts the API call to one of MEDIA_TYPES;
@@ -488,7 +495,8 @@ def ingest_clips(date_from, date_to, media_type=None, dry_run=False,
     summary = {
         'fetched': 0,
         'created': {'Print': 0, 'Online': 0, 'Broadcast': 0},
-        'skipped': {'duplicate': 0, 'invalid': 0, 'unknown_type': 0, 'unmapped': 0, 'youtube': 0},
+        'skipped': {'duplicate': 0, 'invalid': 0, 'unknown_type': 0, 'unmapped': 0, 'youtube': 0,
+                    'low_relevancy': 0},
         'per_org': {},
         'unmapped_searches': {},
         'sample': None,
@@ -545,14 +553,37 @@ def ingest_clips(date_from, date_to, media_type=None, dry_run=False,
             if key in bucket_seen:
                 summary['skipped']['duplicate'] += 1
                 continue
-            bucket_seen.add(key)
-            row = dict(fields, organization=org)
-            # Relevancy gates what's surfaced in the UI (see relevancy.filter_relevant).
-            # All mention models carry the field, so score every type, not just Online.
-            # Competitors count too — coverage naming a tracked competitor is relevant.
-            row['relevancy'] = compute_relevancy(
+
+            # Relevancy gates INSERTION here, not just UI display (see
+            # relevancy.filter_relevant, which is a separate, independent gate on
+            # top of this one). Routing above matches only Mediahost's own `search`
+            # label against our keyword string — it never checks the clip's actual
+            # content — so an over-broad label on Mediahost's side lands here
+            # unfiltered otherwise. Confirmed necessary 2026-08-11: FNBB had 1,297
+            # relevancy=0 rows in production, all pan-African wire noise (Stanbic
+            # Ghana, Access Bank Nigeria, PowerBall jackpots, ...) with zero
+            # Botswana/FNBB overlap, routed under a "FNBB"-labelled search that
+            # Mediahost itself was clearly casting far too wide.
+            #
+            # Caveat — compute_relevancy() only counts LITERAL keyword/competitor
+            # string matches in headline+summary. Genuinely relevant coverage that
+            # doesn't happen to repeat a configured term (e.g. "Morupule B Power
+            # Station Commissions" for a BPC-focused org, with no literal "BPC" in
+            # the text) also scores 0 and is skipped here. If a real story goes
+            # missing after this gate, the fix is almost always to add the missing
+            # name/alias to the org's Keyword list — not to lower this threshold.
+            # All mention models carry the relevancy field, so score every type,
+            # not just Online. Competitors count too — coverage naming a tracked
+            # competitor is relevant.
+            relevancy = compute_relevancy(
                 fields['headline'], fields['summary'],
                 keywords=org_keywords[org.id], competitors=org_competitors[org.id])
+            if relevancy <= 0:
+                summary['skipped']['low_relevancy'] += 1
+                continue
+
+            bucket_seen.add(key)
+            row = dict(fields, organization=org, relevancy=relevancy)
             buckets[(org.id, ctype)].append(model_for[ctype](**row))
             summary['created'][ctype] += 1
             po = summary['per_org'].setdefault(org.name, {'Print': 0, 'Online': 0, 'Broadcast': 0})
