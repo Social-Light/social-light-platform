@@ -31,6 +31,11 @@ REPEAT_BONUS = 0.1
 
 MAX_SCORE = 100.0
 
+# Discount applied to a FUZZY match (see compute_relevancy) — a squashed-
+# whitespace substring hit is a weaker signal than a real \b-bounded phrase
+# match (it can't anchor on true word boundaries), so it counts for less.
+FUZZY_MATCH_DISCOUNT = 0.7
+
 
 def _scoring_terms(keywords, competitors):
     """Yield (lowercased term, weight) for every tracked keyword and competitor.
@@ -73,11 +78,28 @@ def compute_relevancy(headline, summary='', keywords=None, org=None, competitors
     if not text.strip():
         return 0.0
 
+    # Mediahost's print/broadcast OCR/text-extraction frequently fuses words
+    # together ("Access Bank Botswanas second cohort ofgraduate trainees
+    # havereturned...") — real coverage of a tracked term then silently scores
+    # 0 because the missing whitespace breaks the \b...\b boundary below. A
+    # squashed (whitespace-stripped) copy of the text lets a fallback below
+    # recover those cases as a plain substring check.
+    squashed_text = re.sub(r'\s+', '', text)
+
     score = 0.0
     for term, weight in _scoring_terms(keywords, competitors):
         occurrences = len(re.findall(r'\b' + re.escape(term) + r'\b', text))
         if occurrences:
             score += weight + (occurrences - 1) * weight * REPEAT_BONUS
+            continue
+        # Fallback only for multi-word terms (a single word has no internal
+        # whitespace to lose, so squashing it would just drop its \b
+        # boundaries and risk matching inside an unrelated word — no upside).
+        # Discounted since a squashed substring hit can't anchor on real word
+        # boundaries the way the strict match above does.
+        squashed_term = re.sub(r'\s+', '', term)
+        if ' ' in term and squashed_term in squashed_text:
+            score += weight * FUZZY_MATCH_DISCOUNT
 
     return round(min(score, MAX_SCORE), 2)
 
