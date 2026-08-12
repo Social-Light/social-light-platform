@@ -12,6 +12,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from .alert_xlsx import build_workbook
 from .relevancy import filter_relevant
 
 
@@ -159,6 +160,11 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True, rec
         img.add_header('Content-Disposition', 'inline', filename='banner')
         msg.attach(img)
         msg.mixed_subtype = 'related'
+
+    xlsx_bytes = build_workbook(online, print_arts, social, broadcast)
+    xlsx_name = f"{org.name}-media-digest-{timezone.localdate().isoformat()}.xlsx"
+    msg.attach(xlsx_name, xlsx_bytes,
+               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     msg.send()  # let failures propagate to the caller
 
