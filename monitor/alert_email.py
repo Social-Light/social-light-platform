@@ -159,7 +159,13 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True, rec
         img.add_header('Content-ID', '<alertbanner>')
         img.add_header('Content-Disposition', 'inline', filename='banner')
         msg.attach(img)
-        msg.mixed_subtype = 'related'
+        # Deliberately NOT setting mixed_subtype = 'related' here: that would wrap
+        # the whole message (including the xlsx attachment below) in
+        # multipart/related, which some clients (notably Outlook) treat as "only
+        # render parts the HTML actually references via cid:" — silently dropping
+        # the real, downloadable xlsx attachment. Plain multipart/mixed (Django's
+        # default) still renders the inline cid-referenced banner correctly in
+        # every mainstream client, while keeping the xlsx as a normal attachment.
 
     xlsx_bytes = build_workbook(online, print_arts, social, broadcast)
     xlsx_name = f"{org.name}-media-digest-{timezone.localdate().isoformat()}.xlsx"

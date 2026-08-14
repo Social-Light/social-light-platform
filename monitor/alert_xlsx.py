@@ -65,13 +65,32 @@ def build_workbook(online, print_arts, social, broadcast):
 
         for row_idx, item in enumerate(lists[sheet_name], start=1):
             for col_idx, (_header, attr, _width) in enumerate(cols):
-                value = getattr(item, attr, '')
+                value = getattr(item, attr, None)
+                # Defensive throughout: one malformed field (bad CSV import, a
+                # stray non-numeric value, an illegal XML character in scraped
+                # text, an over-length cell) must never blow up the whole email
+                # send — worst case that one cell falls back to a blank/string.
                 if attr == 'date_published' and value:
-                    ws.write_datetime(row_idx, col_idx, value, date_fmt)
+                    try:
+                        ws.write_datetime(row_idx, col_idx, value, date_fmt)
+                    except (TypeError, ValueError):
+                        ws.write_string(row_idx, col_idx, str(value))
                 elif attr in ('ave', 'reach', 'rank', 'relevancy') and value is not None:
-                    ws.write_number(row_idx, col_idx, float(value))
+                    try:
+                        ws.write_number(row_idx, col_idx, float(value))
+                    except (TypeError, ValueError):
+                        ws.write_string(row_idx, col_idx, str(value))
                 else:
-                    ws.write_string(row_idx, col_idx, str(value) if value else '')
+                    text = str(value) if value else ''
+                    # Excel cells cap at 32,767 characters.
+                    if len(text) > 32767:
+                        text = text[:32764] + '...'
+                    try:
+                        ws.write_string(row_idx, col_idx, text)
+                    except Exception:
+                        # Illegal XML control characters etc. — strip to ASCII
+                        # printable as a last resort rather than dropping the row.
+                        ws.write_string(row_idx, col_idx, text.encode('ascii', 'ignore').decode())
 
     workbook.close()
     return buf.getvalue()
