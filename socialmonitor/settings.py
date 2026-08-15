@@ -101,7 +101,7 @@ USE_TZ = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN', '')
 
 DEFAULT_FROM_EMAIL  = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <noreply@sociallight.africa>')
@@ -111,6 +111,9 @@ ANYMAIL = {
     "RESEND_API_KEY": os.getenv("RESEND_API_KEY"),
 }
 MEDIA_MONITOR_WEBHOOK_SECRET = os.getenv('MEDIA_MONITOR_WEBHOOK_SECRET', '')
+# Distinct from MEDIA_MONITOR_WEBHOOK_SECRET, which already authenticates a
+# different (outbound alert) integration — see print_cover_webhook docstring.
+PRINT_COVER_WEBHOOK_SECRET = os.getenv('PRINT_COVER_WEBHOOK_SECRET', '')
 
 ARTICLE_EXTRACTOR_URL = os.getenv('ARTICLE_EXTRACTOR_URL', 'https://extractor.sociallight.africa/')
 

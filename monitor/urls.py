@@ -120,4 +120,6 @@ urlpatterns = [
 
     # Media Monitor webhook receiver
     path('api/<uuid:org_id>/webhook/media-monitor/', views.media_monitor_webhook, name='media_monitor_webhook'),
+    # Print-cover OCR webhook receiver
+    path('api/<uuid:org_id>/webhook/print-cover/', views.print_cover_webhook, name='print_cover_webhook'),
 ]

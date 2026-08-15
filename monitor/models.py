@@ -4,6 +4,22 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 
 
+class ArchivableManager(models.Manager):
+    """
+    Default manager for archivable coverage models — excludes is_archived=True
+    rows, so archiving is transparent to every existing view/lookup (including
+    get_object_or_404 and related-manager access like org.online_articles.all())
+    without touching each call site individually.
+
+    Use <Model>.all_objects to reach archived rows — e.g. an admin "restore"
+    action, or monitor/mediahost.py's dedup preload, which must still see
+    archived rows as "already captured" so a re-ingested mediahost clip isn't
+    silently recreated as a fresh (unarchived) row.
+    """
+    def get_queryset(self):
+        return super().get_queryset().filter(is_archived=False)
+
+
 SENTIMENT_CHOICES = [
     ('positive', 'Positive'),
     ('neutral', 'Neutral'),
@@ -173,6 +189,10 @@ class CompetitorArticle(models.Model):
     rank = models.FloatField(default=0)
     coverage_type = models.CharField(max_length=50, blank=True, default='Not Set')
     created_at = models.DateTimeField(auto_now_add=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+
+    objects = ArchivableManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return f"{self.company_name}: {self.headline[:50]}"
@@ -196,6 +216,10 @@ class OnlineArticle(models.Model):
     reach = models.IntegerField(default=0)
     relevancy = models.FloatField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+
+    objects = ArchivableManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return self.headline[:60]
@@ -218,7 +242,13 @@ class PrintArticle(models.Model):
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     reach = models.IntegerField(default=0, help_text='Estimated readership (circulation × readers-per-copy).')
     relevancy = models.FloatField(default=0)
+    cover_image = models.FileField(upload_to='print_covers/', blank=True, null=True,
+                                    help_text='Front-page scan/cover image, when captured via automated OCR ingestion.')
     created_at = models.DateTimeField(auto_now_add=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+
+    objects = ArchivableManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return self.headline[:60]
@@ -242,6 +272,10 @@ class SocialMediaPost(models.Model):
     reach = models.IntegerField(default=0)
     relevancy = models.FloatField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+
+    objects = ArchivableManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return self.headline[:60]
@@ -264,6 +298,10 @@ class BroadcastMention(models.Model):
     duration = models.CharField(max_length=50, blank=True)
     broadcast_type = models.CharField(max_length=20, choices=BROADCAST_TYPE_CHOICES, default='RADIO')
     created_at = models.DateTimeField(auto_now_add=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+
+    objects = ArchivableManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return self.headline[:60]

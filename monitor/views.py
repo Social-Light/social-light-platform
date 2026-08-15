@@ -1994,7 +1994,7 @@ def report_full(request, org_id):
     # The stored analysis is kept indefinitely; flag it when new mentions have been
     # added since it was generated so the report can prompt a regenerate.
     analysis_stale = bool(analysis) and analysis_is_stale(org, date_from, date_to)
-    ai_enabled = bool(settings.ANTHROPIC_API_KEY)
+    ai_enabled = bool(settings.GROQ_API_KEY)
 
     # Distribute AI-generated reputational risks/opportunities into their media-type
     # sections (each item is tagged with a media_key in the analysis payload).
@@ -2109,7 +2109,7 @@ _GLOSSARY_TERMS = [
 @login_required
 @require_http_methods(['POST'])
 def report_ai_generate(request, org_id):
-    """Run the Anthropic analysis for a period on demand and cache it. The Full
+    """Run the Groq analysis for a period on demand and cache it. The Full
     Report's 'Generate AI Analysis' button calls this, then reloads."""
     from .report_ai import generate_analysis, ReportAIError
     org = get_object_or_404(Organization, id=org_id)
@@ -3956,6 +3956,82 @@ def media_monitor_webhook(request, org_id):
         country       = country,
         sentiment     = sentiment,
         relevancy     = compute_relevancy(title, summary, org=org),
+    )
+    return JsonResponse({'ok': True, 'id': article.id})
+
+
+# ── Print Cover Webhook ────────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def print_cover_webhook(request, org_id):
+    """
+    Receive an OCR'd front-page cover (headline/section/etc as form fields, the
+    cover image itself as a file) from media-monitor's print-cover pipeline and
+    store it as a PrintArticle for the given organisation.
+
+    Multipart form fields: headline (required), source, section, author,
+    date_published, url, summary, sentiment. File field: image (optional but
+    expected in practice).
+
+    Security: requests must include X-Webhook-Secret matching
+    settings.PRINT_COVER_WEBHOOK_SECRET (ignored when secret is empty). This is
+    a distinct secret from MEDIA_MONITOR_WEBHOOK_SECRET, which already has an
+    unrelated purpose (auth for media-monitor's own *outbound* alert webhooks) —
+    conflating the two would mix trust boundaries.
+    """
+    secret = settings.PRINT_COVER_WEBHOOK_SECRET
+    if secret and request.headers.get('X-Webhook-Secret') != secret:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    org = get_object_or_404(Organization, id=org_id)
+
+    # Disabled (inactive) organisations receive no new mentions.
+    if org.status != 'active':
+        return JsonResponse({'ok': True, 'skipped': 'organization inactive'})
+
+    headline = (request.POST.get('headline') or '').strip()
+    if not headline:
+        return JsonResponse({'error': 'Missing headline'}, status=400)
+
+    source        = (request.POST.get('source') or '').strip() or 'Print'
+    section       = (request.POST.get('section') or '').strip()
+    author        = (request.POST.get('author') or '').strip()
+    url_val       = (request.POST.get('url') or '').strip()
+    summary       = (request.POST.get('summary') or '').strip()
+    country       = (request.POST.get('country') or '').strip()
+    raw_sentiment = (request.POST.get('sentiment') or 'neutral').lower()
+    sentiment     = raw_sentiment if raw_sentiment in ('positive', 'neutral', 'negative') else 'neutral'
+
+    pub_date = _parse_csv_date(request.POST.get('date_published'))
+    if pub_date is None:
+        pub_date = date.today()
+
+    # Dedup on all_objects (not the archiving-aware default manager) — an
+    # archived row must still count as "already captured", or a re-crawl of the
+    # same weekly cover after archiving would silently recreate it. Same
+    # reasoning as ingest_clips's dedup in mediahost.py.
+    if url_val and PrintArticle.all_objects.filter(organization=org, url=url_val).exists():
+        return JsonResponse({'ok': True, 'duplicate': True})
+
+    relevancy = compute_relevancy(headline, summary, org=org)
+    if relevancy <= 0:
+        return JsonResponse({'ok': True, 'skipped': 'low relevancy'})
+
+    article = PrintArticle.objects.create(
+        organization  = org,
+        source        = source[:200],
+        headline      = headline,
+        summary       = summary,
+        author        = author[:200],
+        section       = section[:100],
+        url           = url_val[:2000],
+        date_published= pub_date,
+        country       = country[:100],
+        sentiment     = sentiment,
+        reach         = _print_reach(source),
+        relevancy     = relevancy,
+        cover_image   = request.FILES.get('image'),
     )
     return JsonResponse({'ok': True, 'id': article.id})
 
