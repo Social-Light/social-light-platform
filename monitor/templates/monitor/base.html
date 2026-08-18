@@ -4,6 +4,12 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{% block title %}Social Light{% endblock %} — Social Light</title>
+  <link rel="icon" type="image/x-icon" href="{% static 'favicon/favicon.ico' %}?v=2">
+  <link rel="icon" type="image/svg+xml" href="{% static 'favicon/favicon.svg' %}?v=2">
+  <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon/favicon-96x96.png' %}?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}?v=2">
+  <link rel="manifest" href="{% static 'favicon/site.webmanifest' %}?v=2">
+  <meta name="theme-color" content="#ffffff">
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
   <!-- Bootstrap 5 -->
@@ -14,9 +20,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
   <!-- Custom theme (compiled from main.scss) -->
   <link rel="stylesheet" href="{% static 'monitor/css/main.css' %}"/>
-  {% block extra_head %}{% endblock %}
+    {% block extra_head %}{% endblock %}
 </head>
 <body>
+  <!-- USING BASE.HTML -->
 
 {% if org %}
 <!-- ════════════════════════ SIDEBAR ════════════════════════ -->
@@ -24,7 +31,7 @@
   <div class="sidebar-top">
     <a href="{% url 'monitor:home' %}" class="sidebar-logo">
       <div class="logo-mark">
-        <img src="{% static 'images/social_lightbw_logo.jpeg' %}" alt="Social Light" style="width:28px;height:28px;object-fit:contain;border-radius:4px;display:block;"/>
+        <img src="{% static 'images/social_light_logo.png' %}" alt="Social Light" style="width:28px;height:28px;object-fit:contain;border-radius:4px;display:block;"/>
       </div>
       <div class="logo-text">
         <span class="logo-name">SOCIAL LIGHT</span>
@@ -50,6 +57,10 @@
       <a href="{% url 'monitor:reports' org.id %}" class="nav-item {% if page == 'reports' %}active{% endif %}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         Reports
+      </a>
+      <a href="{% url 'monitor:campaigns' org.id %}" class="nav-item {% if page == 'campaigns' %}active{% endif %}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+        Campaigns
       </a>
       <a href="{% url 'monitor:faqs' org.id %}" class="nav-item {% if page == 'faqs' %}active{% endif %}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -178,8 +189,12 @@
 <script>
 // Org switcher
 function switchOrg() {
-  const url = document.getElementById('switchOrgSelect').value;
-  if (url) window.location.href = url;
+  const sel = document.getElementById('switchOrgSelect');
+  const url = sel.value;
+  if (!url) return;
+  const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : 'organisation';
+  if (window.flashToast) flashToast('Switched to ' + name, 'success');
+  window.location.href = url;
 }
 
 // Sidebar (desktop collapse / mobile drawer)
@@ -237,6 +252,19 @@ function toggleDarkMode() {
 <style>
 .sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99;backdrop-filter:blur(2px);}
 @media(max-width:768px){.sidebar-backdrop{display:none;}}
+
+/* ── Toast notifications ──────────────────────────────────────── */
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:4000;display:flex;flex-direction:column;gap:10px;align-items:flex-end;max-width:calc(100vw - 40px);pointer-events:none;}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:10px;min-width:240px;max-width:380px;background:#fff;color:#0f172a;border:1px solid #e5e7eb;border-left:4px solid #6b7280;border-radius:10px;padding:12px 14px;box-shadow:0 8px 28px rgba(15,23,42,.16);font-size:14px;transform:translateY(12px);opacity:0;transition:transform .2s,opacity .2s;}
+.toast.show{transform:translateY(0);opacity:1;}
+.toast-icon{width:20px;height:20px;flex-shrink:0;display:flex;align-items:center;}
+.toast-icon svg{width:20px;height:20px;}
+.toast-msg{flex:1;line-height:1.4;}
+.toast-close{background:none;border:none;font-size:20px;line-height:1;color:#9ca3af;cursor:pointer;padding:0 2px;}
+.toast--success{border-left-color:#16a34a;} .toast--success .toast-icon{color:#16a34a;}
+.toast--error{border-left-color:#dc2626;} .toast--error .toast-icon{color:#dc2626;}
+.toast--info{border-left-color:#1d4ed8;} .toast--info .toast-icon{color:#1d4ed8;}
+.dark-mode .toast{background:#1e293b;color:#e2e8f0;border-color:#334155;}
 </style>
 <!-- Country autocomplete -->
 <style>

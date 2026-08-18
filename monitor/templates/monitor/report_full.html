@@ -1,6 +1,6 @@
 {% extends 'monitor/base.html' %}
 {% load static %}
-{% block title %}Media Insights Report{% endblock %}
+{% block title %}{{ org.name }} — Media Insights Report{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -100,19 +100,27 @@
 .issue-box.neg .issue-box-hdr { color:#dc2626; }
 .issue-item { font-size:.78rem; color:#374151; margin-bottom:6px; line-height:1.5; }
 
-/* Rep cards */
-.rep-card { border-radius:8px; padding:13px 15px; margin-bottom:9px; display:grid; grid-template-columns:1fr auto; gap:14px; align-items:start; }
-.rep-card.risk { border:1.5px dashed #fca5a5; }
-.rep-card.oppty { border:1.5px dashed #86efac; }
-.rep-card-title { font-size:.8rem; font-weight:700; margin-bottom:4px; }
+/* Rep cards — issue title + description + impact/score dials + source */
+.rep-card { border-radius:10px; padding:16px 18px; margin-bottom:12px;
+  display:grid; grid-template-columns:170px 1fr auto auto; gap:18px; align-items:center; }
+.rep-card.risk  { border:2px solid #ef4444; }
+.rep-card.oppty { border:2px solid #22c55e; }
+.rep-card-title { font-size:.92rem; font-weight:800; display:flex; align-items:center; gap:8px; line-height:1.25; }
 .rep-card.risk  .rep-card-title { color:#dc2626; }
 .rep-card.oppty .rep-card-title { color:#16a34a; }
-.rep-card-desc { font-size:.76rem; color:#374151; line-height:1.5; }
-.rep-card-meta { text-align:right; }
-.rep-card-ave { font-size:.76rem; font-weight:700; }
-.rep-card.risk  .rep-card-ave { color:#dc2626; }
-.rep-card.oppty .rep-card-ave { color:#16a34a; }
-.rep-card-src { font-size:.68rem; color:#9ca3af; }
+.rep-tri { width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; flex-shrink:0; }
+.rep-card.risk  .rep-tri { border-top:9px solid #dc2626; }
+.rep-card.oppty .rep-tri { border-bottom:9px solid #16a34a; }
+.rep-card-desc { font-size:.78rem; color:#374151; line-height:1.5; }
+.rep-dials { display:flex; align-items:center; gap:12px; }
+.rep-dial { width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-size:.95rem; font-weight:800; flex-shrink:0; }
+.rep-dial--bound { width:42px; height:42px; border:2px dashed; background:transparent; font-size:.82rem; }
+.rep-dial--score { border:2px solid; }
+.rep-card.risk  .rep-dial { color:#dc2626; border-color:#ef4444; }
+.rep-card.oppty .rep-dial { color:#16a34a; border-color:#22c55e; }
+.rep-card-src { font-size:.78rem; color:#6b7280; white-space:nowrap; }
+@media(max-width:760px){ .rep-card { grid-template-columns:1fr; gap:10px; } }
 
 /* Journalists */
 .journ-table { width:100%; border-collapse:collapse; font-size:.8rem; }
@@ -133,10 +141,106 @@
 .pg-nav:hover { background:#f3f4f6; }
 .pg-nav:disabled { opacity:.4; cursor:not-allowed; }
 
+/* Methodology */
+.method-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:8px; }
+.method-card { border:1.5px solid #e5e7eb; border-radius:10px; padding:14px 12px; }
+.method-num { width:30px; height:30px; border-radius:50%; color:#fff; font-weight:800; font-size:.9rem; display:flex; align-items:center; justify-content:center; margin-bottom:10px; }
+.method-title { font-size:.82rem; font-weight:700; color:#374151; margin-bottom:6px; }
+.method-desc { font-size:.72rem; color:#6b7280; line-height:1.5; }
+@media(max-width:760px){ .method-grid { grid-template-columns:1fr 1fr; } }
+
+/* Glossary */
+.glossary { margin:6px 0 0; }
+.gloss-row { display:grid; grid-template-columns:170px 1fr; gap:14px; padding:9px 0; border-bottom:1px solid #f3f4f6; }
+.gloss-row dt { font-size:.82rem; font-weight:700; color:var(--teal-dk); }
+.gloss-row dd { font-size:.8rem; color:#374151; line-height:1.5; margin:0; }
+
+/* ESG matrix (SASB issues × stakeholders) */
+.esg-matrix { width:100%; border-collapse:collapse; font-size:.74rem; }
+.esg-matrix th { font-weight:600; color:#6b7280; font-size:.66rem; padding:8px 6px; text-align:center; border-bottom:1px solid #e5e7eb; vertical-align:bottom; line-height:1.25; }
+.esg-matrix th.esg-issue-col, .esg-matrix th.esg-analysis-col { text-align:left; }
+.esg-matrix td { padding:16px 6px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+.esg-issue { font-size:.78rem; color:#374151; font-weight:600; width:130px; }
+.esg-cell { text-align:center; width:66px; }
+.esg-circle { display:block; width:20px; height:20px; border-radius:50%; border:2px solid #d1d5db; margin:0 auto 5px; }
+.esg-circle--negative { border-color:#ef4444; border-width:3px; width:26px; height:26px; }
+.esg-circle--positive { border-color:#22c55e; border-width:3px; width:26px; height:26px; }
+.esg-cell-val { font-size:.64rem; color:#9ca3af; }
+.esg-cell-val--negative { color:#ef4444; font-weight:700; }
+.esg-cell-val--positive { color:#16a34a; font-weight:700; }
+.esg-analysis { color:#374151; line-height:1.5; font-size:.72rem; }
+
+/* Stakeholder */
+.stake-grid { display:grid; grid-template-columns:300px 1fr; gap:22px; align-items:center; }
+.stake-chart { position:relative; height:300px; }
+.stake-list { display:flex; flex-direction:column; gap:10px; }
+.stake-item { display:flex; align-items:flex-start; gap:9px; }
+.stake-dim { font-size:.82rem; font-weight:700; color:#374151; }
+.stake-score { font-size:.72rem; font-weight:600; color:#9ca3af; margin-left:4px; }
+.stake-note { font-size:.74rem; color:#6b7280; line-height:1.45; }
+@media(max-width:760px){ .stake-grid { grid-template-columns:1fr; } }
+
+/* Sectorial competitor — vertical thermometer + ranked cards */
+.sec-wrap { display:grid; grid-template-columns:96px 1fr; gap:26px; align-items:stretch; min-height:300px; }
+.sec-thermo { display:flex; gap:8px; height:100%; }
+.sec-thermo-bar { position:relative; width:26px; border-radius:13px; min-height:260px;
+  background:linear-gradient(to top,#ec4899 0%,#f59e0b 30%,#9ca3af 50%,#84cc16 70%,#22c55e 100%); }
+.sec-thermo-mark { position:absolute; left:-4px; right:-4px; height:3px; background:#0f172a; transform:translateY(50%); border-radius:2px; }
+.sec-thermo-mark--avg { background:#fff; box-shadow:0 0 0 1px #6b7280; }
+.sec-thermo-axis { display:flex; flex-direction:column; justify-content:space-between; font-size:.62rem; color:#9ca3af; padding:2px 0; }
+.sec-cards { display:flex; flex-direction:column; gap:12px; justify-content:center; }
+.sec-card { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:14px;
+  border-radius:9999px; padding:9px 16px 9px 9px; color:#fff; }
+.sec-card--positive { background:#22c55e; }
+.sec-card--negative { background:#ef4444; }
+.sec-card--neutral  { background:#9ca3af; }
+.sec-card-rank { width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,.25);
+  display:flex; align-items:center; justify-content:center; font-size:.7rem; font-weight:800; flex-shrink:0; }
+.sec-card-name { font-size:.86rem; font-weight:800; line-height:1.2; }
+.sec-card-you { font-size:.58rem; background:rgba(255,255,255,.3); padding:1px 7px; border-radius:9999px; margin-left:4px; }
+.sec-card-desc { font-size:.72rem; opacity:.93; line-height:1.4; margin-top:2px; }
+.sec-card-score { font-size:.95rem; font-weight:800; background:rgba(0,0,0,.14); border-radius:9999px;
+  padding:6px 12px; min-width:48px; text-align:center; flex-shrink:0; }
+
+/* Export dropdown */
+.rf-export { position:relative; }
+.rf-export-menu {
+  position:absolute; right:0; top:calc(100% + 8px); z-index:60;
+  background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+  box-shadow:0 12px 32px rgba(0,0,0,.14); padding:8px; min-width:236px; display:none;
+}
+.rf-export-menu.open { display:block; }
+.rf-export-item {
+  display:flex; align-items:center; gap:12px; width:100%; padding:11px 14px;
+  border:none; background:none; border-radius:8px; font-size:.92rem; color:#1f2937;
+  cursor:pointer; text-align:left;
+}
+.rf-export-item:hover:not(:disabled) { background:#f3f4f6; }
+.rf-export-item:disabled { color:#9ca3af; cursor:not-allowed; }
+.rf-soon {
+  margin-left:auto; font-size:.6rem; text-transform:uppercase; letter-spacing:.05em;
+  background:#f3f4f6; color:#9ca3af; padding:2px 7px; border-radius:9999px;
+}
+
 @media print {
   .rf-mod-bar, .rf-controls, .rf-pagination, .no-print, .sidebar, .topheader { display:none !important; }
   .slide.active { display:block !important; }
   .rf-slide-wrap { box-shadow:none; }
+  /* PDF export: drop the app chrome's offsets so slides fill the page */
+  body.pdf-mode .main-content { margin:0 !important; padding:0 !important; background:#fff !important; }
+  body.pdf-mode .rf-shell { max-width:none !important; margin:0 !important; }
+  body.pdf-mode .rf-slide-wrap { max-width:none !important; box-shadow:none; }
+  /* Each slide is one full landscape page; flex lets the content stretch to fill it */
+  body.pdf-mode .slide {
+    display:flex !important; flex-direction:column;
+    min-height:100vh; box-sizing:border-box;
+    page-break-after:always; break-after:page;
+  }
+  body.pdf-mode .slide:last-child { page-break-after:auto; break-after:auto; }
+  body.pdf-mode .slide > * { flex:1 1 auto; }
+  body.pdf-mode img[data-canvas-replacement] { display:block !important; max-width:100% !important; height:auto !important; }
+  body.pdf-mode .rf-slide-wrap, body.pdf-mode .rf-slide-wrap * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  @page { size: A4 landscape; margin: 0; }
 }
 </style>
 {% endblock %}
@@ -165,11 +269,37 @@
       Back to Reports
     </a>
     <span class="rf-page-label" id="pageLabel">Page 1 of <span id="totalPages"></span></span>
-    <a href="{% url 'monitor:report_competitor' org.id %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"
-       class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:6px;">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Export Report
-    </a>
+    <div style="display:flex;align-items:center;gap:8px;">
+      {% if analysis_generated_at %}
+      <span class="rf-page-label" title="Saved and reused until you regenerate it">AI analysis: {{ analysis_generated_at|date:"d M Y" }}</span>
+      {% endif %}
+      {% if analysis_stale %}
+      <span class="rf-page-label" style="color:#b45309;" title="New mentions were added to this period after the analysis was generated">⚠ New data — regenerate to update</span>
+      {% endif %}
+      {% if ai_enabled %}
+      <button id="aiBtn" onclick="generateAi(this)" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:6px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4m10-10h-4M6 12H2m15.07-5.07-2.83 2.83M9.76 14.24l-2.83 2.83m0-10.14 2.83 2.83m4.48 4.48 2.83 2.83"/></svg>
+        {% if analysis %}Regenerate AI Analysis{% else %}Generate AI Analysis{% endif %}
+      </button>
+      {% endif %}
+      <div class="rf-export" id="rfExport">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleExportMenu(event)" style="display:flex;align-items:center;gap:6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export Report
+        </button>
+        <div class="rf-export-menu" id="rfExportMenu">
+          <button type="button" class="rf-export-item" onclick="exportPDF()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Export as PDF
+          </button>
+          <button type="button" class="rf-export-item" disabled title="Coming soon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export as PowerPoint
+            <span class="rf-soon">soon</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Slides -->
@@ -178,7 +308,7 @@
     <!-- ── SLIDE: Cover ──────────────────────────────────────── -->
     <div class="slide" id="s-cover">
       <div class="slide-cover">
-        <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="cover-logo" alt="Social Light"/>
+        <img src="{% static 'images/social_light_logo.png' %}" class="cover-logo" alt="Social Light"/>
         <h1 class="cover-title">Media Insights Report</h1>
         <p class="cover-sub">Prepared for {{ org.name }}</p>
         <div class="cover-date">{{ month_label }}</div>
@@ -193,7 +323,7 @@
     <div class="slide" id="s-exec">
       <div class="slide-content">
         <div class="slide-hdr">
-          <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+          <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
           <div class="slide-hdr-title">Monthly Insight Report: <strong>Executive Summary</strong></div>
         </div>
         <div class="slide-body">
@@ -207,11 +337,11 @@
                 Positive Issues
                 <span style="margin-left:auto;font-size:.68rem;color:#9ca3af;font-weight:400;">Sentiment impact*</span>
               </div>
-              {% for s in sections.social.opps|slice:":2" %}
+              {% for s in exec_opps|slice:":3" %}
               <div class="issue-item"><span style="font-weight:700;margin-right:3px;">{{ forloop.counter }}</span>
-                <strong style="color:#15803d;">{{ s.headline|truncatechars:75 }}</strong>
-                <span style="color:#9ca3af;"> — {{ s.source }}</span></div>
-              {% empty %}<div class="issue-item" style="color:#9ca3af;">No positive mentions.</div>
+                <strong style="color:#15803d;">{{ s.title }}</strong>
+                <span style="color:#9ca3af;"> — {{ s.source }} (+{{ s.score }})</span></div>
+              {% empty %}<div class="issue-item" style="color:#9ca3af;">{% if ai_enabled %}Run Generate AI Analysis to surface positive issues.{% else %}No positive issues.{% endif %}</div>
               {% endfor %}
             </div>
             <div class="issue-box neg">
@@ -220,11 +350,11 @@
                 Negative Issues
                 <span style="margin-left:auto;font-size:.68rem;color:#9ca3af;font-weight:400;">Sentiment impact*</span>
               </div>
-              {% for s in sections.social.risks|slice:":2" %}
+              {% for s in exec_risks|slice:":3" %}
               <div class="issue-item"><span style="font-weight:700;margin-right:3px;">{{ forloop.counter }}</span>
-                <strong style="color:#dc2626;">{{ s.headline|truncatechars:75 }}</strong>
-                <span style="color:#9ca3af;"> — {{ s.source }}</span></div>
-              {% empty %}<div class="issue-item" style="color:#9ca3af;">No negative mentions.</div>
+                <strong style="color:#dc2626;">{{ s.title }}</strong>
+                <span style="color:#9ca3af;"> — {{ s.source }} (-{{ s.score }})</span></div>
+              {% empty %}<div class="issue-item" style="color:#9ca3af;">{% if ai_enabled %}Run Generate AI Analysis to surface negative issues.{% else %}No negative issues.{% endif %}</div>
               {% endfor %}
             </div>
           </div>
@@ -252,6 +382,203 @@
     {% with td=sections.print %}
     {% include "monitor/partials/report_section.html" with td=td type_key="print" journalists=journalists %}
     {% endwith %}
+
+    {% if analysis.esg_pages %}
+    <!-- ── SLIDES: ESG Analysis (matrix, paginated 2 issues/page) ─── -->
+    {% for page in analysis.esg_pages %}
+    <div class="slide" id="s-esg-{{ forloop.counter }}">
+      <div class="slide-content">
+        <div class="slide-hdr">
+          <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
+          <div class="slide-hdr-title">Monthly Insight Report: <strong>ESG Analysis</strong></div>
+        </div>
+        <div class="slide-body">
+          <div class="slide-type-label">All Media &nbsp;·&nbsp; AI-assisted</div>
+          <h2 class="slide-heading">ESG Analysis ({{ forloop.counter }}/{{ analysis.esg_pages|length }})</h2>
+          <table class="esg-matrix">
+            <thead>
+              <tr>
+                <th class="esg-issue-col">SASB ESG Issues</th>
+                <th>Government /<br>Politicians</th>
+                <th>Regulators</th>
+                <th>Customers</th>
+                <th>Communities</th>
+                <th class="esg-analysis-col">Analysis</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for issue in page %}
+              <tr>
+                <td class="esg-issue">{{ issue.issue }}</td>
+                {% for cell in issue.cells %}
+                <td class="esg-cell">
+                  <span class="esg-circle esg-circle--{{ cell.tone }}"></span>
+                  <span class="esg-cell-val esg-cell-val--{{ cell.tone }}">{{ cell.value }}</span>
+                </td>
+                {% endfor %}
+                <td class="esg-analysis">{{ issue.analysis }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <p style="font-size:.67rem;color:#9ca3af;margin-top:12px;">*Each cell scores stakeholder sentiment on the issue (-100 to 100, 0 = neutral / not covered), AI-assessed from coverage.</p>
+        </div>
+        <div class="slide-ftr">
+          <span>© Social Light Botswana | {% now "Y" %}</span>
+          <span>Unauthorized Reproduction is Prohibited</span>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if analysis.stakeholders %}
+    <!-- ── SLIDE: Stakeholder Analysis ──────────────────────── -->
+    <div class="slide" id="s-stakeholder">
+      <div class="slide-content">
+        <div class="slide-hdr">
+          <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
+          <div class="slide-hdr-title">Monthly Insight Report: <strong>Stakeholder Analysis</strong></div>
+        </div>
+        <div class="slide-body">
+          <div class="slide-type-label">All Media &nbsp;·&nbsp; AI-assisted</div>
+          <h2 class="slide-heading">Stakeholder Analysis</h2>
+          <div class="stake-grid">
+            <div class="stake-chart"><canvas data-chart="{{ analysis.stakeholder_chart }}"></canvas></div>
+            <div class="stake-list">
+              {% for s in analysis.stakeholders %}
+              <div class="stake-item">
+                <span class="ins-dot ins-dot--{{ s.sentiment }}"></span>
+                <div>
+                  <div class="stake-dim">{{ s.dimension }} <span class="stake-score">{{ s.score }}/100</span></div>
+                  <div class="stake-note">{{ s.note }}</div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          <p style="font-size:.67rem;color:#9ca3af;margin-top:10px;">*Favourability index 0–100 (50 = neutral), AI-assessed from coverage.</p>
+        </div>
+        <div class="slide-ftr">
+          <span>© Social Light Botswana | {% now "Y" %}</span>
+          <span>Unauthorized Reproduction is Prohibited</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if analysis.competitor %}
+    <!-- ── SLIDE: Sectorial Competitor ──────────────────────── -->
+    <div class="slide" id="s-sectorial">
+      <div class="slide-content">
+        <div class="slide-hdr">
+          <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
+          <div class="slide-hdr-title">Monthly Insight Report: <strong>Sectorial Competitor</strong></div>
+        </div>
+        <div class="slide-body">
+          <div class="slide-type-label">All Media &nbsp;·&nbsp; AI-assisted</div>
+          <h2 class="slide-heading">Sectorial Competitor</h2>
+          {% with c=analysis.competitor %}
+          <div class="sec-wrap">
+            <div class="sec-thermo">
+              <div class="sec-thermo-bar">
+                <span class="sec-thermo-mark sec-thermo-mark--avg" style="bottom:{{ c.avg_pct }}%;" title="Sector average"></span>
+                <span class="sec-thermo-mark sec-thermo-mark--org" style="bottom:{{ c.org_pct }}%;" title="{{ org.name }}"></span>
+              </div>
+              <div class="sec-thermo-axis"><span>100</span><span>50</span><span>0</span><span>-50</span><span>-100</span></div>
+            </div>
+            <div class="sec-cards">
+              {% for lv in c.ranked %}
+              <div class="sec-card sec-card--{{ lv.tone }}">
+                <div class="sec-card-rank">{{ lv.rank }}</div>
+                <div class="sec-card-main">
+                  <div class="sec-card-name">{{ lv.name }}{% if lv.is_org %} <span class="sec-card-you">You</span>{% endif %}</div>
+                  <div class="sec-card-desc">{{ lv.description }}</div>
+                </div>
+                <div class="sec-card-score">{{ lv.score }}</div>
+              </div>
+              {% empty %}
+              <p style="color:#9ca3af;font-size:.86rem;">No competitor data available.</p>
+              {% endfor %}
+            </div>
+          </div>
+          {% if c.commentary %}<p style="font-size:.82rem;color:#374151;line-height:1.6;margin-top:16px;">{{ c.commentary }}</p>{% endif %}
+          {% endwith %}
+          <p style="font-size:.67rem;color:#9ca3af;margin-top:8px;">*Sentiment is measured on a scale of -100 to 100 (0 = neutral). AI-assessed from coverage volume and tone.</p>
+        </div>
+        <div class="slide-ftr">
+          <span>© Social Light Botswana | {% now "Y" %}</span>
+          <span>Unauthorized Reproduction is Prohibited</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ── SLIDE: Our Methodology ───────────────────────────── -->
+    <div class="slide" id="s-methodology">
+      <div class="slide-content">
+        <div class="slide-hdr">
+          <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
+          <div class="slide-hdr-title">Monthly Insight Report: <strong>Our Methodology</strong></div>
+        </div>
+        <div class="slide-body">
+          <div class="slide-type-label">Appendix</div>
+          <h2 class="slide-heading">Our Methodology</h2>
+          <div class="method-grid">
+            {% for m in methodology_steps %}
+            <div class="method-card">
+              <div class="method-num" style="background:{{ m.color }};">{{ forloop.counter }}</div>
+              <div class="method-title">{{ m.title }}</div>
+              <div class="method-desc">{{ m.desc }}</div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="slide-ftr">
+          <span>© Social Light Botswana | {% now "Y" %}</span>
+          <span>Unauthorized Reproduction is Prohibited</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SLIDE: Glossary of Terms ─────────────────────────── -->
+    <div class="slide" id="s-glossary">
+      <div class="slide-content">
+        <div class="slide-hdr">
+          <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
+          <div class="slide-hdr-title">Monthly Insight Report: <strong>Glossary of Terms</strong></div>
+        </div>
+        <div class="slide-body">
+          <div class="slide-type-label">Appendix</div>
+          <h2 class="slide-heading">Glossary of Terms</h2>
+          <dl class="glossary">
+            {% for g in glossary_terms %}
+            <div class="gloss-row">
+              <dt>{{ g.term }}</dt>
+              <dd>{{ g.definition }}</dd>
+            </div>
+            {% endfor %}
+          </dl>
+        </div>
+        <div class="slide-ftr">
+          <span>© Social Light Botswana | {% now "Y" %}</span>
+          <span>Unauthorized Reproduction is Prohibited</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SLIDE: Thank You ─────────────────────────────────── -->
+    <div class="slide" id="s-thankyou">
+      <div class="slide-cover" style="min-height:520px;">
+        <img src="{% static 'images/social_light_logo.png' %}" class="cover-logo" alt="Social Light"/>
+        <h1 class="cover-title">Thank You</h1>
+        <p class="cover-sub">Prepared for {{ org.name }} &nbsp;·&nbsp; {{ month_label }}</p>
+        <div class="slide-footer">
+          <span>© Social Light Botswana | {% now "Y" %}</span>
+          <span>info@sociallightbw.com</span>
+        </div>
+      </div>
+    </div>
 
   </div><!-- /rf-slide-wrap -->
 
@@ -289,6 +616,7 @@ function showSlide(idx) {
   buildPager();
   window.scrollTo({top:0,behavior:'smooth'});
   document.dispatchEvent(new CustomEvent('slide:show', {detail:{slideId:slideId}}));
+  buildChartForSlide(slideId);
   if (window._reportFullBuildSectionCharts) {
     window._reportFullBuildSectionCharts(slideId);
   }
@@ -330,13 +658,93 @@ function buildChartForSlide(slideId) {
   });
 }
 
-// Init
-showSlide(0);
+// Generate AI analysis on demand, then reload so the cached result renders.
+function generateAi(btn){
+  var params = new URLSearchParams(window.location.search);
+  var orig = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Generating…';
+  var fd = new FormData();
+  fd.append('date_from', params.get('date_from') || '');
+  fd.append('date_to', params.get('date_to') || '');
+  fetch('/api/{{ org.id }}/report-ai/', {
+    method:'POST',
+    headers:{ 'X-CSRFToken': (window.getCookie ? getCookie('csrftoken') : '') || '' },
+    body: fd
+  })
+    .then(async function(res){
+      var data = await res.json().catch(function(){ return {}; });
+      if(!res.ok || !data.ok) throw new Error(data.error || ('Request failed: ' + res.status));
+      return data;
+    })
+    .then(function(){ if(window.flashToast) flashToast('AI analysis generated successfully', 'success'); location.reload(); })
+    .catch(function(err){ if(window.showToast){ showToast(err.message || 'Failed to generate AI analysis', 'error'); } else { alert(err.message); } btn.disabled=false; btn.innerHTML=orig; });
+}
 
-// Observe slide visibility to build charts lazily
-var io = new IntersectionObserver(function(entries){
-  entries.forEach(function(e){if(e.isIntersecting) buildChartForSlide(e.target.id);});
-},{threshold:0.1});
-document.querySelectorAll('#slideWrap .slide').forEach(function(s){io.observe(s);});
+// ── Export dropdown ──────────────────────────────────────────────────────
+function toggleExportMenu(e){
+  e.stopPropagation();
+  document.getElementById('rfExportMenu').classList.toggle('open');
+}
+document.addEventListener('click', function(e){
+  var menu = document.getElementById('rfExportMenu');
+  if (menu && !document.getElementById('rfExport').contains(e.target)) menu.classList.remove('open');
+});
+function exportPDF(){
+  document.getElementById('rfExportMenu').classList.remove('open');
+  var params = new URLSearchParams(window.location.search);
+  params.set('format', 'pdf');
+  window.open(window.location.pathname + '?' + params.toString(), '_blank');
+}
+
+// ── PDF mode: render all slides + charts, rasterise canvases, then print ──
+var PDF_MODE = new URLSearchParams(window.location.search).get('format') === 'pdf';
+
+function replaceCanvasWithImage(done){
+  var canvases = Array.prototype.slice.call(document.querySelectorAll('#slideWrap canvas'));
+  var pending = 0, finished = false;
+  function finish(){ if(!finished){ finished = true; if(done) done(); } }
+  canvases.forEach(function(c){
+    if (c._pi || !c.offsetWidth) return;
+    var img = new Image();
+    img.style.width  = c.offsetWidth  + 'px';
+    img.style.height = c.offsetHeight + 'px';
+    img.setAttribute('data-canvas-replacement', 'true');
+    pending++;
+    img.onload = img.onerror = function(){ pending--; if(pending === 0) finish(); };
+    img.src = c.toDataURL('image/png', 1.0);
+    c.style.display = 'none';
+    c.parentNode.insertBefore(img, c.nextSibling);
+    c._pi = img;
+  });
+  if (pending === 0) finish();
+}
+
+if (PDF_MODE) {
+  document.body.classList.add('pdf-mode');
+  // Default "Save as PDF" filename comes from document.title — name it after the org.
+  document.title = "{{ org.name|escapejs }} - Media Insights Report - {{ month_label|escapejs }}";
+  if (window.Chart) Chart.defaults.animation = false;  // render charts to final state instantly
+  // Build every slide's charts and reveal all slides so the whole report prints.
+  ALL_SLIDES.forEach(function(id){
+    var s = document.getElementById(id);
+    if (s) s.classList.add('active');
+    buildChartForSlide(id);
+    if (window._reportFullBuildSectionCharts) window._reportFullBuildSectionCharts(id);
+  });
+  window.addEventListener('load', function(){
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      replaceCanvasWithImage(function(){ setTimeout(function(){ window.print(); }, 60); });
+    });});
+  });
+} else {
+  // Init normal interactive viewer
+  showSlide(0);
+
+  // Observe slide visibility to build charts lazily
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){if(e.isIntersecting) buildChartForSlide(e.target.id);});
+  },{threshold:0.1});
+  document.querySelectorAll('#slideWrap .slide').forEach(function(s){io.observe(s);});
+}
 </script>
 {% endblock %}

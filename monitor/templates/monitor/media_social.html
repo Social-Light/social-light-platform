@@ -1,4 +1,5 @@
 {% extends 'monitor/base.html' %}
+{% load humanize %}
 {% block title %}Social Media{% endblock %}
 
 {% block content %}
@@ -7,10 +8,16 @@
     <h1 class="page-title">Social Media</h1>
     <p class="page-subtitle">Track social media mentions and engagement</p>
   </div>
-  <button class="btn btn-primary" onclick="openModal('addSocialModal')">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    Add Post
-  </button>
+  <div style="display:flex; gap:8px;">
+    <button class="btn btn-secondary" onclick="openModal('uploadSocialModal')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Load Posts
+    </button>
+    <button class="btn btn-primary" onclick="openModal('addSocialModal')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Post
+    </button>
+  </div>
 </div>
 
 <!-- Filters & Search card -->
@@ -73,24 +80,22 @@
         <th>Sentiment</th>
         <th>AVE <span class="sort-icon">↑↓</span></th>
         <th>Reach <span class="sort-icon">↑↓</span></th>
-        <th>Relevancy <span class="sort-icon">↑↓</span></th>
         <th></th>
       </tr>
     </thead>
     <tbody>
       {% for p in posts %}
       <tr>
-        <td><a href="{{ p.url }}" target="_blank" class="table-link">{{ p.headline|truncatechars:50 }}</a></td>
+        <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener" class="table-link">{{ p.headline|truncatechars:50 }}</a>{% else %}<span class="table-link">{{ p.headline|truncatechars:50 }}</span>{% endif %}</td>
         <td class="fw-medium">{{ p.page_name|default:"—" }}</td>
         <td>
-          <span class="type-badge type-badge--{{ p.platform|lower }}">{{ p.platform }}</span>
+          <span class="type-badge type-badge--{{ p.platform|lower }}">{% if p.platform == 'Twitter' or p.platform == 'X' %}X{% else %}{{ p.platform|title }}{% endif %}</span>
         </td>
         <td class="text-muted">{{ p.date_published|date:"M j, Y" }}</td>
         <td class="text-muted">{{ p.country|default:"Unknown" }}</td>
         <td><span class="badge badge--{{ p.sentiment }}">{{ p.get_sentiment_display }}</span></td>
-        <td class="text-muted">{{ p.ave|floatformat:0 }}</td>
-        <td class="text-muted">{{ p.reach|default:0 }}</td>
-        <td class="text-muted">{{ p.relevancy|floatformat:2 }}</td>
+        <td class="text-muted">{{ p.ave|floatformat:2|intcomma }}</td>
+        <td class="text-muted">{{ p.reach|default:0|intcomma }}</td>
         <td>
           <div class="row-menu-wrap">
             <button class="row-menu-btn" onclick="toggleRowMenu(this)">
@@ -112,7 +117,7 @@
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="10" class="table-empty">No social posts yet. Add the first one above.</td></tr>
+      <tr><td colspan="9" class="table-empty">No social posts yet. Add the first one above.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -127,6 +132,7 @@
 </div>
 
 <!-- Edit Modal -->
+<div class="modal-overlay hidden" id="editSocialModal">
   <div class="modal modal--lg">
     <div class="modal-header">
       <div>
@@ -273,6 +279,31 @@
     </div>
   </div>
 </div>
+<!-- Upload CSV Modal -->
+<div class="modal-overlay hidden" id="uploadSocialModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Load Social Posts from CSV</h2>
+        <p class="modal-subtitle">Bulk import social posts. The <code>_id</code> column is ignored; new IDs are assigned automatically.</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('uploadSocialModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">CSV File</label>
+        <input type="file" id="sCsvFile" class="form-control" accept=".csv,text/csv" />
+        <small class="text-muted">Expected columns: _id,pageName,postId,message,source,group,country,createdTime,sentiment,reach,ave,rank,link,createdAt</small>
+      </div>
+      <div id="sCsvResult" style="margin-top:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('uploadSocialModal')">Cancel</button>
+      <button class="btn btn-primary" id="sCsvUploadBtn" onclick="uploadSocialCsv()">Upload</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -294,7 +325,7 @@ function addPost() {
     ave: 0,
     relevancy: 0,
     date_published: document.getElementById('sDate').value,
-  }).then(() => { closeModal('addSocialModal'); location.reload(); });
+  }).then(() => { flashToast('Social post added', 'success'); location.reload(); });
 }
 
 function deletePost(id) {
@@ -343,10 +374,54 @@ function savePost() {
     reach: document.getElementById('editSReach').value || 0,
     relevancy: document.getElementById('editSRelevancy').value || 0,
     date_published: document.getElementById('editSDate').value,
-  }).then(() => { closeModal('editSocialModal'); location.reload(); });
+  }).then(() => { flashToast('Social post updated', 'success'); location.reload(); });
 }
 function toggleDate(id) { document.getElementById(id).showPicker?.() || document.getElementById(id).click(); }
 initCountryInput('sCountry');
 initCountryInput('editSCountry');
+
+function uploadSocialCsv() {
+  const input = document.getElementById('sCsvFile');
+  const resultEl = document.getElementById('sCsvResult');
+  const btn = document.getElementById('sCsvUploadBtn');
+  const file = input.files && input.files[0];
+  if (!file) { resultEl.innerHTML = '<span style="color:#dc2626;">Please choose a CSV file.</span>'; return; }
+
+  const fd = new FormData();
+  fd.append('file', file);
+  btn.disabled = true;
+  btn.textContent = 'Uploading...';
+  resultEl.innerHTML = '';
+
+  fetch(`/api/${ORG_ID}/social/upload/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') || '' },
+    body: fd,
+  })
+    .then(async (res) => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`);
+      return data;
+    })
+    .then((data) => {
+      const hasErrors = data.errors && data.errors.length > 0;
+      let html = `<div style="color:${data.created > 0 ? '#059669' : '#dc2626'};">Imported ${data.created} post(s).</div>`;
+      if (hasErrors) {
+        html += `<details open style="margin-top:8px;"><summary>${data.errors.length} row(s) skipped</summary><ul style="margin:6px 0 0 18px;">` +
+          data.errors.slice(0, 20).map(e => `<li>${e}</li>`).join('') + '</ul></details>';
+        html += `<button type="button" class="btn btn-secondary" style="margin-top:10px;" onclick="location.reload()">Reload page</button>`;
+      }
+      resultEl.innerHTML = html;
+      // Only auto-close on a clean import — if rows were skipped, leave the
+      // modal open so the reasons stay readable instead of vanishing in 1.2s.
+      if (!hasErrors) {
+        setTimeout(() => { closeModal('uploadSocialModal'); location.reload(); }, 1200);
+      }
+    })
+    .catch((err) => {
+      resultEl.innerHTML = `<span style="color:#dc2626;">${err.message}</span>`;
+    })
+    .finally(() => { btn.disabled = false; btn.textContent = 'Upload'; });
+}
 </script>
 {% endblock %}

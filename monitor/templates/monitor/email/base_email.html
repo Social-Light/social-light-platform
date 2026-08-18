@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Social Light{% endblock %}</title>
+    <style>
+        body { font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f4f4f7; }
+        .container { max-width: 600px; margin: 0 auto; background: #ffffff; }
+        .header { background: #1d4ed8; color: #ffffff; padding: 40px 20px; text-align: center; }
+        .header h1 { margin: 0 0 10px; font-size: 26px; letter-spacing: .04em; }
+        .header h2 { margin: 0; font-size: 18px; font-weight: 600; }
+        .content { padding: 30px 28px; background: #f9f9f9; }
+        .content p { margin: 0 0 16px; }
+        .btn-wrap { text-align: center; margin: 28px 0; }
+        .button { display: inline-block; color: #ffffff !important; padding: 14px 30px; text-decoration: none; border-radius: 4px; font-weight: bold; }
+        .button--green { background: #28a745; }
+        .button--blue { background: #1d4ed8; }
+        .link { word-break: break-all; background: #e9ecef; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 13px; }
+        .notice { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 14px; border-radius: 5px; margin: 20px 0; }
+        .footer { padding: 20px; text-align: center; font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{% block product %}SOCIAL LIGHT{% endblock %}</h1>
+            <h2>{% block subtitle %}{% endblock %}</h2>
+        </div>
+
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+
+        <div class="footer">
+            {% block footer %}<p>&copy; {% now "Y" %} Social Light. All rights reserved.</p>{% endblock %}
+        </div>
+    </div>
+</body>
+</html>

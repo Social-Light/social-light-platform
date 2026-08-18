@@ -31,12 +31,14 @@ urlpatterns = [
     # Media: Online Articles
     path('app/media/online/<uuid:org_id>/', views.media_online, name='media_online'),
     path('api/<uuid:org_id>/online/', views.online_article_create, name='online_create'),
+    path('api/<uuid:org_id>/online/upload/', views.online_article_csv_upload, name='online_csv_upload'),
     path('api/<uuid:org_id>/online/<int:article_id>/', views.online_article_update, name='online_update'),
     path('api/<uuid:org_id>/online/<int:article_id>/delete/', views.online_article_delete, name='online_delete'),
 
     # Media: Print
     path('app/media/print/<uuid:org_id>/', views.media_print, name='media_print'),
     path('api/<uuid:org_id>/print/', views.print_article_create, name='print_create'),
+    path('api/<uuid:org_id>/print/upload/', views.print_article_csv_upload, name='print_csv_upload'),
     path('api/<uuid:org_id>/print/<int:article_id>/', views.print_article_update, name='print_update'),
     path('api/<uuid:org_id>/print/<int:article_id>/delete/', views.print_article_delete, name='print_delete'),
 
@@ -45,31 +47,51 @@ urlpatterns = [
     path('api/<uuid:org_id>/social/', views.social_post_create, name='social_create'),
     path('api/<uuid:org_id>/social/<int:post_id>/', views.social_post_update, name='social_update'),
     path('api/<uuid:org_id>/social/<int:post_id>/delete/', views.social_post_delete, name='social_delete'),
+    path('api/<uuid:org_id>/social/upload/', views.social_post_csv_upload, name='social_csv_upload'),
 
     # Media: Broadcast
     path('app/media/broadcast/<uuid:org_id>/', views.media_broadcast, name='media_broadcast'),
     path('api/<uuid:org_id>/broadcast/', views.broadcast_create, name='broadcast_create'),
     path('api/<uuid:org_id>/broadcast/<int:mention_id>/', views.broadcast_update, name='broadcast_update'),
     path('api/<uuid:org_id>/broadcast/<int:mention_id>/delete/', views.broadcast_delete, name='broadcast_delete'),
+    path('api/<uuid:org_id>/broadcast/upload/', views.broadcast_csv_upload, name='broadcast_csv_upload'),
 
     # Competitors
     path('app/competitors/<uuid:org_id>/', views.competitors_view, name='competitors'),
     path('api/<uuid:org_id>/competitors/', views.competitor_create, name='competitor_create'),
+    path('api/<uuid:org_id>/competitors/articles/upload/', views.competitor_article_csv_upload, name='competitor_article_csv_upload'),
+    path('api/<uuid:org_id>/competitors/articles/<int:article_id>/delete/', views.competitor_article_delete, name='competitor_article_delete'),
+    path('api/<uuid:org_id>/competitors/<int:comp_id>/', views.competitor_update, name='competitor_update'),
     path('api/<uuid:org_id>/competitors/<int:comp_id>/delete/', views.competitor_delete, name='competitor_delete'),
 
     # Reports
     path('app/reports/<uuid:org_id>/', views.reports_view, name='reports'),
     path('app/reports/<uuid:org_id>/full/', views.report_full, name='report_full'),
+    path('api/<uuid:org_id>/report-ai/', views.report_ai_generate, name='report_ai_generate'),
     path('app/reports/<uuid:org_id>/sentiment/', views.report_sentiment, name='report_sentiment'),
     path('app/reports/<uuid:org_id>/source/', views.report_source, name='report_source'),
     path('app/reports/<uuid:org_id>/competitor/', views.report_competitor, name='report_competitor'),
     path('app/reports/<uuid:org_id>/competitor/pptx/', views.report_competitor_pptx, name='report_competitor_pptx'),
     path('api/<uuid:org_id>/reports/save/', views.report_save, name='report_save'),
     path('api/<uuid:org_id>/reports/<uuid:report_id>/delete/', views.report_delete, name='report_delete'),
+    # Issue-focused ("saga") reports
+    path('app/reports/<uuid:org_id>/issue/<uuid:report_id>/', views.report_issue, name='report_issue'),
+    path('app/reports/<uuid:org_id>/issue/<uuid:report_id>/pdf/', views.report_issue_pdf, name='report_issue_pdf'),
+    path('api/<uuid:org_id>/reports/issue/', views.report_issue_generate, name='report_issue_generate'),
+    path('api/<uuid:org_id>/reports/issue/<uuid:report_id>/delete/', views.report_issue_delete, name='report_issue_delete'),
+
+    # Campaign tracking & reporting
+    path('app/campaigns/<uuid:org_id>/', views.campaigns_view, name='campaigns'),
+    path('app/campaigns/<uuid:org_id>/<uuid:campaign_id>/', views.campaign_detail, name='campaign_detail'),
+    path('api/<uuid:org_id>/campaigns/save/', views.campaign_save, name='campaign_save'),
+    path('api/<uuid:org_id>/campaigns/<uuid:campaign_id>/delete/', views.campaign_delete, name='campaign_delete'),
+    path('api/<uuid:org_id>/campaigns/<uuid:campaign_id>/report/', views.campaign_generate_report, name='campaign_generate_report'),
 
     # Alerts
     path('app/alerts/<uuid:org_id>/', views.alerts_view, name='alerts'),
     path('api/<uuid:org_id>/alerts/', views.alert_create, name='alert_create'),
+    path('api/<uuid:org_id>/alerts/<int:alert_id>/', views.alert_update, name='alert_update'),
+    path('api/<uuid:org_id>/alerts/<int:alert_id>/test/', views.alert_test_send, name='alert_test_send'),
     path('api/<uuid:org_id>/alerts/<int:alert_id>/delete/', views.alert_delete, name='alert_delete'),
 
     # Users
@@ -88,6 +110,7 @@ urlpatterns = [
     # Media Sources
     path('app/media/sources/<uuid:org_id>/', views.media_sources, name='media_sources'),
     path('api/<uuid:org_id>/sources/', views.media_source_create, name='media_source_create'),
+    path('api/<uuid:org_id>/sources/upload/', views.media_source_csv_upload, name='media_source_csv_upload'),
     path('api/<uuid:org_id>/sources/<int:source_id>/', views.media_source_update, name='media_source_update'),
     path('api/<uuid:org_id>/sources/<int:source_id>/delete/', views.media_source_delete, name='media_source_delete'),
 

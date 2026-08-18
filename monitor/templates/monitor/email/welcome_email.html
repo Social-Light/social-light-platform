@@ -1,0 +1,22 @@
+{% extends 'monitor/email/base_email.html' %}
+
+{% block title %}Welcome to Social Light{% endblock %}
+{% block subtitle %}Welcome — Set Your Password{% endblock %}
+
+{% block content %}
+<p>Hi {{ full_name }},</p>
+
+<p>Welcome to Social Light! Your account has been created. To get started, set your password by clicking the button below:</p>
+
+<div class="btn-wrap">
+    <a href="{{ protocol }}://{{ domain }}{% url 'password_reset_confirm' uidb64=uid token=token %}" class="button button--green">Set Your Password</a>
+</div>
+
+<p>This link expires in 24 hours. Once you've set your password, you can sign in at:</p>
+
+<div class="link">{{ protocol }}://{{ domain }}{% url 'monitor:login' %}</div>
+
+<p>If you have any questions, reply to this email.</p>
+
+<p>— The Social Light Team</p>
+{% endblock %}

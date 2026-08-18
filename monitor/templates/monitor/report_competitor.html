@@ -250,6 +250,21 @@
   font-style: italic;
 }
 
+/* Headline preview list (sits on the dark section → white text) */
+.rpt-headline-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.rpt-headline-item {
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.rpt-headline-item:last-child { border-bottom: none; }
+
 /* Bar-style top topics row */
 .rpt-hot-bars {
   margin-top: 16px;
@@ -297,13 +312,25 @@
 }
 
 /* Print */
+.report-page,
+.report-page * {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
 @media print {
+  body, html { background: #fff !important; }
   .no-print,
   .sidebar,
   .topheader,
   .main-content > *:not(#reportPage) { display: none !important; }
   .main-content { margin: 0 !important; padding: 0 !important; }
-  .report-page { box-shadow: none !important; padding: 24px !important; }
+  .report-page { box-shadow: none !important; padding: 24px !important; background: #fff !important; }
+  /* Bound chart height so responsive canvases don't balloon and split across
+     pages (which left large blank regions in the generated PDF). */
+  .rpt-chart-wrap { height: 360px !important; min-height: 0 !important; }
+  canvas { max-width: 100% !important; max-height: 360px !important; }
+  img[data-canvas-replacement] { display: block !important; max-width: 100% !important; height: auto !important; }
   @page { margin: 0; size: A4; }
 }
 </style>
@@ -319,12 +346,18 @@
     <span style="color:#6b7280;font-size:13px;">to</span>
     <input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}"
            class="form-control form-control-sm" style="width:140px;">
+    <select name="country" class="form-control form-control-sm" style="width:180px;">
+      <option value="">All countries</option>
+      {% for country in countries %}
+      <option value="{{ country }}" {% if country == selected_country %}selected{% endif %}>{{ country }}</option>
+      {% endfor %}
+    </select>
     <button type="submit" class="btn btn-secondary btn-sm">Apply</button>
   </form>
-  <button class="btn btn-primary btn-sm" onclick="downloadPDF()">
+  <button type="button" class="btn btn-primary btn-sm" onclick="downloadPDF()">
     &#8681; Download PDF
   </button>
-  <a href="{% url 'monitor:report_competitor_pptx' org.id %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"
+<a href="{% url 'monitor:report_competitor_pptx' org.id %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}{% if selected_country %}&country={{ selected_country|urlencode }}{% endif %}"
      class="btn btn-secondary btn-sm">
     &#8681; Download PPTX
   </a>
@@ -337,17 +370,17 @@
   <div class="rpt-header">
     <h1 class="rpt-title">{{ org.name }} Competitor Analysis</h1>
     <p class="rpt-subtitle">Media Monitoring Report | {{ month_label }}</p>
-    <p class="rpt-subtitle">{{ date_from|date:"d M Y" }} &mdash; {{ date_to|date:"d M Y" }}</p>
+    <p class="rpt-subtitle">{{ date_from|date:"d M Y" }} &mdash; {{ date_to|date:"d M Y" }} | {{ selected_country|default:"All countries" }}</p>
   </div>
   <hr class="rpt-divider">
 
-  <!-- ── Hot Topics ──────────────────────────────────────────────────────── -->
+  <!-- ── Popular Keywords ──────────────────────────────────────────────────────── -->
   <div class="rpt-hot-section">
     <div class="rpt-hot-header">
-      <p class="rpt-hot-title">&#128293; Hot Topics from Competitors</p>
+      <p class="rpt-hot-title">&#128293; Popular Keywords from Competitors</p>
       <span class="rpt-hot-badge">{{ month_label }}</span>
     </div>
-    <p class="rpt-hot-sub">Most discussed subjects across all competitor content during this period</p>
+    <p class="rpt-hot-sub">A sample of articles and topics captured from competitor content during this period</p>
 
     {% if hot_topics %}
     <!-- Word cloud chips -->
@@ -387,6 +420,25 @@
     <div class="rpt-hot-bars" id="hotBars" data-topics="{{ hot_topics_json|escapejs }}"></div>
     {% else %}
     <p class="rpt-hot-empty">No competitor content found for this period.</p>
+    {% endif %}
+  </div>
+
+  <!-- ── Headline Preview ───────────────────────────────────────────────────── -->
+  <div class="rpt-hot-section">
+    <div class="rpt-hot-header">
+      <p class="rpt-hot-title">&#128218; Headline Preview</p>
+      <span class="rpt-hot-badge">{{ month_label }}</span>
+    </div>
+    <p class="rpt-hot-sub">A sneak peek at competitor article headlines captured during this period.</p>
+
+    {% if headline_preview %}
+    <ul class="rpt-headline-list">
+      {% for headline in headline_preview %}
+      <li class="rpt-headline-item">{{ headline }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="rpt-hot-empty">No competitor headlines available for this period.</p>
     {% endif %}
   </div>
 
@@ -625,6 +677,8 @@
 
 {% block extra_js %}
 <script>
+var PDF_MODE = {{ pdf_mode|yesno:'true,false' }};
+
 // ── Hot Topics bars ────────────────────────────────────────────────────────
 (function () {
   var container = document.getElementById('hotBars');
@@ -682,6 +736,7 @@
         }]
       },
       options: {
+        animation: PDF_MODE ? false : undefined,
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
@@ -725,25 +780,69 @@
   buildHBar('pubChart',       '{{ pub_json|escapejs }}');
 
   // ── Print / PDF helpers ───────────────────────────────────────────────── //
-  window.addEventListener('beforeprint', function () {
-    document.querySelectorAll('canvas').forEach(function (c) {
+  function replaceCanvasWithImage(done) {
+    var canvases = Array.prototype.slice.call(document.querySelectorAll('canvas'));
+    var pending = 0, finished = false;
+    function finish() { if (!finished) { finished = true; if (done) done(); } }
+    canvases.forEach(function (c) {
+      if (c._pi) { return; }
       var img = new Image();
-      img.src = c.toDataURL('image/png', 1.0);
       img.style.width  = c.offsetWidth  + 'px';
       img.style.height = c.offsetHeight + 'px';
+      img.setAttribute('data-canvas-replacement', 'true');
+      // Wait for the data-URL image to actually decode before we report done,
+      // otherwise the print rasterises blank <img> elements.
+      pending++;
+      img.onload = img.onerror = function () { pending--; if (pending === 0) finish(); };
+      img.src = c.toDataURL('image/png', 1.0);
       c.style.display = 'none';
       c.parentNode.insertBefore(img, c.nextSibling);
       c._pi = img;
     });
-  });
+    if (pending === 0) finish();  // no canvases to convert
+  }
 
-  window.addEventListener('afterprint', function () {
+  function restoreCanvasImages() {
     document.querySelectorAll('canvas').forEach(function (c) {
       if (c._pi) { c._pi.remove(); c._pi = null; c.style.display = ''; }
     });
-  });
+  }
+
+  window.addEventListener('beforeprint', function () { replaceCanvasWithImage(); });
+  window.addEventListener('afterprint', restoreCanvasImages);
+
+  // In PDF mode (?format=pdf): wait for full load + paint, snapshot every chart
+  // canvas to an image, wait for those images to decode, THEN print — so the
+  // generated PDF actually contains the rendered charts.
+  if (PDF_MODE) {
+    // Charts are built synchronously above and, under emulated print media, draw
+    // into their height-bounded containers. We capture the LIVE canvases (Chromium
+    // rasterises them into the PDF), so we only need to flag readiness once layout
+    // + paint have settled. No canvas→image conversion / window.print() here.
+    var flagReady = function () {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { window.__pdfReady = true; });
+      });
+    };
+    if (document.readyState === 'complete') flagReady();
+    else window.addEventListener('load', flagReady);
+  }
 })();
 
-function downloadPDF() { window.print(); }
+function downloadPDF() {
+  var params = new URLSearchParams(window.location.search);
+  params.set('download', 'pdf');
+  var btn = document.querySelector('.report-controls .btn-primary'); var label = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  fetch(window.location.pathname + '?' + params.toString())
+    .then(function(r){ if(!r.ok) throw new Error('PDF generation failed'); return r.blob(); })
+    .then(function(blob){
+      var u = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = u; a.download = 'competitor-report.pdf';
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
+    })
+    .catch(function(e){ (window.showToast||window.alert)(e.message); })
+    .finally(function(){ if (btn) { btn.disabled = false; btn.innerHTML = label; } });
+}
 </script>
 {% endblock %}

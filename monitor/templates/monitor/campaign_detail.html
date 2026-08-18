@@ -1,0 +1,126 @@
+{% extends 'monitor/base.html' %}
+{% load humanize %}
+{% block title %}{{ campaign.name }} — Campaign{% endblock %}
+
+{% block extra_head %}
+<style>
+.cd-back { font-size:.85rem; color:#6b7280; text-decoration:none; display:inline-flex; align-items:center; gap:6px; margin-bottom:14px; }
+.cd-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
+.cd-terms { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.cd-term { font-size:.74rem; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:9999px; padding:.12rem .55rem; }
+.cd-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
+.cd-kpi { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px 18px; }
+.cd-kpi-lbl { font-size:.7rem; letter-spacing:.05em; text-transform:uppercase; color:#9ca3af; margin-bottom:8px; }
+.cd-kpi-val { font-size:1.6rem; font-weight:800; color:#0f172a; line-height:1; }
+.cd-kpi-val.pos { color:#16a34a; } .cd-kpi-val.neg { color:#dc2626; }
+.cd-kpi-sub { font-size:.72rem; color:#9ca3af; margin-top:8px; }
+.cd-cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:22px; }
+.cd-panel { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px 18px; }
+.cd-panel h3 { font-size:.9rem; font-weight:700; color:#111827; margin:0 0 12px; }
+.cd-row { display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; padding:6px 0; font-size:.84rem; color:#374151; }
+.cd-bar { grid-column:1/-1; height:6px; background:#f3f4f6; border-radius:9999px; overflow:hidden; }
+.cd-bar i { display:block; height:100%; background:#1d4ed8; }
+.cd-count { font-weight:700; color:#0f172a; }
+.cd-table { width:100%; border-collapse:collapse; font-size:.82rem; }
+.cd-table th { text-align:left; font-size:.68rem; letter-spacing:.05em; text-transform:uppercase; color:#9ca3af; font-weight:600; padding:8px 10px; border-bottom:2px solid #f3f4f6; }
+.cd-table td { padding:10px; border-bottom:1px solid #f3f4f6; color:#374151; vertical-align:top; }
+.cd-table td.num { text-align:right; white-space:nowrap; }
+.cd-badge { display:inline-block; padding:.12rem .5rem; border-radius:9999px; font-size:.72rem; font-weight:600; }
+.cd-badge.positive { background:#dcfce7; color:#15803d; }
+.cd-badge.negative { background:#fee2e2; color:#b91c1c; }
+.cd-badge.neutral  { background:#fef3c7; color:#92400e; }
+.cd-badge.mixed    { background:#e0e7ff; color:#3730a3; }
+.cd-empty { color:#9ca3af; font-style:italic; font-size:.85rem; padding:16px; text-align:center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="{% url 'monitor:campaigns' org.id %}" class="cd-back">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Back to Campaigns
+</a>
+
+<div class="cd-head">
+  <div>
+    <h1 class="page-title">{{ campaign.name }}</h1>
+    <p class="page-subtitle" style="margin-bottom:0;">
+      {% if campaign.date_from or campaign.date_to %}{{ campaign.date_from|date:"d M Y"|default:"…" }} – {{ campaign.date_to|date:"d M Y"|default:"ongoing" }}{% else %}No date range{% endif %}
+    </p>
+    {% if campaign.terms %}
+    <div class="cd-terms">{% for t in campaign.terms %}<span class="cd-term">{{ t }}</span>{% endfor %}</div>
+    {% endif %}
+  </div>
+  <button class="btn btn-primary" id="cmpReportBtn" onclick="generateReport()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    Generate Report
+  </button>
+</div>
+
+<div class="cd-kpis">
+  <div class="cd-kpi"><div class="cd-kpi-lbl">Mentions</div><div class="cd-kpi-val">{{ m.mentions }}</div>
+    <div class="cd-kpi-sub">Social {{ m.by_media.social }} · Online {{ m.by_media.online }} · Print {{ m.by_media.print }} · Broadcast {{ m.by_media.broadcast }}</div></div>
+  <div class="cd-kpi"><div class="cd-kpi-lbl">Cumulative Reach</div><div class="cd-kpi-val">{{ m.reach|floatformat:2|intcomma }}</div><div class="cd-kpi-sub">Potential audience</div></div>
+  <div class="cd-kpi"><div class="cd-kpi-lbl">Positive Share</div><div class="cd-kpi-val pos">{{ m.pos_pct }}%</div><div class="cd-kpi-sub">{{ m.pos }} positive mentions</div></div>
+  <div class="cd-kpi"><div class="cd-kpi-lbl">Negative Share</div><div class="cd-kpi-val {% if m.neg_pct %}neg{% endif %}">{{ m.neg_pct }}%</div><div class="cd-kpi-sub">{{ m.neg }} neg · {{ m.neu }} neutral</div></div>
+</div>
+
+<div class="cd-cols">
+  <div class="cd-panel">
+    <h3>Mentions by Term</h3>
+    {% for t in m.per_term %}
+    <div class="cd-row"><span>{{ t.term }}</span><span class="cd-count">{{ t.count }}</span>
+      <div class="cd-bar"><i style="width:{% if m.per_term.0.count %}{% widthratio t.count m.per_term.0.count 100 %}{% else %}0{% endif %}%;"></i></div>
+    </div>
+    {% empty %}<div class="cd-empty">No terms set.</div>{% endfor %}
+  </div>
+  <div class="cd-panel">
+    <h3>Top Sources</h3>
+    {% for s in m.top_sources %}
+    <div class="cd-row"><span>{{ s.name }}</span><span class="cd-count">{{ s.count }}</span>
+      <div class="cd-bar"><i style="width:{% if m.top_sources.0.count %}{% widthratio s.count m.top_sources.0.count 100 %}{% else %}0{% endif %}%;background:#0f766e;"></i></div>
+    </div>
+    {% empty %}<div class="cd-empty">No coverage yet.</div>{% endfor %}
+  </div>
+</div>
+
+<div class="cd-panel">
+  <h3>Coverage ({{ m.mentions }})</h3>
+  <div style="overflow-x:auto;">
+    <table class="cd-table">
+      <thead><tr><th>Source</th><th>Headline</th><th>Channel</th><th>Date</th><th>Sentiment</th><th class="num">AVE (BWP)</th><th class="num">Reach</th></tr></thead>
+      <tbody>
+        {% for r in m.coverage %}
+        <tr>
+          <td style="font-weight:600;color:#111827;">{{ r.source }}</td>
+          <td>{% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener" style="color:#374151;">{{ r.headline|truncatechars:70 }}</a>{% else %}{{ r.headline|truncatechars:70 }}{% endif %}</td>
+          <td>{{ r.channel }}</td>
+          <td style="white-space:nowrap;">{{ r.date|date:"j M Y" }}</td>
+          <td><span class="cd-badge {{ r.sentiment }}">{{ r.sentiment_label }}</span></td>
+          <td class="num">{{ r.ave|floatformat:2|intcomma }}</td>
+          <td class="num">{{ r.reach|intcomma }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="cd-empty">No coverage matched this campaign's terms{% if campaign.date_from or campaign.date_to %} in the selected window{% endif %}.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ORG_ID = '{{ org.id }}';
+const CAMPAIGN_ID = '{{ campaign.id }}';
+function getCookie(name){ var v=document.cookie.match('(^|;) ?'+name+'=([^;]*)(;|$)'); return v?v[2]:''; }
+
+function generateReport() {
+  var btn = document.getElementById('cmpReportBtn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  fetch('/api/'+ORG_ID+'/campaigns/'+CAMPAIGN_ID+'/report/', {
+    method:'POST', headers:{'X-CSRFToken':getCookie('csrftoken')}
+  }).then(async function(r){ var d=await r.json().catch(function(){return {};}); if(!r.ok||!d.ok) throw new Error(d.error||'Report generation failed'); return d; })
+    .then(function(d){ flashToast('Report generated','success'); window.location.href = d.url; })
+    .catch(function(e){ showToast(e.message,'error'); btn.disabled=false; btn.textContent='Generate Report'; });
+}
+</script>
+{% endblock %}

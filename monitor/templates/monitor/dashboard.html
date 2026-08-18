@@ -1,4 +1,5 @@
 {% extends 'monitor/base.html' %}
+{% load humanize %}
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
@@ -11,7 +12,7 @@
   <div class="stat-card stat-card--blue">
     <div class="stat-card-inner">
       <div class="stat-label">Total Mentions</div>
-      <div class="stat-value">{{ total_mentions }}</div>
+      <div class="stat-value">{{ total_mentions|intcomma }}</div>
       <div class="stat-trend {% if total_mentions > 0 %}trend-up{% else %}trend-flat{% endif %}">
         {% if total_mentions > 0 %}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -97,10 +98,10 @@
       <canvas id="mediaLineChart"></canvas>
     </div>
     <div class="chart-legend-row">
-      <span class="chart-legend-item" style="--c:#3b82f6">Online Articles</span>
-      <span class="chart-legend-item" style="--c:#10b981">Social Media</span>
-      <span class="chart-legend-item" style="--c:#f59e0b">Broadcast</span>
-      <span class="chart-legend-item" style="--c:#ef4444">Print Media</span>
+      <span class="chart-legend-item"><span class="legend-dot" style="background:#3b82f6"></span><span class="legend-label">Online Articles</span></span>
+      <span class="chart-legend-item"><span class="legend-dot" style="background:#10b981"></span><span class="legend-label">Social Media</span></span>
+      <span class="chart-legend-item"><span class="legend-dot" style="background:#f59e0b"></span><span class="legend-label">Broadcast</span></span>
+      <span class="chart-legend-item"><span class="legend-dot" style="background:#ef4444"></span><span class="legend-label">Print Media</span></span>
     </div>
   </div>
 </div>
@@ -108,7 +109,21 @@
 <!-- Latest News -->
 <div class="latest-news-section">
   <h2 class="section-title"><a href="{% url 'monitor:media_online' org.id %}">Latest News</a></h2>
-
+  
+  <div class="global-search" style="margin:14px 0 20px;display:flex;align-items:center;gap:12px;">
+    <input id="globalSearchInput" type="search" placeholder="Search articles" class="form-control" style="max-width:520px;padding:10px 14px;border-radius:8px;border:1px solid #cbd5e1;background:#ffffff;color:#0f172a;"/>
+    <div style="position:relative;">
+      <select id="globalSearchType" class="form-control" style="width:160px;padding:10px 12px;padding-right:36px;border-radius:8px;border:1px solid #cbd5e1;background:#ffffff;color:#0f172a;appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;">
+        <option value="all">All Media</option>
+        <option value="online">Online</option>
+        <option value="print">Print</option>
+        <option value="broadcast">Broadcast</option>
+        <option value="social">Social</option>
+      </select>
+      <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#0f172a;font-size:14px;">▾</span>
+    </div>
+    <div id="globalSearchCount" style="color:rgba(255,255,255,.8);font-size:13px;margin-left:auto;">Showing all</div>
+  </div>
   <!-- Online Articles -->
   <div class="subsection">
     <div class="subsection-header">
@@ -132,6 +147,9 @@
       </select>
       <select class="filter-select" data-field="country" onchange="filterTable(this,'online-table','country')">
         <option value="">All Countries</option>
+        {% for c in online_countries %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
       </select>
       <select class="filter-select" data-field="coverage" onchange="filterTable(this,'online-table','coverage')">
         <option value="">All Coverage</option>
@@ -168,13 +186,13 @@
                 </div>
               </div>
             </td>
-            <td class="headline-cell"><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:50 }}</a></td>
+            <td class="headline-cell">{% if a.url %}<a href="{{ a.url }}" target="_blank" rel="noopener" class="table-link">{{ a.headline|truncatechars:50 }}</a>{% else %}<span class="table-link">{{ a.headline|truncatechars:50 }}</span>{% endif %}</td>
             <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
             <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
             <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
-            <td class="text-muted">{{ a.ave|floatformat:2 }}</td>
+            <td class="text-muted">{{ a.ave|floatformat:2|intcomma }}</td>
             <td><span class="badge badge--blue">{{ a.coverage|default:"Earned" }}</span></td>
-            <td class="text-muted">{{ a.reach|default:0 }}</td>
+            <td class="text-muted">{{ a.reach|default:0|intcomma }}</td>
             <td>
               <button class="icon-btn icon-btn--danger" onclick="deleteOnline('{{ org.id }}',{{ a.id }})">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -203,8 +221,29 @@
       </a>
     </div>
     {% if latest_print %}
+    <div class="filter-bar">
+      <select class="filter-select" data-field="sentiment" onchange="filterTable(this,'print-table','sentiment')">
+        <option value="">All Sentiment</option>
+        <option value="positive">Positive</option>
+        <option value="neutral">Neutral</option>
+        <option value="negative">Negative</option>
+      </select>
+      <select class="filter-select" data-field="country" onchange="filterTable(this,'print-table','country')">
+        <option value="">All Countries</option>
+        {% for c in print_countries %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+      <select class="filter-select" data-field="section" onchange="filterTable(this,'print-table','section')">
+        <option value="">All Sections</option>
+        {% for s in print_sections %}
+        <option value="{{ s }}">{{ s }}</option>
+        {% endfor %}
+      </select>
+      <span class="filter-count">Showing {{ latest_print|length }} of {{ latest_print|length }} articles</span>
+    </div>
     <div class="table-card">
-      <table class="data-table table-hover">
+      <table id="print-table" class="data-table table-hover">
         <thead>
           <tr>
             <th>Source</th>
@@ -219,13 +258,13 @@
         </thead>
         <tbody>
           {% for a in latest_print %}
-          <tr>
+          <tr data-sentiment="{{ a.sentiment }}" data-country="{{ a.country|default:'Unknown' }}" data-section="{{ a.section|default:'Main' }}">
             <td class="text-muted">{{ a.source }}</td>
-            <td><a href="{{ a.url }}" target="_blank" class="table-link">{{ a.headline|truncatechars:50 }}</a></td>
+            <td>{% if a.url %}<a href="{{ a.url }}" target="_blank" rel="noopener" class="table-link">{{ a.headline|truncatechars:50 }}</a>{% else %}<span class="table-link">{{ a.headline|truncatechars:50 }}</span>{% endif %}</td>
             <td class="text-muted">{{ a.date_published|date:"M j, Y" }}</td>
             <td class="text-muted">{{ a.country|default:"Unknown" }}</td>
             <td><span class="badge badge--{{ a.sentiment }}">{{ a.get_sentiment_display }}</span></td>
-            <td class="text-muted">{{ a.ave|floatformat:2 }}</td>
+            <td class="text-muted">{{ a.ave|floatformat:2|intcomma }}</td>
             <td class="text-muted">{{ a.section|default:"Main" }}</td>
             <td>
               <button class="icon-btn icon-btn--danger" onclick="deletePrint('{{ org.id }}',{{ a.id }})">
@@ -242,6 +281,81 @@
     {% endif %}
   </div>
 
+  <!-- Broadcast Mentions -->
+  <div class="subsection">
+    <div class="subsection-header">
+      <div>
+        <h3 class="subsection-title">Broadcast Mentions</h3>
+        <p class="subsection-subtitle">Latest broadcast media mentions</p>
+      </div>
+      <a href="{% url 'monitor:media_broadcast' org.id %}" class="view-all-btn">
+        View All
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+      </a>
+    </div>
+    {% if latest_broadcast %}
+    <div class="filter-bar">
+      <select class="filter-select" data-field="sentiment" onchange="filterTable(this,'broadcast-table','sentiment')">
+        <option value="">All Sentiment</option>
+        <option value="positive">Positive</option>
+        <option value="neutral">Neutral</option>
+        <option value="negative">Negative</option>
+      </select>
+      <select class="filter-select" data-field="country" onchange="filterTable(this,'broadcast-table','country')">
+        <option value="">All Countries</option>
+        {% for c in broadcast_countries %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+      <select class="filter-select" data-field="broadcast_type" onchange="filterTable(this,'broadcast-table','broadcast_type')">
+        <option value="">All Types</option>
+        {% for code,label in broadcast_types %}
+        <option value="{{ code|lower }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <span class="filter-count">Showing {{ latest_broadcast|length }} of {{ latest_broadcast|length }} mentions</span>
+    </div>
+    <div class="table-card">
+      <table class="data-table table-hover" id="broadcast-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Summary</th>
+            <th>Date Published</th>
+            <th>Country</th>
+            <th>Sentiment</th>
+            <th>AVE</th>
+            <th>Duration</th>
+            <th>Type</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in latest_broadcast %}
+          <tr data-sentiment="{{ b.sentiment }}" data-country="{{ b.country|default:'Unknown' }}" data-broadcast_type="{{ b.broadcast_type|lower }}">
+            <td class="text-muted">{{ b.source }}</td>
+            <td>{% if b.url %}<a href="{{ b.url }}" target="_blank" rel="noopener" class="table-link">{{ b.headline|truncatechars:50 }}</a>{% else %}<span class="table-link">{{ b.headline|truncatechars:50 }}</span>{% endif %}</td>
+            <td class="text-muted">{{ b.date_published|date:"M j, Y" }}</td>
+            <td class="text-muted">{{ b.country|default:"Unknown" }}</td>
+            <td><span class="badge badge--{{ b.sentiment }}">{{ b.get_sentiment_display }}</span></td>
+            <td class="text-muted">{{ b.ave|floatformat:2|intcomma }}</td>
+            <td class="text-muted">{{ b.duration|default:"—" }}</td>
+            <td class="text-muted">{{ b.broadcast_type }}</td>
+            <td>
+              <button class="icon-btn icon-btn--danger" onclick="deleteBroadcast('{{ org.id }}',{{ b.id }})">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-table">No broadcast mentions yet. <a href="{% url 'monitor:media_broadcast' org.id %}">Add the first one.</a></div>
+    {% endif %}
+  </div>
+
   <!-- Social Media Posts -->
   <div class="subsection">
     <div class="subsection-header">
@@ -255,8 +369,29 @@
       </a>
     </div>
     {% if latest_social %}
+    <div class="filter-bar">
+      <select class="filter-select" data-field="sentiment" onchange="filterTable(this,'social-table','sentiment')">
+        <option value="">All Sentiment</option>
+        <option value="positive">Positive</option>
+        <option value="neutral">Neutral</option>
+        <option value="negative">Negative</option>
+      </select>
+      <select class="filter-select" data-field="country" onchange="filterTable(this,'social-table','country')">
+        <option value="">All Countries</option>
+        {% for c in social_countries %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+      <select class="filter-select" data-field="platform" onchange="filterTable(this,'social-table','platform')">
+        <option value="">All Platforms</option>
+        {% for p in social_platforms %}
+        <option value="{{ p|lower }}">{{ p }}</option>
+        {% endfor %}
+      </select>
+      <span class="filter-count">Showing {{ latest_social|length }} of {{ latest_social|length }} posts</span>
+    </div>
     <div class="table-card">
-      <table class="data-table table-hover">
+      <table id="social-table" class="data-table table-hover">
         <thead>
           <tr>
             <th>Source</th>
@@ -273,7 +408,7 @@
         </thead>
         <tbody>
           {% for p in latest_social %}
-          <tr>
+          <tr data-sentiment="{{ p.sentiment }}" data-country="{{ p.country|default:'Unknown' }}" data-platform="{{ p.platform|lower }}">
             <td>
               <div class="source-cell">
                 <div class="source-icon">{{ p.platform|first|upper }}</div>
@@ -283,14 +418,14 @@
                 </div>
               </div>
             </td>
-            <td><a href="{{ p.url }}" target="_blank" class="table-link">{{ p.headline|truncatechars:50 }}</a></td>
+            <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener" class="table-link">{{ p.headline|truncatechars:50 }}</a>{% else %}<span class="table-link">{{ p.headline|truncatechars:50 }}</span>{% endif %}</td>
             <td class="text-muted">{{ p.page_name|default:"—" }}</td>
             <td class="text-muted">{{ p.date_published|date:"M j, Y" }}</td>
             <td class="text-muted">{{ p.country|default:"Unknown" }}</td>
             <td><span class="badge badge--{{ p.sentiment }}">{{ p.get_sentiment_display }}</span></td>
-            <td class="text-muted">{{ p.ave|floatformat:2 }}</td>
+            <td class="text-muted">{{ p.ave|floatformat:2|intcomma }}</td>
             <td class="text-muted">{{ p.rank|floatformat:2 }}</td>
-            <td class="text-muted">{{ p.reach|default:0 }}</td>
+            <td class="text-muted">{{ p.reach|default:0|intcomma }}</td>
             <td>
               <button class="icon-btn icon-btn--danger" onclick="deleteSocial('{{ org.id }}',{{ p.id }})">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -389,6 +524,10 @@ function deleteSocial(orgId, id) {
   if (!confirm('Delete this post?')) return;
   apiRequest(`/api/${orgId}/social/${id}/delete/`, 'DELETE').then(() => location.reload());
 }
+function deleteBroadcast(orgId, id) {
+  if (!confirm('Delete this broadcast mention?')) return;
+  apiRequest(`/api/${orgId}/broadcast/${id}/delete/`, 'DELETE').then(() => location.reload());
+}
 function filterTable(select, tableId, field) {
   const table = document.getElementById(tableId);
   if (!table) return;
@@ -415,5 +554,40 @@ function filterTable(select, tableId, field) {
     countEl.textContent = `Showing ${visible} of ${rows.length} articles`;
   }
 }
+
+// Global search across media tables
+function searchArticles() {
+  const term = (document.getElementById('globalSearchInput')?.value || '').trim().toLowerCase();
+  const type = (document.getElementById('globalSearchType')?.value || 'all');
+  const tables = [];
+  if (type === 'all' || type === 'online') tables.push(document.getElementById('online-table'));
+  if (type === 'all' || type === 'print') tables.push(document.getElementById('print-table'));
+  if (type === 'all' || type === 'broadcast') tables.push(document.getElementById('broadcast-table'));
+  if (type === 'all' || type === 'social') tables.push(document.getElementById('social-table'));
+
+  let totalRows = 0, matched = 0;
+  tables.forEach(t => {
+    if (!t) return;
+    const rows = Array.from(t.querySelectorAll('tbody tr'));
+    totalRows += rows.length;
+    rows.forEach(row => {
+      const text = row.textContent.replace(/\s+/g,' ').toLowerCase();
+      const show = term === '' ? true : text.indexOf(term) !== -1;
+      row.style.display = show ? '' : 'none';
+      if (show) matched += 1;
+    });
+  });
+  const countEl = document.getElementById('globalSearchCount');
+  if (countEl) {
+    if (!term) countEl.textContent = `Showing all (${totalRows})`;
+    else countEl.textContent = `Matches: ${matched} of ${totalRows}`;
+  }
+}
+
+// Wire up search input and media type select
+const gInput = document.getElementById('globalSearchInput');
+if (gInput) gInput.addEventListener('input', searchArticles);
+const gType = document.getElementById('globalSearchType');
+if (gType) gType.addEventListener('change', searchArticles);
 </script>
 {% endblock %}

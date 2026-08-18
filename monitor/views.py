@@ -1,7 +1,9 @@
+import csv
+import io
 import json
 import re
 import calendar
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from collections import defaultdict, Counter
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -9,18 +11,31 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.db.models import Count, Sum, Q
 from django.utils import timezone
 
 from .models import (
-    Organization, User, Keyword, Competitor,
+    Organization, User, Keyword, Competitor, CompetitorArticle,
     OnlineArticle, PrintArticle, SocialMediaPost, BroadcastMention, Alert, MediaSource,
-    GeneratedReport,
+    GeneratedReport, IssueReport, Campaign, Event,
     SENTIMENT_CHOICES, COVERAGE_CHOICES, PLATFORM_CHOICES, INDUSTRY_CHOICES, ROLE_CHOICES,
-    SOURCE_TYPE_CHOICES,
+    SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES, EVENT_CATEGORY_CHOICES,
 )
+from .relevancy import compute_relevancy, filter_relevant
+from .print_metrics import estimate_print_reach as _print_reach
+from .alert_email import build_and_send, start_of_today
+from .org_email import send_org_disabled_email, send_org_enabled_email
+
+
+def _absolute_url(path):
+    """Prefix a path with settings.SITE_URL — used when building links inside
+    Event records, which are read outside of a request (by the alert digest)."""
+    base = getattr(settings, 'SITE_URL', 'https://sociallight.africa').rstrip('/')
+    return f"{base}{path}"
+
 
 COMPETITOR_SUGGESTIONS = {
     'Banking & Financial Services': [
@@ -101,9 +116,14 @@ def login_view(request):
         return redirect('monitor:organizations')
     error = None
     if request.method == 'POST':
-        username = request.POST.get('username', '').strip()
+        email = request.POST.get('email', '').strip().lower()
         password = request.POST.get('password', '')
-        user = authenticate(request, username=username, password=password)
+        user = None
+        try:
+            db_user = User.objects.get(email__iexact=email)
+            user = authenticate(request, username=db_user.username, password=password)
+        except User.DoesNotExist:
+            pass
         if user:
             login(request, user)
             next_url = request.GET.get('next', '')
@@ -112,7 +132,7 @@ def login_view(request):
             if user.role == 'platform_admin':
                 return redirect('/app/organizations/?select=1')
             return redirect('/app/organizations/')
-        error = 'Invalid username or password.'
+        error = 'Invalid email or password.'
     return render(request, 'monitor/login.html', {'error': error})
 
 
@@ -195,6 +215,7 @@ def organization_create(request):
 @require_http_methods(['PUT', 'POST'])
 def organization_update(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
+    was_active = org.status == 'active'
     if request.content_type and 'multipart' in request.content_type:
         data = request.POST
         org.name = data.get('name', org.name).strip()
@@ -220,6 +241,23 @@ def organization_update(request, org_id):
         org.country = data.get('country', org.country)
         org.status = data.get('status', org.status)
     org.save()
+
+    # Notify org admins when the organisation's monitoring is paused or resumed.
+    # A mail failure must not fail the update itself.
+    is_active = org.status == 'active'
+    if was_active and not is_active:
+        notify = send_org_disabled_email
+    elif is_active and not was_active:
+        notify = send_org_enabled_email
+    else:
+        notify = None
+    if notify:
+        try:
+            notify(org)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+
     return JsonResponse({'ok': True})
 
 
@@ -275,34 +313,51 @@ def dashboard(request, org_id):
     today = date.today()
     month_start = today.replace(day=1)
 
-    total_online = org.online_articles.count()
-    total_print = org.print_articles.count()
-    total_social = org.social_posts.count()
-    total_broadcast = org.broadcast_mentions.count()
+    # Relevance-filtered base querysets — everything below counts/lists only the
+    # mentions meeting the org's relevancy threshold (a no-op when threshold is 0).
+    online_qs = filter_relevant(org.online_articles.all())
+    print_qs = filter_relevant(org.print_articles.all())
+    social_qs = filter_relevant(org.social_posts.all())
+    broadcast_qs = filter_relevant(org.broadcast_mentions.all())
+
+    total_online = online_qs.count()
+    total_print = print_qs.count()
+    total_social = social_qs.count()
+    total_broadcast = broadcast_qs.count()
     total_mentions = total_online + total_print + total_social + total_broadcast
 
-    month_online = org.online_articles.filter(date_published__gte=month_start).count()
-    month_print = org.print_articles.filter(date_published__gte=month_start).count()
-    month_social = org.social_posts.filter(date_published__gte=month_start).count()
-    month_broadcast = org.broadcast_mentions.filter(date_published__gte=month_start).count()
+    month_online = online_qs.filter(date_published__gte=month_start).count()
+    month_print = print_qs.filter(date_published__gte=month_start).count()
+    month_social = social_qs.filter(date_published__gte=month_start).count()
+    month_broadcast = broadcast_qs.filter(date_published__gte=month_start).count()
     monthly_mentions = month_online + month_print + month_social + month_broadcast
 
     keywords = org.keywords.all()
 
     # Monthly chart data for current year
     months = list(calendar.month_abbr)[1:]
-    online_monthly = _monthly_counts(org.online_articles, today.year)
-    print_monthly = _monthly_counts(org.print_articles, today.year)
-    social_monthly = _monthly_counts(org.social_posts, today.year)
-    broadcast_monthly = _monthly_counts(org.broadcast_mentions, today.year)
+    online_monthly = _monthly_counts(online_qs, today.year)
+    print_monthly = _monthly_counts(print_qs, today.year)
+    social_monthly = _monthly_counts(social_qs, today.year)
+    broadcast_monthly = _monthly_counts(broadcast_qs, today.year)
 
     # Keyword trend data (from keywords + article counts this month)
     keyword_trends = _keyword_trends(org, month_start, today)
 
     # Latest articles (8 each)
-    latest_online = org.online_articles.all()[:8]
-    latest_print = org.print_articles.all()[:8]
-    latest_social = org.social_posts.all()[:8]
+    latest_online = online_qs[:8]
+    latest_print = print_qs[:8]
+    latest_social = social_qs[:8]
+    latest_broadcast = broadcast_qs[:8]
+
+    # Distinct lists for dashboard filters
+    print_countries = list(print_qs.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    print_sections = list(print_qs.exclude(section='').values_list('section', flat=True).distinct().order_by('section'))
+    social_countries = list(social_qs.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    social_platforms = list(social_qs.exclude(platform='').values_list('platform', flat=True).distinct().order_by('platform'))
+    online_countries = list(online_qs.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    broadcast_countries = list(broadcast_qs.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
+    broadcast_types = BROADCAST_TYPE_CHOICES
 
     # Media types present
     media_types = []
@@ -331,6 +386,14 @@ def dashboard(request, org_id):
         'latest_online': latest_online,
         'latest_print': latest_print,
         'latest_social': latest_social,
+        'latest_broadcast': latest_broadcast,
+        'print_countries': print_countries,
+        'print_sections': print_sections,
+        'social_countries': social_countries,
+        'social_platforms': social_platforms,
+        'online_countries': online_countries,
+        'broadcast_countries': broadcast_countries,
+        'broadcast_types': broadcast_types,
         'current_year': today.year,
     })
 
@@ -343,17 +406,41 @@ def _monthly_counts(queryset, year):
 
 
 def _keyword_trends(org, start, end):
-    keywords = list(org.keywords.values_list('keyword', flat=True))
+    """Distribution of this period's mentions across the org's tracked terms.
+
+    Counts every media type (online, print, social, broadcast) and includes both
+    the org's own keywords and its competitors (matched by name + aliases), so the
+    chart reflects the same coverage that drives the headline mention totals.
+    Terms that match nothing are dropped; the busiest 10 are returned.
+    """
+    querysets = [
+        filter_relevant(org.online_articles.all()),
+        filter_relevant(org.print_articles.all()),
+        filter_relevant(org.social_posts.all()),
+        filter_relevant(org.broadcast_mentions.all()),
+    ]
+
+    # (label, [match terms]) for every tracked entity: own keywords + competitors.
+    entities = [(kw, [kw]) for kw in org.keywords.values_list('keyword', flat=True)]
+    entities += [(c.name, c.match_terms()) for c in org.competitors.all()]
+
     result = []
-    for kw in keywords[:10]:
-        q = Q(headline__icontains=kw) | Q(summary__icontains=kw)
-        count = (
-            org.online_articles.filter(date_published__range=(start, end)).filter(q).count() +
-            org.print_articles.filter(date_published__range=(start, end)).filter(q).count() +
-            org.social_posts.filter(date_published__range=(start, end)).filter(q).count()
+    for label, terms in entities:
+        q = Q()
+        for term in (t.strip() for t in terms):
+            if term:
+                q |= Q(headline__icontains=term) | Q(summary__icontains=term)
+        if not q:
+            continue
+        count = sum(
+            qs.filter(date_published__range=(start, end)).filter(q).count()
+            for qs in querysets
         )
-        result.append({'label': kw, 'value': count})
-    return result
+        if count:
+            result.append({'label': label, 'value': count})
+
+    result.sort(key=lambda r: r['value'], reverse=True)
+    return result[:10]
 
 
 # ── Analytics ─────────────────────────────────────────────────────────────────
@@ -377,6 +464,9 @@ def analytics(request, org_id):
         qs = org.social_posts.all()
         title = 'Social Posts'
 
+    # Surface only mentions meeting the relevancy threshold (no-op when 0).
+    qs = filter_relevant(qs)
+
     total = qs.count()
     month_start = today.replace(day=1)
     this_month = qs.filter(date_published__gte=month_start).count()
@@ -396,13 +486,23 @@ def analytics(request, org_id):
     neu = qs.filter(sentiment='neutral').count()
     neg = qs.filter(sentiment='negative').count()
 
-    # Top sources
+    # Top sources (normalize platform/source names so variants map together)
     source_field = 'source' if hasattr(qs.model, 'source') else 'platform'
-    top_sources = list(
-        qs.values(source_field).annotate(c=Count('id')).order_by('-c')[:10]
-    )
-    top_sources_labels = [row.get(source_field) or 'Unknown' for row in top_sources]
-    top_sources_values = [row['c'] for row in top_sources]
+    raw_counts = qs.values(source_field).annotate(c=Count('id'))
+    agg = Counter()
+    for row in raw_counts:
+        raw_name = row.get(source_field) or ''
+        if source_field == 'platform':
+            name = _normalize_platform(raw_name)
+        else:
+            name = raw_name.strip() or 'Unknown'
+        agg[name] += row['c']
+    top = agg.most_common(10)
+    top_sources_labels = [t[0] for t in top]
+    top_sources_values = [t[1] for t in top]
+    # Also provide `top_sources` as a list of dicts for templates that expect the
+    # original queryset-style rows (keyed by `source` or `platform`).
+    top_sources = [{source_field: t[0], 'c': t[1]} for t in top]
 
     # Countries
     top_countries = list(
@@ -441,7 +541,7 @@ def analytics(request, org_id):
 @login_required
 def media_online(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
-    qs = org.online_articles.all()
+    qs = filter_relevant(org.online_articles.all())
 
     q = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
@@ -491,11 +591,13 @@ def media_online(request, org_id):
 def online_article_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
+    headline = data.get('headline', '').strip()
+    summary = data.get('summary', '').strip()
     article = OnlineArticle.objects.create(
         organization=org,
         source=data.get('source', '').strip(),
-        headline=data.get('headline', '').strip(),
-        summary=data.get('summary', '').strip(),
+        headline=headline,
+        summary=summary,
         url=data.get('url', '').strip(),
         date_published=data.get('date_published') or date.today(),
         country=data.get('country', '').strip(),
@@ -503,7 +605,7 @@ def online_article_create(request, org_id):
         ave=float(data.get('ave', 0) or 0),
         coverage=data.get('coverage', 'Not Set'),
         reach=int(data.get('reach', 0) or 0),
-        relevancy=float(data.get('relevancy', 0) or 0),
+        relevancy=compute_relevancy(headline, summary, org=org),
     )
     return JsonResponse({'id': article.id, 'headline': article.headline[:60]})
 
@@ -543,7 +645,7 @@ def online_article_delete(request, org_id, article_id):
 @login_required
 def media_print(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
-    qs = org.print_articles.all()
+    qs = filter_relevant(org.print_articles.all())
 
     q = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
@@ -606,6 +708,7 @@ def print_article_create(request, org_id):
         country=data.get('country', '').strip(),
         sentiment=data.get('sentiment', 'neutral'),
         ave=float(data.get('ave', 0) or 0),
+        reach=int(float(data.get('reach') or 0)) or _print_reach(data.get('source', '')),
     )
     return JsonResponse({'id': article.id, 'headline': article.headline[:60]})
 
@@ -621,6 +724,8 @@ def print_article_update(request, org_id, article_id):
             setattr(article, field, data[field].strip() if isinstance(data[field], str) else data[field])
     if 'ave' in data:
         article.ave = float(data['ave'] or 0)
+    if 'reach' in data:
+        article.reach = int(float(data['reach'] or 0)) or _print_reach(article.source)
     if 'date_published' in data and data['date_published']:
         article.date_published = data['date_published']
     article.save()
@@ -636,12 +741,377 @@ def print_article_delete(request, org_id, article_id):
     return JsonResponse({'ok': True})
 
 
+_SENTIMENT_MAP = {
+    '1': 'positive', 'positive': 'positive', 'pos': 'positive',
+    '0': 'neutral', 'neutral': 'neutral', 'neu': 'neutral', '': 'neutral',
+    '-1': 'negative', 'negative': 'negative', 'neg': 'negative',
+    'mixed': 'mixed',
+}
+
+_PLATFORM_MAP = {
+    'facebook': 'Facebook',
+    'twitter': 'X',
+    'x': 'X',
+    'instagram': 'Instagram',
+    'linkedin': 'LinkedIn',
+    'youtube': 'YouTube',
+    'tiktok': 'TikTok',
+    'other': 'Other',
+}
+
+
+def _normalize_platform(platform_raw):
+    """Normalize platform name to standard form."""
+    if not platform_raw:
+        return 'Other'
+    normalized = _PLATFORM_MAP.get(platform_raw.strip().lower(), None)
+    if normalized:
+        return normalized
+    # If not found, title-case and return
+    return platform_raw.strip().title()
+
+
+# Confirmed Botswana broadcast stations (matched on a normalised station name),
+# used to infer country when the source feed omits it. Extend as more are confirmed.
+_BW_BROADCAST_STATIONS = ('gabzfm', 'gabz', 'dumafm', 'duma')
+
+
+def _broadcast_country(station, country=''):
+    """Use the supplied country if present, else infer 'Botswana' for known local
+    stations (Gabz FM, Duma FM). Otherwise leave blank — don't assume."""
+    country = (country or '').strip()
+    if country:
+        return country
+    key = re.sub(r'[^a-z0-9]', '', (station or '').lower())
+    if key and any(key.startswith(s) for s in _BW_BROADCAST_STATIONS):
+        return 'Botswana'
+    return ''
+
+
+def _normalize_csv_row(row):
+    """Case/whitespace-insensitive header lookup for CSV bulk imports.
+
+    Clipping-service exports vary wildly in header casing (SOURCE vs source
+    vs Source) even when the underlying column is the one we expect.
+    Normalize once per row so `row.get('some_key')` below matches regardless
+    of how the source file capitalized its header.
+    """
+    return {(k or '').strip().lower(): v for k, v in row.items() if k}
+
+
+def _parse_csv_date(value):
+    if not value:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    # Try ISO 8601 with optional trailing Z (e.g. "2026-05-26T00:00:00.000Z")
+    try:
+        return datetime.fromisoformat(value.replace('Z', '+00:00')).date()
+    except ValueError:
+        pass
+    for fmt in (
+        '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y',
+        '%b %d %Y', '%d %b %Y',      # "Aug 03 2026" / "03 Aug 2026"
+        '%b %d, %Y', '%d %b, %Y',    # with a comma before the year
+        '%B %d %Y', '%d %B %Y',      # full month name variants
+    ):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+@login_required
+@require_http_methods(['POST'])
+def print_article_csv_upload(request, org_id):
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+    keywords = list(org.keywords.all())
+    competitors = list(org.competitors.all())
+
+    for idx, row in enumerate(reader, start=2):  # row 1 is header
+        row = _normalize_csv_row(row)
+
+        summary = (row.get('summary') or row.get('snippet') or '').strip()
+        headline = (row.get('headline') or row.get('title') or '').strip()
+        if not headline:
+            # Some clipping-service exports only give a summary/snippet with
+            # no separate headline column — fall back rather than drop the row.
+            headline = summary[:200]
+        if not headline:
+            errors.append(f'Row {idx}: missing headline')
+            continue
+
+        published = _parse_csv_date(
+            row.get('publicationdate') or row.get('date published') or row.get('date') or row.get('createdat')
+        )
+        if not published:
+            errors.append(f'Row {idx}: invalid or missing publicationDate')
+            continue
+
+        sentiment_raw = (row.get('sentiment') or '').strip().lower()
+        sentiment = _SENTIMENT_MAP.get(sentiment_raw, 'neutral')
+
+        try:
+            ave_value = float((row.get('ave') or '0').strip() or 0)
+        except ValueError:
+            ave_value = 0
+
+        publication = (row.get('publication') or row.get('source') or '').strip()
+        try:
+            reach_value = int(float((row.get('reach') or '0').strip() or 0))
+        except ValueError:
+            reach_value = 0
+        to_create.append(PrintArticle(
+            organization=org,
+            source=publication,
+            headline=headline,
+            summary=summary,
+            author=(row.get('byline') or '').strip(),
+            section=(row.get('section') or '').strip(),
+            url=(row.get('url') or row.get('link') or '').strip(),
+            date_published=published,
+            country=(row.get('country') or '').strip(),
+            sentiment=sentiment,
+            ave=ave_value,
+            reach=reach_value or _print_reach(publication),  # use given reach, else estimate
+            relevancy=compute_relevancy(headline, summary, keywords=keywords, competitors=competitors),
+        ))
+
+    if to_create:
+        PrintArticle.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
+
+
+@login_required
+@require_http_methods(['POST'])
+def online_article_csv_upload(request, org_id):
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+    keywords = list(org.keywords.all())  # fetched once; reused for every row
+    competitors = list(org.competitors.all())  # competitor coverage counts toward relevancy
+
+    for idx, row in enumerate(reader, start=2):
+        title = (row.get('title') or row.get('headline') or '').strip()
+        if not title:
+            errors.append(f'Row {idx}: missing title')
+            continue
+
+        published = _parse_csv_date(row.get('publication_date') or row.get('publicationDate') or row.get('createdAt'))
+        if not published:
+            errors.append(f'Row {idx}: invalid or missing publication_date')
+            continue
+
+        sentiment_raw = (row.get('sentiment') or '').strip().lower()
+        sentiment = _SENTIMENT_MAP.get(sentiment_raw, 'neutral')
+
+        try:
+            ave_value = float((row.get('ave') or '0').strip() or 0)
+        except ValueError:
+            ave_value = 0
+
+        try:
+            reach_value = int((row.get('reach') or '0').strip() or 0)
+        except ValueError:
+            reach_value = 0
+
+        coverage = (row.get('coverage_type') or row.get('coverage') or row.get('coverageType') or '').strip()
+        summary = (row.get('snippet') or row.get('summary') or '').strip()
+
+        to_create.append(OnlineArticle(
+            organization=org,
+            source=(row.get('source') or '').strip(),
+            headline=title,
+            summary=summary,
+            url=(row.get('url') or '').strip(),
+            date_published=published,
+            country=(row.get('country') or '').strip(),
+            sentiment=sentiment,
+            ave=ave_value,
+            coverage=coverage or 'Not Set',
+            reach=reach_value,
+            relevancy=compute_relevancy(title, summary, keywords=keywords, competitors=competitors),
+        ))
+
+    if to_create:
+        OnlineArticle.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
+
+
+@login_required
+@require_http_methods(['POST'])
+def social_post_csv_upload(request, org_id):
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+    keywords = list(org.keywords.all())
+    competitors = list(org.competitors.all())
+
+    for idx, row in enumerate(reader, start=2):
+        row = _normalize_csv_row(row)
+        message = (row.get('message') or row.get('headline') or '').strip()
+        if not message:
+            errors.append(f'Row {idx}: missing message')
+            continue
+
+        published = _parse_csv_date(row.get('createdtime') or row.get('createdat'))
+        if not published:
+            errors.append(f'Row {idx}: invalid or missing createdTime')
+            continue
+
+        sentiment_raw = (row.get('sentiment') or '').strip().lower()
+        sentiment = _SENTIMENT_MAP.get(sentiment_raw, 'neutral')
+
+        try:
+            ave_value = float((row.get('ave') or '0').strip() or 0)
+        except ValueError:
+            ave_value = 0
+
+        try:
+            reach_value = int((row.get('reach') or '0').strip() or 0)
+        except ValueError:
+            reach_value = 0
+
+        platform = _normalize_platform(row.get('source') or row.get('platform') or '')
+        summary = (row.get('group') or '').strip()
+
+        to_create.append(SocialMediaPost(
+            organization=org,
+            platform=platform,
+            page_name=(row.get('pagename') or '').strip(),
+            headline=message,
+            summary=summary,
+            url=(row.get('link') or row.get('url') or '').strip(),
+            date_published=published,
+            country=(row.get('country') or '').strip(),
+            sentiment=sentiment,
+            ave=ave_value,
+            rank=float((row.get('rank') or 0) or 0),
+            reach=reach_value,
+            relevancy=compute_relevancy(message, summary, keywords=keywords, competitors=competitors),
+        ))
+
+    if to_create:
+        SocialMediaPost.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
+
+
+@login_required
+@require_http_methods(['POST'])
+def broadcast_csv_upload(request, org_id):
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+    keywords = list(org.keywords.all())          # fetched once; reused for every row
+    competitors = list(org.competitors.all())    # competitor coverage counts toward relevancy
+
+    for idx, row in enumerate(reader, start=2):
+        mention = (row.get('mention') or row.get('headline') or '').strip()
+        if not mention:
+            errors.append(f'Row {idx}: missing mention')
+            continue
+
+        published = _parse_csv_date(row.get('mentionDT') or row.get('mentionDt') or row.get('publication_date') or row.get('createdAt'))
+        if not published:
+            errors.append(f'Row {idx}: invalid or missing mentionDT')
+            continue
+
+        try:
+            ave_value = float((row.get('ave') or '0').strip() or 0)
+        except ValueError:
+            ave_value = 0
+
+        btype_raw = (row.get('stationType') or row.get('station_type') or row.get('stationType') or '').strip()
+        btype = btype_raw.upper() if btype_raw else 'RADIO'
+        if btype not in dict(BROADCAST_TYPE_CHOICES):
+            # try matching by label
+            rev = {v.upper(): k for k, v in BROADCAST_TYPE_CHOICES}
+            btype = rev.get(btype_raw.upper(), 'RADIO')
+
+        station = (row.get('station') or row.get('client') or '').strip()
+        summary = (row.get('keyword') or row.get('search') or '').strip()
+        to_create.append(BroadcastMention(
+            organization=org,
+            source=station,
+            headline=mention,
+            summary=summary,
+            url=(row.get('url') or '').strip(),
+            date_published=published,
+            country=_broadcast_country(station, row.get('country')),
+            sentiment='neutral',
+            ave=ave_value,
+            duration=(row.get('duration') or '').strip(),
+            broadcast_type=btype,
+            relevancy=compute_relevancy(mention, summary, keywords=keywords, competitors=competitors),
+        ))
+
+    if to_create:
+        BroadcastMention.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
+
+
 # ── Media: Social Posts ───────────────────────────────────────────────────────
 
 @login_required
 def media_social(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
-    qs = org.social_posts.all()
+    qs = filter_relevant(org.social_posts.all())
 
     q = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
@@ -691,12 +1161,17 @@ def media_social(request, org_id):
 def social_post_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
+    headline = data.get('headline', '').strip()
+    summary = data.get('summary', '').strip()
+    # Score relevancy so a manually added post isn't hidden by the display-time
+    # relevancy filter (a form-supplied 0 would fall below any threshold > 0).
+    relevancy = float(data.get('relevancy', 0) or 0) or compute_relevancy(headline, summary, org=org)
     post = SocialMediaPost.objects.create(
         organization=org,
-        platform=data.get('platform', 'Facebook'),
+        platform=_normalize_platform(data.get('platform', 'Facebook')),
         page_name=data.get('page_name', '').strip(),
-        headline=data.get('headline', '').strip(),
-        summary=data.get('summary', '').strip(),
+        headline=headline,
+        summary=summary,
         url=data.get('url', '').strip(),
         date_published=data.get('date_published') or date.today(),
         country=data.get('country', '').strip(),
@@ -704,7 +1179,7 @@ def social_post_create(request, org_id):
         ave=float(data.get('ave', 0) or 0),
         rank=float(data.get('rank', 0) or 0),
         reach=int(data.get('reach', 0) or 0),
-        relevancy=float(data.get('relevancy', 0) or 0),
+        relevancy=relevancy,
     )
     return JsonResponse({'id': post.id})
 
@@ -715,7 +1190,7 @@ def social_post_update(request, org_id, post_id):
     org = get_object_or_404(Organization, id=org_id)
     post = get_object_or_404(SocialMediaPost, id=post_id, organization=org)
     data = json.loads(request.body)
-    post.platform = data.get('platform', post.platform)
+    post.platform = _normalize_platform(data.get('platform', post.platform))
     post.page_name = data.get('page_name', post.page_name).strip()
     post.headline = data.get('headline', post.headline).strip()
     post.url = data.get('url', post.url).strip()
@@ -724,7 +1199,10 @@ def social_post_update(request, org_id, post_id):
     post.sentiment = data.get('sentiment', post.sentiment)
     post.ave = float(data.get('ave', post.ave) or 0)
     post.reach = int(data.get('reach', post.reach) or 0)
-    post.relevancy = float(data.get('relevancy', post.relevancy) or 0)
+    # Keep the post visible under the relevancy filter: fall back to a computed
+    # score when neither the form nor the existing row carries one.
+    post.relevancy = (float(data.get('relevancy', post.relevancy) or 0)
+                      or compute_relevancy(post.headline, post.summary, org=org))
     post.save()
     return JsonResponse({'ok': True})
 
@@ -743,7 +1221,7 @@ def social_post_delete(request, org_id, post_id):
 @login_required
 def media_broadcast(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
-    qs = org.broadcast_mentions.all()
+    qs = filter_relevant(org.broadcast_mentions.all())
 
     q = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
@@ -792,11 +1270,16 @@ def media_broadcast(request, org_id):
 def broadcast_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
+    headline = data.get('headline', '').strip()
+    summary = data.get('summary', '').strip()
+    # Score relevancy so a manually added mention isn't hidden by the display-time
+    # relevancy filter (a form-supplied 0 would fall below any threshold > 0).
+    relevancy = float(data.get('relevancy', 0) or 0) or compute_relevancy(headline, summary, org=org)
     mention = BroadcastMention.objects.create(
         organization=org,
         source=data.get('source', '').strip(),
-        headline=data.get('headline', '').strip(),
-        summary=data.get('summary', '').strip(),
+        headline=headline,
+        summary=summary,
         url=data.get('url', '').strip(),
         date_published=data.get('date_published') or date.today(),
         country=data.get('country', '').strip(),
@@ -804,6 +1287,7 @@ def broadcast_create(request, org_id):
         ave=float(data.get('ave', 0) or 0),
         duration=data.get('duration', '').strip(),
         broadcast_type=data.get('broadcast_type', 'RADIO'),
+        relevancy=relevancy,
     )
     return JsonResponse({'id': mention.id})
 
@@ -823,6 +1307,10 @@ def broadcast_update(request, org_id, mention_id):
     mention.country = data.get('country', mention.country).strip()
     mention.sentiment = data.get('sentiment', mention.sentiment)
     mention.ave = float(data.get('ave', mention.ave) or 0)
+    # Keep it visible under the relevancy filter: fall back to a computed score
+    # when neither the form nor the existing row carries one.
+    mention.relevancy = (float(data.get('relevancy', mention.relevancy) or 0)
+                         or compute_relevancy(mention.headline, mention.summary, org=org))
     mention.save()
     return JsonResponse({'ok': True})
 
@@ -848,41 +1336,65 @@ def competitors_view(request, org_id):
     q_search = request.GET.get('q', '')
     sentiment_filter = request.GET.get('sentiment', '')
 
+    def terms_q(comp):
+        """Match if ANY of the competitor's terms (name + aliases) appears in
+        the headline or summary."""
+        q = Q()
+        for term in comp.match_terms():
+            q |= Q(headline__icontains=term) | Q(summary__icontains=term)
+        return q
+
     comp_monthly_counts = []
     comp_overall_counts = []
     online_articles = []
     broadcast_articles = []
     print_articles = []
+    social_articles = []
 
     for comp in competitors:
-        name_q = Q(headline__icontains=comp.name) | Q(summary__icontains=comp.name)
+        name_q = terms_q(comp)
+        if not name_q:  # competitor with no usable name/aliases — nothing to match
+            comp_monthly_counts.append({'name': comp.name, 'count': 0})
+            comp_overall_counts.append({'name': comp.name, 'count': 0})
+            continue
+
+        # Online coverage comes from the loaded CompetitorArticle dataset (linked by
+        # FK); broadcast/print/social are still derived by name-matching the org's
+        # own coverage.
+        online_qs = comp.articles.all()
 
         m_count = (
-            org.online_articles.filter(date_published__gte=month_start).filter(name_q).count() +
+            online_qs.filter(date_published__gte=month_start).count() +
             org.broadcast_mentions.filter(date_published__gte=month_start).filter(name_q).count() +
-            org.print_articles.filter(date_published__gte=month_start).filter(name_q).count()
+            org.print_articles.filter(date_published__gte=month_start).filter(name_q).count() +
+            org.social_posts.filter(date_published__gte=month_start).filter(name_q).count()
         )
         o_count = (
-            org.online_articles.filter(name_q).count() +
+            online_qs.count() +
             org.broadcast_mentions.filter(name_q).count() +
-            org.print_articles.filter(name_q).count()
+            org.print_articles.filter(name_q).count() +
+            org.social_posts.filter(name_q).count()
         )
         comp_monthly_counts.append({'name': comp.name, 'count': m_count})
         comp_overall_counts.append({'name': comp.name, 'count': o_count})
 
-        art_qs = org.online_articles.filter(name_q)
+        art_qs = online_qs
         bc_qs = org.broadcast_mentions.filter(name_q)
         pr_qs = org.print_articles.filter(name_q)
+        so_qs = org.social_posts.filter(name_q)
 
         if q_search:
             sq = Q(headline__icontains=q_search) | Q(source__icontains=q_search)
             art_qs = art_qs.filter(sq)
             bc_qs = bc_qs.filter(sq)
             pr_qs = pr_qs.filter(sq)
+            # Social posts have no `source`; match the page name instead.
+            so_qs = so_qs.filter(Q(headline__icontains=q_search) | Q(page_name__icontains=q_search))
         if sentiment_filter:
             art_qs = art_qs.filter(sentiment=sentiment_filter)
             bc_qs = bc_qs.filter(sentiment=sentiment_filter)
             pr_qs = pr_qs.filter(sentiment=sentiment_filter)
+            so_qs = so_qs.filter(sentiment=sentiment_filter)
 
         for art in art_qs.values('id', 'headline', 'source', 'sentiment', 'reach', 'ave', 'date_published', 'country', 'url'):
             art['competitor_name'] = comp.name
@@ -895,44 +1407,41 @@ def competitors_view(request, org_id):
             art['reach'] = 0
             art['competitor_name'] = comp.name
             print_articles.append(art)
+        for art in so_qs.values('id', 'headline', 'page_name', 'platform', 'sentiment', 'reach', 'ave', 'date_published', 'country', 'url'):
+            art['source'] = art.get('page_name') or art.get('platform') or '—'
+            art['competitor_name'] = comp.name
+            social_articles.append(art)
 
-    online_articles.sort(key=lambda x: x['date_published'], reverse=True)
+    online_articles.sort(key=lambda x: x['date_published'] or date.min, reverse=True)
     broadcast_articles.sort(key=lambda x: x['date_published'], reverse=True)
     print_articles.sort(key=lambda x: x['date_published'], reverse=True)
+    social_articles.sort(key=lambda x: x['date_published'], reverse=True)
 
-    # Deduplicate by article id (first competitor match wins)
-    seen = set()
-    deduped_online = []
-    for a in online_articles:
-        if a['id'] not in seen:
-            seen.add(a['id'])
-            deduped_online.append(a)
+    def _dedupe(items):
+        """Deduplicate by article id (first competitor match wins)."""
+        seen, out = set(), []
+        for a in items:
+            if a['id'] not in seen:
+                seen.add(a['id'])
+                out.append(a)
+        return out
 
-    seen = set()
-    deduped_bc = []
-    for a in broadcast_articles:
-        if a['id'] not in seen:
-            seen.add(a['id'])
-            deduped_bc.append(a)
-
-    seen = set()
-    deduped_print = []
-    for a in print_articles:
-        if a['id'] not in seen:
-            seen.add(a['id'])
-            deduped_print.append(a)
+    deduped_online = _dedupe(online_articles)
+    deduped_bc = _dedupe(broadcast_articles)
+    deduped_print = _dedupe(print_articles)
+    deduped_social = _dedupe(social_articles)
 
     # Yearly line chart
     months = list(calendar.month_abbr)[1:]
-    if competitors:
-        any_comp_q = Q()
-        for comp in competitors:
-            any_comp_q |= Q(headline__icontains=comp.name) | Q(summary__icontains=comp.name)
-        online_yearly = _monthly_counts(org.online_articles.filter(any_comp_q), today.year)
+    online_yearly = broadcast_yearly = print_yearly = social_yearly = [0] * 12
+    any_comp_q = Q()
+    for comp in competitors:
+        any_comp_q |= terms_q(comp)
+    if any_comp_q:
+        online_yearly = _monthly_counts(org.competitor_articles.all(), today.year)
         broadcast_yearly = _monthly_counts(org.broadcast_mentions.filter(any_comp_q), today.year)
         print_yearly = _monthly_counts(org.print_articles.filter(any_comp_q), today.year)
-    else:
-        online_yearly = broadcast_yearly = print_yearly = [0] * 12
+        social_yearly = _monthly_counts(org.social_posts.filter(any_comp_q), today.year)
 
     return render(request, 'monitor/competitors.html', {
         'org': org,
@@ -944,12 +1453,15 @@ def competitors_view(request, org_id):
         'online_yearly_json': json.dumps(online_yearly),
         'broadcast_yearly_json': json.dumps(broadcast_yearly),
         'print_yearly_json': json.dumps(print_yearly),
+        'social_yearly_json': json.dumps(social_yearly),
         'online_articles': deduped_online[:200],
         'broadcast_articles': deduped_bc[:200],
         'print_articles': deduped_print[:200],
+        'social_articles': deduped_social[:200],
         'online_count': len(deduped_online),
         'broadcast_count': len(deduped_bc),
         'print_count': len(deduped_print),
+        'social_count': len(deduped_social),
         'q': q_search,
         'selected_sentiment': sentiment_filter,
         'sentiment_choices': SENTIMENT_CHOICES,
@@ -964,10 +1476,24 @@ def competitor_create(request, org_id):
     comp = Competitor.objects.create(
         organization=org,
         name=data.get('name', '').strip(),
+        aliases=data.get('aliases', '').strip(),
         website=data.get('website', '').strip(),
         notes=data.get('notes', '').strip(),
     )
     return JsonResponse({'id': comp.id, 'name': comp.name})
+
+
+@login_required
+@require_http_methods(['POST', 'PUT'])
+def competitor_update(request, org_id, comp_id):
+    org = get_object_or_404(Organization, id=org_id)
+    comp = get_object_or_404(Competitor, id=comp_id, organization=org)
+    data = json.loads(request.body)
+    for field in ['name', 'aliases', 'website', 'notes']:
+        if field in data:
+            setattr(comp, field, (data[field] or '').strip())
+    comp.save()
+    return JsonResponse({'ok': True})
 
 
 @login_required
@@ -976,6 +1502,118 @@ def competitor_delete(request, org_id, comp_id):
     org = get_object_or_404(Organization, id=org_id)
     comp = get_object_or_404(Competitor, id=comp_id, organization=org)
     comp.delete()
+    return JsonResponse({'ok': True})
+
+
+def _sentiment_from_score(score):
+    """Map a numeric sentiment score (roughly -1..1) to a category."""
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        return 'neutral'
+    if s >= 0.05:
+        return 'positive'
+    if s <= -0.05:
+        return 'negative'
+    return 'neutral'
+
+
+@login_required
+@require_http_methods(['POST'])
+def competitor_article_csv_upload(request, org_id):
+    """Bulk-import online competitor coverage. The `company` column maps each row
+    to a competitor (auto-created if it doesn't exist)."""
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+
+    # Index existing competitors by every term (name + aliases) for matching.
+    comp_by_term = {}
+    for comp in org.competitors.all():
+        for term in comp.match_terms():
+            comp_by_term[term.lower()] = comp
+
+    existing_urls = set(org.competitor_articles.exclude(url='').values_list('url', flat=True))
+    seen_urls = set()
+
+    def _num(row, key, cast, default=0):
+        val = (row.get(key) or '').strip()
+        if val == '':
+            return default
+        try:
+            return cast(val)
+        except ValueError:
+            return default
+
+    for idx, row in enumerate(reader, start=2):
+        company = (row.get('company') or '').strip()
+        title = (row.get('title') or row.get('headline') or '').strip()
+        if not title:
+            errors.append(f'Row {idx}: missing title')
+            continue
+        if not company:
+            errors.append(f'Row {idx}: missing company')
+            continue
+
+        # Match an existing competitor (by name or alias) or auto-create one.
+        comp = comp_by_term.get(company.lower())
+        if comp is None:
+            comp = Competitor.objects.create(organization=org, name=company)
+            for term in comp.match_terms():
+                comp_by_term[term.lower()] = comp
+
+        url_val = (row.get('url') or '').strip()
+        if url_val and (url_val in existing_urls or url_val in seen_urls):
+            continue  # skip duplicate
+        if url_val:
+            seen_urls.add(url_val)
+
+        score = _num(row, 'sentiment', float, 0.0)
+
+        to_create.append(CompetitorArticle(
+            organization=org,
+            competitor=comp,
+            company_name=company,
+            headline=title,
+            url=url_val,
+            summary=(row.get('snippet') or row.get('summary') or '').strip(),
+            source=(row.get('source') or '').strip(),
+            date_published=_parse_csv_date(row.get('publication_date') or row.get('publicationDate')),
+            country=(row.get('country') or '').strip(),
+            matched_keywords=(row.get('matched_keywords') or '').strip()[:300],
+            sentiment_score=score,
+            sentiment=_sentiment_from_score(score),
+            reach=_num(row, 'reach', int, 0),
+            cpm=_num(row, 'cpm', float, 0),
+            ave=_num(row, 'ave', float, 0),
+            rank=_num(row, 'rank', float, 0),
+            coverage_type=(row.get('coverage_type') or row.get('coverage') or '').strip() or 'Not Set',
+        ))
+
+    if to_create:
+        CompetitorArticle.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
+
+
+@login_required
+@require_http_methods(['DELETE'])
+def competitor_article_delete(request, org_id, article_id):
+    org = get_object_or_404(Organization, id=org_id)
+    art = get_object_or_404(CompetitorArticle, id=article_id, organization=org)
+    art.delete()
     return JsonResponse({'ok': True})
 
 
@@ -1010,20 +1648,30 @@ def _type_stats(qs, src_field, has_reach=True):
 
     src_map = {}
     if src_field:
-        for row in qs.exclude(**{src_field: ''}).values(src_field).annotate(
+        rows = qs.exclude(**{src_field: ''}).values(src_field).annotate(
             total=Count('id'),
             pos=Count('id', filter=Q(sentiment='positive')),
             neu=Count('id', filter=Q(sentiment='neutral')),
             neg=Count('id', filter=Q(sentiment='negative')),
-        ).order_by('-total')[:8]:
-            src_map[row[src_field]] = {k: row[k] for k in ('total', 'pos', 'neu', 'neg')}
+        ).order_by('-total')
+        if src_field == 'platform':
+            # Merge platform name variants (e.g. "facebook"/"Facebook", "Twitter"/"X")
+            # into their canonical name so they're not counted separately.
+            merged = {}
+            for row in rows:
+                name = _normalize_platform(row[src_field])
+                bucket = merged.setdefault(name, {'total': 0, 'pos': 0, 'neu': 0, 'neg': 0})
+                for k in ('total', 'pos', 'neu', 'neg'):
+                    bucket[k] += row[k]
+            for name, v in sorted(merged.items(), key=lambda x: x[1]['total'], reverse=True)[:8]:
+                src_map[name] = v
+        else:
+            for row in rows[:8]:
+                src_map[row[src_field]] = {k: row[k] for k in ('total', 'pos', 'neu', 'neg')}
 
-    risks = [{'headline': i.headline[:100], 'source': getattr(i, src_field, '') if src_field else '',
-              'ave': float(i.ave), 'date': i.date_published.strftime('%d %b %Y')}
-             for i in qs.filter(sentiment='negative').order_by('-ave')[:5]]
-    opps  = [{'headline': i.headline[:100], 'source': getattr(i, src_field, '') if src_field else '',
-              'ave': float(i.ave), 'date': i.date_published.strftime('%d %b %Y')}
-             for i in qs.filter(sentiment='positive').order_by('-ave')[:5]]
+    top_source = next(iter(src_map), '')           # src_map is ordered by volume desc
+    top_source_count = src_map[top_source]['total'] if top_source else 0
+
     issues = [{'label': i.headline[:55], 'ave': float(i.ave), 'sentiment': i.sentiment}
               for i in qs.order_by('-ave')[:8]]
 
@@ -1037,6 +1685,18 @@ def _type_stats(qs, src_field, has_reach=True):
         counter.update(w for w in _re.findall(r'\b[a-zA-Z]{4,}\b', h.lower()) if w not in STOP)
     words = counter.most_common(30)
 
+    # Key events & spikes — the period's highest-impact mentions for this media type.
+    key_events = [
+        {
+            'sentiment': i.sentiment,
+            'date': i.date_published.isoformat(),
+            'headline': (i.headline or '')[:140],
+            'summary': (i.summary or '')[:240],
+        }
+        for i in qs.exclude(headline='').order_by('-ave')[:6]
+    ]
+    key_events.sort(key=lambda e: e['date'])
+
     return {
         'vol': vol, 'ave': ave, 'reach': reach,
         'pos': pos, 'neu': neu, 'neg': neg,
@@ -1046,13 +1706,70 @@ def _type_stats(qs, src_field, has_reach=True):
                              'neu': [daily[d]['neu'] for d in dates],
                              'neg': [daily[d]['neg'] for d in dates]}),
         'sources_json': json.dumps([{'name': n, **v} for n, v in src_map.items()]),
-        'key_events_json': json.dumps([]),
-        'risks': risks,
-        'opps': opps,
+        'key_events_json': json.dumps(key_events),
         'issues_json': json.dumps(issues),
         'words_json': json.dumps(words),
         'max_freq': words[0][1] if words else 1,
+        'top_source': top_source,
+        'top_source_count': top_source_count,
     }
+
+
+# KPI themes scanned for in coverage. Each is (display name, [match keywords]).
+_KPI_CATEGORIES = [
+    ('Customer Service',          ['customer service', 'client service', 'support', 'complaint',
+                                    'call centre', 'call center', 'service quality', 'turnaround']),
+    ('Digital Transformation',    ['digital', ' app', 'online banking', 'mobile banking', 'fintech',
+                                    'technology', 'innovation', 'platform', 'ussd', 'e-wallet', 'cyber']),
+    ('Regulatory Compliance',     ['regulat', 'compliance', 'central bank', 'bank of botswana', 'licen',
+                                    'audit', 'governance', 'sanction', 'anti-money', 'aml', 'kyc']),
+    ('Loan Portfolio Performance',['loan', 'lending', 'credit', 'mortgage', 'advance', 'default',
+                                    'non-performing', 'impairment', 'facility', 'repayment']),
+    ('Financial Inclusion',       ['financial inclusion', 'unbanked', 'accessib', 'rural', 'sme', 'smme',
+                                    'microfinance', 'affordab', 'underserved']),
+    ('Reputation Management',     ['reputation', 'brand', 'trust', 'scandal', 'fraud', 'image',
+                                    'crisis', 'apolog', 'backlash']),
+    ('Employee Satisfaction',     ['employee', 'staff', 'workforce', 'recruit', 'talent', 'retrench',
+                                    'layoff', 'union', 'salary', 'workplace', 'graduate programme']),
+    ('Community Investment',      ['community', 'csr', 'donat', 'sponsor', 'charit', 'scholarship',
+                                    'foundation', 'social responsibility', 'give back', 'outreach']),
+    ('Operational Efficiency',    ['efficien', 'cost', 'profit', 'revenue', 'earnings', 'margin',
+                                    'restructur', 'operational', 'productivity', 'results']),
+    ('Diversity & Inclusion',     ['diversity', 'inclusion', 'women', 'gender', 'disab', 'equality',
+                                    'empower', 'youth']),
+]
+
+
+def _kpi_insights(qs, label, period_label):
+    """For each KPI theme, count matching mentions in this media type's coverage and
+    build a pill + insight sentence. Returns [{category, count, sentiment, text}]."""
+    rows = list(qs.values_list('headline', 'summary', 'sentiment'))
+    blobs = [((h or '') + ' ' + (s or '')).lower() for h, s, _ in rows]
+
+    items = []
+    for category, keywords in _KPI_CATEGORIES:
+        matched = [i for i, blob in enumerate(blobs) if any(k in blob for k in keywords)]
+        count = len(matched)
+        if count == 0:
+            items.append({
+                'category': category, 'count': 0, 'sentiment': 'neutral',
+                'text': f"No significant mentions of {category} in {period_label}.",
+            })
+            continue
+        pos = sum(1 for i in matched if rows[i][2] == 'positive')
+        neg = sum(1 for i in matched if rows[i][2] == 'negative')
+        if pos > neg:
+            sentiment, tone = 'positive', 'largely positive'
+        elif neg > pos:
+            sentiment, tone = 'negative', 'largely negative'
+        else:
+            sentiment, tone = 'neutral', 'mixed'
+        items.append({
+            'category': category, 'count': count, 'sentiment': sentiment,
+            'text': f"{count} {label} mention{'' if count == 1 else 's'} relating to "
+                    f"{category}, {tone} in tone, during {period_label}.",
+        })
+    return items
 
 
 @login_required
@@ -1076,10 +1793,12 @@ def report_full(request, org_id):
     month_label = f"{_fmt_date(date_from)} – {_fmt_date(date_to)}"
     kw = dict(date_published__gte=date_from, date_published__lte=date_to)
 
-    oa = org.online_articles.filter(**kw)
-    pa = org.print_articles.filter(**kw)
-    sp = org.social_posts.filter(**kw)
-    bm = org.broadcast_mentions.filter(**kw)
+    # Apply the relevancy filter so the report reflects the same coverage the AI
+    # analysis uses (a no-op until MENTION_RELEVANCY_THRESHOLD is configured).
+    oa = filter_relevant(org.online_articles.filter(**kw))
+    pa = filter_relevant(org.print_articles.filter(**kw))
+    sp = filter_relevant(org.social_posts.filter(**kw))
+    bm = filter_relevant(org.broadcast_mentions.filter(**kw))
 
     oa_c, pa_c, sp_c, bm_c = oa.count(), pa.count(), sp.count(), bm.count()
     total_vol = oa_c + pa_c + sp_c + bm_c
@@ -1218,7 +1937,7 @@ def report_full(request, org_id):
     report_mode   = request.GET.get('type', 'full')
     ALL_MOD_IDS = ['media_summary', 'sentiment_trend', 'reputational_risks',
                    'reputational_opportunities', 'issue_impact', 'top_sources',
-                   'word_cloud', 'kpi_performance']
+                   'word_cloud', 'kpi_performance', 'kpi_insights']
 
     VALID_TYPES = {'social', 'online', 'broadcast', 'print'}
     if report_mode == 'custom' and modules_param:
@@ -1242,15 +1961,25 @@ def report_full(request, org_id):
         'social':    {'qs': sp, 'src': 'platform', 'reach': True,  'label': 'Social Media',    'color': '#1d4ed8'},
         'online':    {'qs': oa, 'src': 'source',   'reach': True,  'label': 'Online Media',    'color': '#0f766e'},
         'broadcast': {'qs': bm, 'src': 'source',   'reach': False, 'label': 'Broadcast Media', 'color': '#9333ea'},
-        'print':     {'qs': pa, 'src': 'source',   'reach': False, 'label': 'Print Media',     'color': '#c2410c'},
+        'print':     {'qs': pa, 'src': 'source',   'reach': True,  'label': 'Print Media',     'color': '#c2410c'},
     }
+    # Concise period label for KPI insights ("April 2026" for a single month, else the range).
+    if date_from.year == date_to.year and date_from.month == date_to.month:
+        _period_label = date_from.strftime('%B %Y')
+    else:
+        _period_label = month_label
     sections = {}
     for key, cfg in type_map.items():
         stats = _type_stats(cfg['qs'], cfg['src'], cfg['reach'])
         stats.update({'label': cfg['label'], 'color': cfg['color'], 'key': key})
+        stats['kpi_insights'] = _kpi_insights(cfg['qs'], cfg['label'], _period_label)
         # Which modules are selected for this type
         stats['sel_mods'] = [m for m in ALL_MOD_IDS if _sel(key, m)]
         sections[key] = stats
+
+    # Print reach is an estimate (circulation × readers-per-copy, stored per row),
+    # so flag it for a clear "Estimated Reach" label in the template.
+    sections['print']['reach_estimated'] = True
 
     # Journalists (print only)
     journalists = list(pa.exclude(author='').values('author').annotate(
@@ -1260,6 +1989,61 @@ def report_full(request, org_id):
         neg=Count('id', filter=Q(sentiment='negative')),
         ave_total=Sum('ave'),
     ).order_by('-total')[:10])
+    _max_j = journalists[0]['total'] if journalists else 1
+    for j in journalists:
+        j['pct'] = round(j['total'] / _max_j * 100) if _max_j else 0
+        j['ave_total'] = float(j['ave_total'] or 0)
+
+    # AI-generated analysis (ESG, stakeholder, sectorial competitor). Read from
+    # cache only — generation is triggered on demand via the "Generate AI
+    # Analysis" button (report_ai_generate) so report loads stay fast.
+    from .report_ai import get_cached_analysis, get_analysis_generated_at, analysis_is_stale
+    analysis = get_cached_analysis(org, date_from, date_to)
+    analysis_generated_at = get_analysis_generated_at(org, date_from, date_to) if analysis else None
+    # The stored analysis is kept indefinitely; flag it when new mentions have been
+    # added since it was generated so the report can prompt a regenerate.
+    analysis_stale = bool(analysis) and analysis_is_stale(org, date_from, date_to)
+    ai_enabled = bool(settings.ANTHROPIC_API_KEY)
+
+    # Distribute AI-generated reputational risks/opportunities into their media-type
+    # sections (each item is tagged with a media_key in the analysis payload).
+    for s in sections.values():
+        s['ai_risks'] = []
+        s['ai_opps'] = []
+        s['ai_kpi_insights'] = []
+    if analysis:
+        for item in analysis.get('reputational_risks', []):
+            sec = sections.get(item.get('media_key'))
+            if sec is not None:
+                sec['ai_risks'].append(item)
+        for item in analysis.get('reputational_opportunities', []):
+            sec = sections.get(item.get('media_key'))
+            if sec is not None:
+                sec['ai_opps'].append(item)
+        for item in analysis.get('kpi_insights', []):
+            sec = sections.get(item.get('media_key'))
+            if sec is not None:
+                sec['ai_kpi_insights'].append(item)
+
+    # KPI Visibility vs Sentiment scatter — one point per AI KPI insight
+    # (x = visibility/mentions, y = sentiment), with the KPI averages that
+    # split the plot into quadrants.
+    for s in sections.values():
+        pts = [{'label': i['category'], 'x': i.get('mentions', 0), 'y': i['score']}
+               for i in s['ai_kpi_insights']]
+        if pts:
+            avg_x = round(sum(p['x'] for p in pts) / len(pts), 1)
+            avg_y = round(sum(p['y'] for p in pts) / len(pts))
+        else:
+            avg_x = avg_y = 0
+        s['kpi_scatter_json'] = json.dumps({'points': pts, 'avg_x': avg_x, 'avg_y': avg_y})
+
+    # Executive summary draws on the same AI risks/opportunities (All Media),
+    # ranked by score, so it stays consistent with the per-section slides.
+    exec_opps = sorted(analysis.get('reputational_opportunities', []),
+                       key=lambda x: x.get('score', 0), reverse=True) if analysis else []
+    exec_risks = sorted(analysis.get('reputational_risks', []),
+                        key=lambda x: x.get('score', 0), reverse=True) if analysis else []
 
     # Module bar text (all selected modules, flagging those with no data)
     mod_bar_items = []
@@ -1288,7 +2072,78 @@ def report_full(request, org_id):
         'journalists': journalists,
         'mod_bar_items': mod_bar_items,
         'all_mod_ids': ALL_MOD_IDS,
+        'methodology_steps': _METHODOLOGY_STEPS,
+        'glossary_terms': _GLOSSARY_TERMS,
+        'analysis': analysis,
+        'has_analysis': bool(analysis),
+        'ai_enabled': ai_enabled,
+        'analysis_generated_at': analysis_generated_at,
+        'analysis_stale': analysis_stale,
+        'exec_opps': exec_opps,
+        'exec_risks': exec_risks,
     })
+
+
+_METHODOLOGY_STEPS = [
+    {'title': 'Collection', 'color': '#1d4ed8',
+     'desc': 'Coverage is gathered across online, print, broadcast and social media sources.'},
+    {'title': 'Classification', 'color': '#0f766e',
+     'desc': 'Each mention is tagged by media type, source, country and reach.'},
+    {'title': 'Sentiment Analysis', 'color': '#9333ea',
+     'desc': 'Mentions are scored as positive, neutral or negative based on tone toward the brand.'},
+    {'title': 'Valuation', 'color': '#c2410c',
+     'desc': 'Advertising Value Equivalency (AVE) and audience reach are calculated per mention.'},
+    {'title': 'Insight', 'color': '#16a34a',
+     'desc': 'Trends, risks and opportunities are surfaced and summarised into this report.'},
+]
+
+_GLOSSARY_TERMS = [
+    {'term': 'AVE', 'definition': 'Advertising Value Equivalency — the estimated cost of buying the '
+                                  'equivalent space/time as paid advertising.'},
+    {'term': 'Reach', 'definition': 'The estimated size of the audience potentially exposed to a mention.'},
+    {'term': 'Sentiment', 'definition': 'The tone of a mention toward the organisation — positive, '
+                                        'neutral or negative.'},
+    {'term': 'Volume', 'definition': 'The total number of media mentions in the reporting period.'},
+    {'term': 'Share of Voice', 'definition': "An organisation's mentions as a proportion of total "
+                                             "coverage across it and its competitors."},
+    {'term': 'Issue Impact', 'definition': 'The total effect a particular issue or story has on '
+                                           'overall sentiment.'},
+    {'term': 'Reputational Risk', 'definition': 'A high-value negative mention that could damage the '
+                                                'brand if left unmanaged.'},
+    {'term': 'Reputational Opportunity', 'definition': 'A high-value positive mention that can be '
+                                                       'amplified to strengthen the brand.'},
+]
+
+
+@login_required
+@require_http_methods(['POST'])
+def report_ai_generate(request, org_id):
+    """Run the Anthropic analysis for a period on demand and cache it. The Full
+    Report's 'Generate AI Analysis' button calls this, then reloads."""
+    from .report_ai import generate_analysis, ReportAIError
+    org = get_object_or_404(Organization, id=org_id)
+    today = date.today()
+
+    def _d(raw, default):
+        try:
+            return date.fromisoformat(raw) if raw else default
+        except ValueError:
+            return default
+
+    df = _d(request.POST.get('date_from') or request.GET.get('date_from', ''), today.replace(day=1))
+    dt = _d(request.POST.get('date_to') or request.GET.get('date_to', ''), today)
+
+    try:
+        result = generate_analysis(org, df, dt, force=True)
+    except ReportAIError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+
+    if not result:
+        return JsonResponse(
+            {'ok': False, 'error': 'No coverage in this period to analyse.'},
+            status=400,
+        )
+    return JsonResponse({'ok': True})
 
 
 _MEDIA_TYPES_DEF = [
@@ -1307,6 +2162,7 @@ _MODULE_LIST = [
     {'id': 'top_sources',                'label': 'Top Media Sources'},
     {'id': 'word_cloud',                 'label': 'Word Cloud'},
     {'id': 'kpi_performance',            'label': 'KPI Performance'},
+    {'id': 'kpi_insights',               'label': 'KPI Performance Summary & Insights'},
 ]
 
 
@@ -1314,6 +2170,7 @@ _MODULE_LIST = [
 def reports_view(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     generated_reports = org.generated_reports.select_related('created_by').all()
+    issue_reports = org.issue_reports.select_related('created_by').all()
     country_set = set()
     for qs in [org.online_articles, org.print_articles, org.social_posts, org.broadcast_mentions]:
         for c in qs.exclude(country='').values_list('country', flat=True).distinct():
@@ -1322,6 +2179,7 @@ def reports_view(request, org_id):
         'org': org,
         'page': 'reports',
         'generated_reports': generated_reports,
+        'issue_reports': issue_reports,
         'media_types_def': _MEDIA_TYPES_DEF,
         'module_list': _MODULE_LIST,
         'country_choices': sorted(country_set),
@@ -1368,6 +2226,12 @@ def report_save(request, org_id):
         date_from=date_from,
         date_to=date_to,
     )
+    Event.objects.create(
+        organization=org, category='report', event_type='report_generated',
+        title=f'New report ready: {report.title}',
+        summary=f'{report_type} report generated' + (f' for {date_from}–{date_to}.' if date_from and date_to else '.'),
+        url=_absolute_url(reverse('monitor:reports', args=[org.id])),
+    )
     return JsonResponse({'id': str(report.id)})
 
 
@@ -1379,6 +2243,435 @@ def report_delete(request, org_id, report_id):
     report = get_object_or_404(GeneratedReport, id=report_id, organization=org)
     report.delete()
     return JsonResponse({'ok': True})
+
+
+# ── Issue-focused ("saga") report ─────────────────────────────────────────────
+
+_SENTIMENT_LABELS = dict(SENTIMENT_CHOICES)
+# key → (model, outlet/platform field, channel label). Order matches the deck.
+_ISSUE_MEDIA = [
+    ('online',    OnlineArticle,    'source',   'Online'),
+    ('print',     PrintArticle,     'source',   'Print'),
+    ('social',    SocialMediaPost,  'platform', 'Social'),
+    ('broadcast', BroadcastMention, 'source',   'Broadcast'),
+]
+
+
+def _issue_report_context(report):
+    """Build the render context for an IssueReport: the selected mentions read
+    back from the DB (never from the model's output), the summary cards computed
+    from those rows, a coverage log, per-media sections, and the AI narrative with
+    its source refs resolved to real outlets."""
+    selected = report.selected_ids or {}
+    sections = {}          # key → list of row dicts
+    ref_map = {}           # "online-12" → row dict
+    coverage_log = []
+    mentions_total = ave_total = reach_total = 0
+    pos = neu = neg = 0
+
+    for key, model, src_field, label in _ISSUE_MEDIA:
+        ids = selected.get(key) or []
+        rows = []
+        if ids:
+            qs = model.objects.filter(id__in=ids, organization=report.organization)
+            for obj in qs.order_by('date_published'):
+                reach = getattr(obj, 'reach', 0) or 0
+                ave = float(obj.ave or 0)
+                row = {
+                    'ref': f'{key}-{obj.id}',
+                    'source': (getattr(obj, src_field, '') or '').strip() or label,
+                    'headline': obj.headline,
+                    'url': getattr(obj, 'url', '') or '',
+                    'channel': label,
+                    'date': obj.date_published,
+                    'sentiment': obj.sentiment,
+                    'sentiment_label': _SENTIMENT_LABELS.get(obj.sentiment, obj.sentiment),
+                    'ave': ave,
+                    'reach': reach,
+                }
+                rows.append(row)
+                ref_map[row['ref']] = row
+                coverage_log.append(row)
+                mentions_total += 1
+                ave_total += ave
+                reach_total += reach
+                if obj.sentiment == 'positive':
+                    pos += 1
+                elif obj.sentiment == 'negative':
+                    neg += 1
+                else:
+                    neu += 1
+        sections[key] = rows
+
+    coverage_log.sort(key=lambda r: (r['date'] or date.min))
+    neg_pct = round(neg / mentions_total * 100) if mentions_total else 0
+
+    payload = report.payload or {}
+
+    # Resolve each narrative source ref to its outlet/headline for linking.
+    def _resolve(items):
+        out = []
+        for it in items:
+            src = ref_map.get(it.get('source', ''))
+            out.append({**it,
+                        'source_name': src['source'] if src else '',
+                        'source_url': src['url'] if src else ''})
+        return out
+
+    timeline = _resolve(payload.get('timeline', []))
+    at_a_glance = _resolve(payload.get('at_a_glance', []))
+
+    # Per-media groups in the deck's order, with display labels for the template.
+    _labels = {'social': 'Social Media', 'online': 'Online Media',
+               'print': 'Print Media', 'broadcast': 'Broadcast'}
+    media_sections = [{'key': k, 'label': _labels[k], 'items': sections.get(k, [])}
+                      for k in ('social', 'online', 'print', 'broadcast')]
+
+    from django.templatetags.static import static as _static
+    return {
+        'report': report,
+        'org': report.organization,
+        'page': 'reports',
+        'logo_src': _static('images/social_light_logo.png'),
+        'sections': sections,
+        'media_sections': media_sections,
+        'coverage_log': coverage_log,
+        'mentions_total': mentions_total,
+        'ave_total': ave_total,
+        'reach_total': reach_total,
+        'pos_total': pos, 'neu_total': neu, 'neg_total': neg,
+        'neg_pct': neg_pct,
+        'exec_summary': payload.get('exec_summary', ''),
+        'at_a_glance': at_a_glance,
+        'timeline': timeline,
+        'framing': payload.get('framing', []),
+        'risks': payload.get('risks', []),
+        'stakeholders': payload.get('stakeholders', []),
+        'recommendations': payload.get('recommendations', []),
+    }
+
+
+@login_required
+def report_issue(request, org_id, report_id):
+    """Render a saved issue-focused report."""
+    org = get_object_or_404(Organization, id=org_id)
+    report = get_object_or_404(IssueReport, id=report_id, organization=org)
+    return render(request, 'monitor/report_issue.html', _issue_report_context(report))
+
+
+def _pdf_download(request, template, ctx, filename, wait_ms=1100,
+                  wait_for='window.__pdfReady === true'):
+    """Render a self-contained report template to a downloadable PDF via headless
+    Chromium. Waits for the template's chart-ready flag (``wait_for``) so no chart
+    is snapshotted blank, falling back to ``wait_ms``."""
+    from django.template.loader import render_to_string
+    from .pdf import render_html_to_pdf, PDFError
+    html = render_to_string(template, ctx, request=request)
+    try:
+        pdf_bytes = render_html_to_pdf(html, wait_ms=wait_ms, wait_for=wait_for)
+    except PDFError as exc:
+        return JsonResponse({'error': str(exc)}, status=503)
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+@login_required
+def report_issue_pdf(request, org_id, report_id):
+    """Download the issue/campaign report as a self-contained, server-rendered PDF
+    (headless Chromium) — no browser print chrome, theme colours preserved."""
+    from django.template.loader import render_to_string
+    from django.utils.text import slugify
+    from .pdf import render_html_to_pdf, static_data_uri, PDFError
+    org = get_object_or_404(Organization, id=org_id)
+    report = get_object_or_404(IssueReport, id=report_id, organization=org)
+
+    ctx = _issue_report_context(report)
+    ctx['pdf'] = True                                   # hide app chrome / controls
+    ctx['layout_template'] = 'monitor/base_print.html'  # bare skeleton, no sidebar
+    ctx['logo_src'] = static_data_uri('images/social_light_logo.png')  # embed, offline
+    html = render_to_string('monitor/report_issue.html', ctx, request=request)
+
+    try:
+        pdf_bytes = render_html_to_pdf(html)
+    except PDFError as exc:
+        return JsonResponse({'error': str(exc)}, status=503)
+
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = f'attachment; filename="{slugify(report.title) or "report"}.pdf"'
+    return resp
+
+
+@login_required
+def report_issue_generate(request, org_id):
+    """Create an issue-focused report: the AI selects the coverage relevant to the
+    saga and writes the issue narrative. Returns the new report's id and view URL."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    from .issue_report_ai import generate_issue_report
+    from .report_ai import ReportAIError
+    org = get_object_or_404(Organization, id=org_id)
+    data = json.loads(request.body)
+
+    title = (data.get('title') or '').strip()
+    issue_query = (data.get('issue_query') or '').strip()
+    if not issue_query:
+        return JsonResponse({'ok': False, 'error': 'An issue description is required.'}, status=400)
+
+    def _d(raw, default):
+        try:
+            return date.fromisoformat(raw) if raw else default
+        except ValueError:
+            return default
+
+    today = date.today()
+    date_from = _d(data.get('date_from', ''), today.replace(day=1))
+    date_to = _d(data.get('date_to', ''), today)
+
+    try:
+        report = generate_issue_report(
+            org, title, issue_query, date_from, date_to, created_by=request.user)
+    except ReportAIError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+
+    from django.urls import reverse
+    return JsonResponse({
+        'ok': True,
+        'id': str(report.id),
+        'url': reverse('monitor:report_issue', args=[org.id, report.id]),
+    })
+
+
+@login_required
+def report_issue_delete(request, org_id, report_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    org = get_object_or_404(Organization, id=org_id)
+    report = get_object_or_404(IssueReport, id=report_id, organization=org)
+    report.delete()
+    return JsonResponse({'ok': True})
+
+
+# ── Campaign Tracking & Reporting ─────────────────────────────────────────────
+
+# (key, model, outlet/platform field, channel label) in the deck's order.
+_CAMPAIGN_MEDIA = [
+    ('social',    SocialMediaPost,  'platform', 'Social'),
+    ('online',    OnlineArticle,    'source',   'Online'),
+    ('print',     PrintArticle,     'source',   'Print'),
+    ('broadcast', BroadcastMention, 'source',   'Broadcast'),
+]
+
+
+def _campaign_terms(campaign):
+    return [t.strip() for t in (campaign.terms or []) if t and t.strip()]
+
+
+def _campaign_qs(campaign, model):
+    """Relevant mentions of one media type that match any campaign term (as
+    entered, so a '#tag' matches only the hashtag form) within the campaign's
+    optional date window. Returns an empty queryset when no terms are set."""
+    terms = _campaign_terms(campaign)
+    if not terms:
+        return model.objects.none()
+    qs = filter_relevant(model.objects.filter(organization=campaign.organization))
+    if campaign.date_from:
+        qs = qs.filter(date_published__gte=campaign.date_from)
+    if campaign.date_to:
+        qs = qs.filter(date_published__lte=campaign.date_to)
+    term_q = Q()
+    for t in terms:
+        term_q |= Q(headline__icontains=t) | Q(summary__icontains=t)
+    return qs.filter(term_q)
+
+
+def _campaign_metrics(campaign):
+    """Aggregate mentions / reach / sentiment for a campaign across all media,
+    plus per-term and per-source breakdowns and a recent coverage list."""
+    mentions = ave = reach = pos = neu = neg = 0
+    by_media = {}
+    coverage = []
+    src_map = {}
+    daily = defaultdict(lambda: {'pos': 0, 'neu': 0, 'neg': 0})
+
+    for key, model, src_field, label in _CAMPAIGN_MEDIA:
+        qs = _campaign_qs(campaign, model)
+        rows = list(qs.values('id', 'headline', 'sentiment', src_field, 'date_published',
+                              'ave', 'url', *(['reach'] if key != 'broadcast' else [])))
+        by_media[key] = len(rows)
+        for r in rows:
+            mentions += 1
+            ave += float(r.get('ave') or 0)
+            rc = int(r.get('reach') or 0)
+            reach += rc
+            s = r['sentiment']
+            if s == 'positive':
+                pos += 1
+            elif s == 'negative':
+                neg += 1
+            else:
+                neu += 1
+            d = str(r['date_published'])
+            daily[d]['pos' if s == 'positive' else 'neg' if s == 'negative' else 'neu'] += 1
+            src = (r.get(src_field) or '').strip() or label
+            src_map[src] = src_map.get(src, 0) + 1
+            coverage.append({
+                'source': src, 'headline': r['headline'], 'channel': label,
+                'date': r['date_published'], 'sentiment': s,
+                'sentiment_label': _SENTIMENT_LABELS.get(s, s),
+                'ave': float(r.get('ave') or 0), 'reach': rc, 'url': r.get('url') or '',
+            })
+
+    # Per-term mention counts (how much each keyword/hashtag drove coverage).
+    per_term = []
+    for t in _campaign_terms(campaign):
+        c = 0
+        for _key, model, _sf, _lb in _CAMPAIGN_MEDIA:
+            base = filter_relevant(model.objects.filter(organization=campaign.organization))
+            if campaign.date_from:
+                base = base.filter(date_published__gte=campaign.date_from)
+            if campaign.date_to:
+                base = base.filter(date_published__lte=campaign.date_to)
+            c += base.filter(Q(headline__icontains=t) | Q(summary__icontains=t)).count()
+        per_term.append({'term': t, 'count': c})
+    per_term.sort(key=lambda x: x['count'], reverse=True)
+
+    coverage.sort(key=lambda r: (r['date'] or date.min), reverse=True)
+    top_sources = sorted(src_map.items(), key=lambda x: x[1], reverse=True)[:8]
+    sorted_days = sorted(daily.keys())
+    trend = json.dumps({
+        'labels': sorted_days,
+        'pos': [daily[d]['pos'] for d in sorted_days],
+        'neu': [daily[d]['neu'] for d in sorted_days],
+        'neg': [daily[d]['neg'] for d in sorted_days],
+    })
+    total_sent = pos + neu + neg
+    return {
+        'mentions': mentions, 'ave': ave, 'reach': reach,
+        'pos': pos, 'neu': neu, 'neg': neg,
+        'pos_pct': round(pos / total_sent * 100) if total_sent else 0,
+        'neg_pct': round(neg / total_sent * 100) if total_sent else 0,
+        'by_media': by_media,
+        'per_term': per_term,
+        'top_sources': [{'name': n, 'count': c} for n, c in top_sources],
+        'coverage': coverage[:60],
+        'trend': trend,
+    }
+
+
+@login_required
+def campaigns_view(request, org_id):
+    """Campaign list with a quick mention/sentiment summary per campaign."""
+    org = get_object_or_404(Organization, id=org_id)
+    campaigns = []
+    for c in org.campaigns.select_related('created_by').all():
+        m = _campaign_metrics(c)
+        campaigns.append({'obj': c, 'mentions': m['mentions'], 'pos': m['pos'],
+                          'neu': m['neu'], 'neg': m['neg'], 'reach': m['reach']})
+    return render(request, 'monitor/campaigns.html', {
+        'org': org, 'page': 'campaigns', 'campaigns': campaigns,
+    })
+
+
+@login_required
+def campaign_detail(request, org_id, campaign_id):
+    org = get_object_or_404(Organization, id=org_id)
+    campaign = get_object_or_404(Campaign, id=campaign_id, organization=org)
+    metrics = _campaign_metrics(campaign)
+    return render(request, 'monitor/campaign_detail.html', {
+        'org': org, 'page': 'campaigns', 'campaign': campaign, 'm': metrics,
+    })
+
+
+def _parse_terms(raw):
+    """Accept a list or a comma/newline-separated string of terms; dedupe, keep order."""
+    if isinstance(raw, list):
+        items = raw
+    else:
+        items = re.split(r'[,\n]', str(raw or ''))
+    out, seen = [], set()
+    for t in items:
+        t = t.strip()
+        if t and t.lower() not in seen:
+            seen.add(t.lower())
+            out.append(t)
+    return out
+
+
+@login_required
+def campaign_save(request, org_id):
+    """Create or update a campaign. Pass ``id`` to update."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    org = get_object_or_404(Organization, id=org_id)
+    data = json.loads(request.body)
+    name = (data.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'ok': False, 'error': 'A campaign name is required.'}, status=400)
+
+    def _d(raw):
+        try:
+            return date.fromisoformat(raw) if raw else None
+        except ValueError:
+            return None
+
+    fields = {
+        'name': name,
+        'description': (data.get('description') or '').strip(),
+        'terms': _parse_terms(data.get('terms')),
+        'date_from': _d(data.get('date_from')),
+        'date_to': _d(data.get('date_to')),
+    }
+    cid = data.get('id')
+    if cid:
+        campaign = get_object_or_404(Campaign, id=cid, organization=org)
+        for k, v in fields.items():
+            setattr(campaign, k, v)
+        campaign.save()
+    else:
+        campaign = Campaign.objects.create(organization=org, created_by=request.user, **fields)
+    from django.urls import reverse
+    return JsonResponse({'ok': True, 'id': str(campaign.id),
+                         'url': reverse('monitor:campaign_detail', args=[org.id, campaign.id])})
+
+
+@login_required
+def campaign_delete(request, org_id, campaign_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    org = get_object_or_404(Organization, id=org_id)
+    campaign = get_object_or_404(Campaign, id=campaign_id, organization=org)
+    campaign.delete()
+    return JsonResponse({'ok': True})
+
+
+@login_required
+def campaign_generate_report(request, org_id, campaign_id):
+    """Generate an Issue-Focused report for the campaign, seeded with its terms."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    from .issue_report_ai import generate_issue_report
+    from .report_ai import ReportAIError
+    org = get_object_or_404(Organization, id=org_id)
+    campaign = get_object_or_404(Campaign, id=campaign_id, organization=org)
+
+    today = date.today()
+    df = campaign.date_from or (today - timedelta(days=90))
+    dt = campaign.date_to or today
+    # Seed the issue query with the campaign's own terms so the report isolates
+    # exactly this campaign's coverage.
+    query = ' '.join(filter(None, [campaign.description.strip(), ', '.join(_campaign_terms(campaign))]))
+    if not query.strip():
+        return JsonResponse({'ok': False, 'error': 'Add campaign terms before generating a report.'}, status=400)
+
+    try:
+        report = generate_issue_report(org, campaign.name, query, df, dt, created_by=request.user)
+    except ReportAIError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+    report.kind = 'campaign'
+    report.save(update_fields=['kind'])
+    from django.urls import reverse
+    return JsonResponse({'ok': True, 'url': reverse('monitor:report_issue', args=[org.id, report.id])})
 
 
 @login_required
@@ -1482,6 +2775,8 @@ def report_sentiment(request, org_id):
         'top_positive': top_positive,
         'top_negative': top_negative,
     }
+    if request.GET.get('download') == 'pdf':
+        return _pdf_download(request, 'monitor/report_sentiment_pdf.html', ctx, 'sentiment-report.pdf')
     if request.GET.get('format') == 'pdf':
         return render(request, 'monitor/report_sentiment_pdf.html', ctx)
     return render(request, 'monitor/report_sentiment.html', ctx)
@@ -1553,6 +2848,8 @@ def report_source(request, org_id):
             {'label': s['label'], 'chart': s['chart_json']} for s in sections
         ]),
     }
+    if request.GET.get('download') == 'pdf':
+        return _pdf_download(request, 'monitor/report_source_pdf.html', ctx, 'source-report.pdf')
     if request.GET.get('format') == 'pdf':
         return render(request, 'monitor/report_source_pdf.html', ctx)
     return render(request, 'monitor/report_source.html', ctx)
@@ -1564,28 +2861,103 @@ def report_source(request, org_id):
 def alerts_view(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     alerts = org.alerts.all()
+    # Org admins of this organisation, offered as recipient suggestions.
+    seen, admin_recipients = set(), []
+    for u in org.members.filter(role='org_admin').exclude(email='').order_by('email'):
+        key = u.email.lower()
+        if key not in seen:
+            seen.add(key)
+            admin_recipients.append({'email': u.email, 'name': u.get_full_name()})
     return render(request, 'monitor/alerts.html', {
         'org': org,
         'page': 'alerts',
         'alerts': alerts,
+        'admin_recipients': admin_recipients,
     })
+
+
+def _clean_recipients(raw):
+    """Normalise a comma-separated recipients string, de-duplicating and trimming."""
+    seen, out = set(), []
+    for email in (raw or '').split(','):
+        email = email.strip()
+        if email and email.lower() not in seen:
+            seen.add(email.lower())
+            out.append(email)
+    return ', '.join(out)
+
+
+def _clean_categories(data, multipart):
+    """Pull the checked Event categories out of the alert form/payload.
+    Multipart (checkbox) submissions repeat the 'categories' key once per checked
+    box, so QueryDict.getlist is needed instead of .get. Unknown values are
+    dropped; an empty result means "no restriction" (see Alert.categories)."""
+    valid = {c for c, _ in EVENT_CATEGORY_CHOICES}
+    if multipart and hasattr(data, 'getlist'):
+        raw = data.getlist('categories')
+    else:
+        raw = data.get('categories') or []
+        if isinstance(raw, str):
+            raw = [raw]
+    return [c for c in raw if c in valid]
 
 
 @login_required
 @require_http_methods(['POST'])
 def alert_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
-    data = json.loads(request.body)
+    multipart = request.content_type and 'multipart' in request.content_type
+    data = request.POST if multipart else json.loads(request.body)
+    recipients = _clean_recipients(data.get('recipients', '') or data.get('email', ''))
     alert = Alert.objects.create(
         organization=org,
-        name=data.get('name', '').strip(),
-        keywords=data.get('keywords', '').strip(),
-        email=data.get('email', '').strip(),
+        name=(data.get('name', '') or '').strip(),
+        keywords=(data.get('keywords', '') or '').strip(),
+        recipients=recipients,
+        email=recipients.split(',')[0].strip() if recipients else '',
         frequency=data.get('frequency', 'daily'),
-        email_subject=data.get('email_subject', '').strip(),
+        email_subject=(data.get('email_subject', '') or '').strip(),
         start_date=data.get('start_date') or None,
+        delivery_time=data.get('delivery_time') or None,
+        categories=_clean_categories(data, multipart),
     )
+    if multipart and 'banner_image' in request.FILES:
+        alert.banner_image = request.FILES['banner_image']
+        alert.save()
     return JsonResponse({'id': alert.id, 'name': alert.name})
+
+
+@login_required
+@require_http_methods(['POST'])
+def alert_update(request, org_id, alert_id):
+    org = get_object_or_404(Organization, id=org_id)
+    alert = get_object_or_404(Alert, id=alert_id, organization=org)
+    multipart = request.content_type and 'multipart' in request.content_type
+    data = request.POST if multipart else json.loads(request.body)
+    for field in ['name', 'keywords', 'frequency', 'email_subject']:
+        if field in data:
+            setattr(alert, field, data[field].strip() if isinstance(data[field], str) else data[field])
+    if 'recipients' in data:
+        alert.recipients = _clean_recipients(data['recipients'])
+        alert.email = alert.recipients.split(',')[0].strip() if alert.recipients else ''
+    # 'categories_touched' always accompanies the categories checkboxes so an
+    # all-unchecked submission (which sends no 'categories' key at all) is still
+    # distinguishable from a caller that omitted the field entirely and should
+    # leave the alert's existing categories untouched.
+    if 'categories_touched' in data:
+        alert.categories = _clean_categories(data, multipart)
+    if 'start_date' in data:
+        alert.start_date = data['start_date'] or None
+    if 'delivery_time' in data:
+        alert.delivery_time = data['delivery_time'] or None
+    if 'is_active' in data:
+        alert.is_active = str(data['is_active']).lower() in ('1', 'true', 'on', 'yes')
+    if multipart and 'banner_image' in request.FILES:
+        alert.banner_image = request.FILES['banner_image']
+    if str(data.get('remove_banner', '')).lower() in ('1', 'true', 'yes'):
+        alert.banner_image = None
+    alert.save()
+    return JsonResponse({'ok': True})
 
 
 @login_required
@@ -1595,6 +2967,34 @@ def alert_delete(request, org_id, alert_id):
     alert = get_object_or_404(Alert, id=alert_id, organization=org)
     alert.delete()
     return JsonResponse({'ok': True})
+
+
+@login_required
+@require_http_methods(['POST'])
+def alert_test_send(request, org_id, alert_id):
+    """Send a test digest for one alert to the logged-in user only (not the real recipients)."""
+    org = get_object_or_404(Organization, id=org_id)
+    alert = get_object_or_404(Alert, id=alert_id, organization=org)
+    test_to = (request.user.email or '').strip()
+    if not test_to:
+        return JsonResponse({'error': 'Your account has no email address set, so a test cannot be sent to you.'}, status=400)
+    try:
+        result = build_and_send(
+            alert,
+            since=start_of_today(),
+            force=True,
+            update_watermark=False,
+            recipients_override=[test_to],
+        )
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': f'Send failed: {exc}'}, status=502)
+    return JsonResponse({
+        'ok': True,
+        'recipients': result.get('recipients', [test_to]),
+        'total': result.get('total', 0),
+    })
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────
@@ -1615,26 +3015,55 @@ def users_view(request, org_id):
 @login_required
 @require_http_methods(['POST'])
 def user_create(request, org_id):
+    from django.contrib.auth.tokens import default_token_generator
+    from django.utils.http import urlsafe_base64_encode
+    from django.utils.encoding import force_bytes
+    from django.core.mail import send_mail
+    from django.template.loader import render_to_string
+
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
     email = data.get('email', '').strip()
     first_name = data.get('first_name', '').strip()
     last_name = data.get('last_name', '').strip()
-    username = email.split('@')[0] if email else first_name.lower()
-    base_username = username
-    i = 1
-    while User.objects.filter(username=username).exists():
-        username = f"{base_username}{i}"
-        i += 1
+    username = email.lower() if email else first_name.lower()
+    if User.objects.filter(username=username).exists():
+        return JsonResponse({'error': 'A user with this email already exists.'}, status=400)
+    role = data.get('role', 'viewer')
     user = User.objects.create_user(
         username=username,
         email=email,
         first_name=first_name,
         last_name=last_name,
-        password=data.get('password', 'changeme123'),
-        organization=org,
-        role=data.get('role', 'viewer'),
+        organization=None if role == 'platform_admin' else org,
+        role=role,
     )
+    user.set_unusable_password()
+    user.save()
+
+    if email:
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        protocol = 'https' if request.is_secure() else 'http'
+        domain = request.get_host()
+        ctx = {
+            'full_name': user.get_full_name() or username,
+            'uid': uid,
+            'token': token,
+            'protocol': protocol,
+            'domain': domain,
+        }
+        body = render_to_string('monitor/welcome_email.txt', ctx)
+        html_body = render_to_string('monitor/email/welcome_email.html', ctx)
+        send_mail(
+            subject='Welcome to Social Light — Set Your Password',
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            html_message=html_body,
+            fail_silently=True,
+        )
+
     return JsonResponse({'id': user.id, 'name': user.get_full_name()})
 
 
@@ -1704,7 +3133,7 @@ def faqs_view(request, org_id):
         {'q': 'What does sentiment mean?', 'a': 'Sentiment analysis categorises media mentions as Positive (favourable coverage), Neutral (factual/balanced coverage), or Negative (unfavourable coverage) based on the tone and content of the article.'},
         {'q': 'How do I add keywords for tracking?', 'a': 'Navigate to your organisation\'s dashboard and use the keywords section to add terms you want to track. The system will then flag articles containing those keywords.'},
         {'q': 'Can I export data to a report?', 'a': 'Yes. Navigate to the Reports section and click "Create Report". You can select date ranges, media types, and report formats to generate a downloadable summary.'},
-        {'q': 'What media types are tracked?', 'a': 'Social Light tracks four media types: Online Articles (digital publications and news websites), Print Media (newspapers and magazines), Social Media Posts (Facebook, Twitter, Instagram, LinkedIn), and Broadcast (TV and radio mentions).'},
+        {'q': 'What media types are tracked?', 'a': 'Social Light tracks four media types: Online Articles (digital publications and news websites), Print Media (newspapers and magazines), Social Media Posts (Facebook, X, Instagram, LinkedIn), and Broadcast (TV and radio mentions).'},
         {'q': 'How do I switch between organisations?', 'a': 'Click "Switch Organisations" in the top header bar. This will take you to the organisations list where you can select a different organisation to view.'},
         {'q': 'What is reach?', 'a': 'Reach refers to the estimated number of people who could have seen or read a particular piece of coverage, based on the publication\'s circulation or platform\'s audience size.'},
     ]
@@ -1780,6 +3209,23 @@ def report_competitor(request, org_id):
     print_qs = PrintArticle.objects.filter(organization=org, date_published__range=(df, dt))
     soc_qs = SocialMediaPost.objects.filter(organization=org, date_published__range=(df, dt))
 
+    # ── Country filter ────────────────────────────────────────────────────────
+    # Distinct countries that exist in the coverage — including the loaded
+    # competitor articles — so every available country shows in the dropdown.
+    countries = sorted(set(
+        list(org.competitor_articles.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(bc_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(art_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(print_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(soc_qs.exclude(country='').values_list('country', flat=True).distinct())
+    ))
+    selected_country = request.GET.get('country', '').strip()
+    if selected_country:
+        bc_qs = bc_qs.filter(country=selected_country)
+        art_qs = art_qs.filter(country=selected_country)
+        print_qs = print_qs.filter(country=selected_country)
+        soc_qs = soc_qs.filter(country=selected_country)
+
     org_bc_count = bc_qs.count()
     org_art_count = art_qs.count()
     org_print_count = print_qs.count()
@@ -1790,22 +3236,27 @@ def report_competitor(request, org_id):
     org_art_reach = art_qs.aggregate(s=Sum('reach'))['s'] or 0
 
     # ── Competitor data ───────────────────────────────────────────────────────
-    comp_names = list(org.competitors.values_list('name', flat=True))
-    comp_orgs = {o.name: o for o in Organization.objects.filter(name__in=comp_names)}
+    competitors = list(org.competitors.all())
 
-    # Per-competitor counts
+    def terms_q(comp):
+        q = Q()
+        for term in comp.match_terms():
+            q |= Q(headline__icontains=term) | Q(summary__icontains=term)
+        return q
+
+    # Per-competitor counts using keyword matches from the competitors page
     comp_data = {}
-    for cname in comp_names:
-        co = comp_orgs.get(cname)
-        if co:
-            c_bc = BroadcastMention.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_art = OnlineArticle.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_print = PrintArticle.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_soc = SocialMediaPost.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_ave = OnlineArticle.objects.filter(organization=co, date_published__range=(df, dt)).aggregate(s=Sum('ave'))['s'] or 0
-        else:
+    for comp in competitors:
+        name_q = terms_q(comp)
+        if not name_q:
             c_bc = c_art = c_print = c_soc = c_ave = 0
-        comp_data[cname] = {'bc': c_bc, 'art': c_art, 'print': c_print, 'soc': c_soc, 'ave': c_ave}
+        else:
+            c_bc = bc_qs.filter(name_q).count()
+            c_art = art_qs.filter(name_q).count()
+            c_print = print_qs.filter(name_q).count()
+            c_soc = soc_qs.filter(name_q).count()
+            c_ave = art_qs.filter(name_q).aggregate(s=Sum('ave'))['s'] or 0
+        comp_data[comp.name] = {'bc': c_bc, 'art': c_art, 'print': c_print, 'soc': c_soc, 'ave': c_ave}
 
     # ── Build row lists (sorted desc by count) ────────────────────────────────
     def _make_rows(org_count, comp_key):
@@ -1855,8 +3306,7 @@ def report_competitor(request, org_id):
 
     # ── Publisher volume (top 8 print sources) ────────────────────────────────
     pub_qs = (
-        PrintArticle.objects
-        .filter(organization=org, date_published__range=(df, dt))
+        print_qs
         .values('source')
         .annotate(count=Count('id'))
         .order_by('-count')[:8]
@@ -1865,8 +3315,7 @@ def report_competitor(request, org_id):
 
     # ── Print detail (last 10) ─────────────────────────────────────────────────
     print_detail = list(
-        PrintArticle.objects
-        .filter(organization=org, date_published__range=(df, dt))
+        print_qs
         .order_by('-date_published')[:10]
         .values('headline', 'source', 'date_published', 'sentiment', 'ave')
     )
@@ -1895,14 +3344,26 @@ def report_competitor(request, org_id):
 
     # ── Hot topics from competitor content ────────────────────────────────────
     comp_texts = []
-    for cname in comp_names:
-        co = comp_orgs.get(cname)
-        if co:
-            comp_texts += list(OnlineArticle.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
-            comp_texts += list(PrintArticle.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
-            comp_texts += list(BroadcastMention.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
-            comp_texts += list(SocialMediaPost.objects.filter(organization=co, date_published__range=(df, dt)).values_list('headline', flat=True))
+    comp_article_headlines = []
+    for comp in competitors:
+        name_q = terms_q(comp)
+        if not name_q:
+            continue
+        comp_texts += list(art_qs.filter(name_q).values_list('headline', flat=True))
+        comp_texts += list(print_qs.filter(name_q).values_list('headline', flat=True))
+        comp_texts += list(bc_qs.filter(name_q).values_list('headline', flat=True))
+        comp_texts += list(soc_qs.filter(name_q).values_list('headline', flat=True))
+        comp_article_headlines += list(art_qs.filter(name_q).values_list('headline', flat=True))
+        comp_article_headlines += list(print_qs.filter(name_q).values_list('headline', flat=True))
     hot_topics = _hot_topics(comp_texts, top_n=20)
+    headline_preview = []
+    seen_headlines = set()
+    for headline in comp_article_headlines:
+        if headline and headline not in seen_headlines:
+            seen_headlines.add(headline)
+            headline_preview.append(headline)
+        if len(headline_preview) >= 8:
+            break
     hot_topics_json = json.dumps(hot_topics)
 
     # ── JSON for charts ───────────────────────────────────────────────────────
@@ -1918,6 +3379,8 @@ def report_competitor(request, org_id):
         'date_from': df,
         'date_to': dt,
         'month_label': month_label,
+        'selected_country': selected_country,
+        'countries': countries,
         # Counts
         'org_bc_count': org_bc_count,
         'org_art_count': org_art_count,
@@ -1943,7 +3406,6 @@ def report_competitor(request, org_id):
         # Broadcast sentiment
         'pos_bc': pos_bc,
         'neu_bc': neu_bc,
-        'neg_bc': neg_bc,
         'pos_pct': pos_pct,
         'neu_pct': neu_pct,
         'neg_pct': neg_pct,
@@ -1954,13 +3416,41 @@ def report_competitor(request, org_id):
         # Hot topics
         'hot_topics': hot_topics,
         'hot_topics_json': hot_topics_json,
+        'headline_preview': headline_preview,
         # Chart JSON
         'bc_json': bc_json,
         'art_json': art_json,
         'soc_json': soc_json,
         'print_json': print_json,
         'pub_json': pub_json,
+        # PDF mode flag
+        'pdf_mode': request.GET.get('format') in ('pdf',) or request.GET.get('download') == 'pdf',
     }
+    if request.GET.get('download') == 'pdf':
+        from .pdf import render_url_to_pdf, PDFError
+        # This report depends on app static assets + live charts, so we navigate a
+        # headless browser to the print view (its @media print CSS hides the chrome).
+        params = request.GET.copy()
+        params['format'] = 'pdf'
+        params.pop('download', None)
+        # Prod can set PDF_RENDER_BASE_URL (e.g. http://127.0.0.1:8000) so the
+        # headless browser reaches the app directly instead of round-tripping via
+        # the public URL. Falls back to the request's own absolute URL.
+        base = getattr(settings, 'PDF_RENDER_BASE_URL', '') or ''
+        if base:
+            url = f"{base.rstrip('/')}{request.path}?{params.urlencode()}"
+        else:
+            url = request.build_absolute_uri(f'{request.path}?{params.urlencode()}')
+        sid = request.COOKIES.get(settings.SESSION_COOKIE_NAME)
+        cookies = [{'name': settings.SESSION_COOKIE_NAME, 'value': sid, 'url': url}] if sid else []
+        try:
+            pdf_bytes = render_url_to_pdf(url, cookies=cookies, wait_ms=1600,
+                                          wait_for='window.__pdfReady === true')
+        except PDFError as exc:
+            return JsonResponse({'error': str(exc)}, status=503)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = 'attachment; filename="competitor-report.pdf"'
+        return resp
     return render(request, 'monitor/report_competitor.html', context)
 
 
@@ -1998,6 +3488,23 @@ def report_competitor_pptx(request, org_id):
     print_qs = PrintArticle.objects.filter(organization=org, date_published__range=(df, dt))
     soc_qs = SocialMediaPost.objects.filter(organization=org, date_published__range=(df, dt))
 
+    # ── Country filter ────────────────────────────────────────────────────────
+    # Distinct countries that exist in the coverage — including the loaded
+    # competitor articles — so every available country shows in the dropdown.
+    countries = sorted(set(
+        list(org.competitor_articles.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(bc_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(art_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(print_qs.exclude(country='').values_list('country', flat=True).distinct()) +
+        list(soc_qs.exclude(country='').values_list('country', flat=True).distinct())
+    ))
+    selected_country = request.GET.get('country', '').strip()
+    if selected_country:
+        bc_qs = bc_qs.filter(country=selected_country)
+        art_qs = art_qs.filter(country=selected_country)
+        print_qs = print_qs.filter(country=selected_country)
+        soc_qs = soc_qs.filter(country=selected_country)
+
     org_bc_count = bc_qs.count()
     org_art_count = art_qs.count()
     org_print_count = print_qs.count()
@@ -2008,20 +3515,25 @@ def report_competitor_pptx(request, org_id):
     org_art_reach = art_qs.aggregate(s=Sum('reach'))['s'] or 0
 
     # ── Competitor data ───────────────────────────────────────────────────────
-    comp_names = list(org.competitors.values_list('name', flat=True))
-    comp_orgs = {o.name: o for o in Organization.objects.filter(name__in=comp_names)}
+    competitors = list(org.competitors.all())
+
+    def terms_q(comp):
+        q = Q()
+        for term in comp.match_terms():
+            q |= Q(headline__icontains=term) | Q(summary__icontains=term)
+        return q
 
     comp_data = {}
-    for cname in comp_names:
-        co = comp_orgs.get(cname)
-        if co:
-            c_bc = BroadcastMention.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_art = OnlineArticle.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_print = PrintArticle.objects.filter(organization=co, date_published__range=(df, dt)).count()
-            c_soc = SocialMediaPost.objects.filter(organization=co, date_published__range=(df, dt)).count()
-        else:
+    for comp in competitors:
+        name_q = terms_q(comp)
+        if not name_q:
             c_bc = c_art = c_print = c_soc = 0
-        comp_data[cname] = {'bc': c_bc, 'art': c_art, 'print': c_print, 'soc': c_soc}
+        else:
+            c_bc = bc_qs.filter(name_q).count()
+            c_art = art_qs.filter(name_q).count()
+            c_print = print_qs.filter(name_q).count()
+            c_soc = soc_qs.filter(name_q).count()
+        comp_data[comp.name] = {'bc': c_bc, 'art': c_art, 'print': c_print, 'soc': c_soc}
 
     def _make_rows(org_count, comp_key):
         rows = [{'name': org.name, 'count': org_count, 'is_org': True}]
@@ -2312,6 +3824,75 @@ def media_source_create(request, org_id):
 
 
 @login_required
+@require_http_methods(['POST'])
+def media_source_csv_upload(request, org_id):
+    """Bulk-import media sources from a CSV.
+
+    Expected columns: name, type, domain, reach, country, handle
+    (the _id / logo_url / createdAt / updatedAt columns are ignored).
+    """
+    org = get_object_or_404(Organization, id=org_id)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        raw = upload.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'error': 'File must be UTF-8 encoded CSV'}, status=400)
+
+    reader = csv.DictReader(io.StringIO(raw))
+    created = 0
+    errors = []
+    to_create = []
+    valid_types = {v for v, _ in SOURCE_TYPE_CHOICES}
+
+    # Skip rows that already exist (matched on name + type) so re-uploading is safe.
+    existing_keys = {
+        (n.lower(), t) for n, t in org.media_sources.values_list('name', 'source_type')
+    }
+    seen = set()
+
+    for idx, row in enumerate(reader, start=2):  # row 1 is the header
+        name = (row.get('name') or '').strip()
+        if not name:
+            errors.append(f'Row {idx}: missing name')
+            continue
+
+        stype = (row.get('type') or row.get('source_type') or '').strip().lower()
+        if stype not in valid_types:
+            stype = 'online'
+
+        url = (row.get('domain') or row.get('url') or '').strip()
+
+        try:
+            reach = int(float((row.get('reach') or '0').strip() or 0))
+        except ValueError:
+            reach = 0
+
+        key = (name.lower(), stype)
+        if key in existing_keys or key in seen:
+            continue
+        seen.add(key)
+
+        to_create.append(MediaSource(
+            organization=org,
+            name=name,
+            source_type=stype,
+            url=url[:500],
+            handle=(row.get('handle') or '').strip(),
+            country=(row.get('country') or '').strip(),
+            reach=reach,
+        ))
+
+    if to_create:
+        MediaSource.objects.bulk_create(to_create)
+        created = len(to_create)
+
+    return JsonResponse({'created': created, 'errors': errors})
+
+
+@login_required
 @require_http_methods(['PUT'])
 def media_source_update(request, org_id, source_id):
     org = get_object_or_404(Organization, id=org_id)
@@ -2367,6 +3948,10 @@ def media_monitor_webhook(request, org_id):
 
     org = get_object_or_404(Organization, id=org_id)
 
+    # Disabled (inactive) organisations receive no new mentions.
+    if org.status != 'active':
+        return JsonResponse({'ok': True, 'skipped': 'organization inactive'})
+
     try:
         body = json.loads(request.body)
     except (json.JSONDecodeError, ValueError):
@@ -2407,6 +3992,7 @@ def media_monitor_webhook(request, org_id):
         date_published= pub_date,
         country       = country,
         sentiment     = sentiment,
+        relevancy     = compute_relevancy(title, summary, org=org),
     )
     return JsonResponse({'ok': True, 'id': article.id})
 

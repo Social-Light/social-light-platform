@@ -6,6 +6,7 @@
 .ke-label { font-size:.8rem; font-weight:700; }
 .ke-date { font-size:.75rem; color:#9ca3af; }
 .ke-desc { font-size:.78rem; color:#374151; line-height:1.55; }
+.ke-sub { font-size:.72rem; color:#9ca3af; line-height:1.5; margin-top:3px; }
 .div-chart { width:100%; }
 .div-chart-row { display:grid; grid-template-columns:1fr 220px 1fr; align-items:center; margin-bottom:7px; gap:6px; }
 .div-bar-cell { display:flex; }
@@ -22,6 +23,39 @@
 .trend-wrap { display:grid; grid-template-rows:auto auto; gap:6px; }
 .trend-note { font-size:.67rem; color:#9ca3af; margin:2px 0 0; text-align:right; }
 .trend-note-bot { font-size:.67rem; color:#9ca3af; margin:4px 0 0; }
+
+/* KPI insights list */
+.ins-list { display:flex; flex-direction:column; gap:11px; margin-top:6px; }
+.ins-item { display:flex; align-items:flex-start; gap:10px; font-size:.86rem; color:#374151; line-height:1.55; }
+.ins-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+.ins-dot--positive { background:#22c55e; }
+.ins-dot--neutral  { background:#9ca3af; }
+.ins-dot--negative { background:#ef4444; }
+
+/* KPI insights — category pills + text */
+.kpi-ins-list { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
+.kpi-ins-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.kpi-ins-row.detail { align-items:flex-start; }
+.kpi-ins-row.detail .kpi-pill { margin-top:2px; }
+.kpi-ins-row.detail .kpi-ins-text { flex:1; min-width:240px; }
+.kpi-pill { display:inline-flex; align-items:center; gap:6px; border:1.5px solid #e5e7eb; border-radius:9999px; padding:5px 13px; font-size:.76rem; font-weight:600; color:#0f766e; white-space:nowrap; flex-shrink:0; }
+.kpi-pill-chev { color:#9ca3af; flex-shrink:0; }
+.kpi-pill--positive { border-color:#bbf7d0; color:#15803d; }
+.kpi-pill--negative { border-color:#fecaca; color:#dc2626; }
+.kpi-ins-text { font-size:.82rem; color:#374151; line-height:1.5; }
+.kpi-ins-text::before { content:': '; color:#9ca3af; }
+
+/* Top journalists bars */
+.journ-bars { display:flex; flex-direction:column; gap:8px; margin-bottom:6px; }
+.journ-bar-row { display:grid; grid-template-columns:150px 1fr 34px; align-items:center; gap:10px; }
+.journ-bar-name { font-size:.78rem; color:#374151; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.journ-bar-outer { background:#f3f4f6; border-radius:4px; }
+.journ-bar-track { display:flex; height:18px; border-radius:4px; overflow:hidden; min-width:3px; }
+.journ-bar-seg { height:100%; }
+.journ-bar-seg.pos { background:#22c55e; }
+.journ-bar-seg.neu { background:#9ca3af; }
+.journ-bar-seg.neg { background:#ef4444; }
+.journ-bar-val { font-size:.78rem; font-weight:700; color:#374151; text-align:right; }
 </style>
 
 {% if td.sel_mods %}
@@ -36,7 +70,7 @@
         {{ td.vol }} mention{{ td.vol|pluralize }}
         &nbsp;·&nbsp;
         BWP {{ td.ave|floatformat:0 }} AVE
-        {% if td.reach %}&nbsp;·&nbsp; {{ td.reach|floatformat:0 }} Reach{% endif %}
+        {% if td.reach %}&nbsp;·&nbsp; {{ td.reach|floatformat:0 }} {% if td.reach_estimated %}Est. Reach{% else %}Reach{% endif %}{% endif %}
       </p>
     </div>
     <div class="slide-footer">
@@ -51,7 +85,7 @@
 <div class="slide" id="s-{{ type_key }}-media-summary">
   <div class="slide-content">
     <div class="slide-hdr">
-      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
       <div class="slide-hdr-title">{{ td.label }}: <strong>Media Summary</strong></div>
     </div>
     <div class="slide-body">
@@ -70,9 +104,9 @@
         </div>
         {% if td.reach %}
         <div class="kpi-card">
-          <div class="kpi-lbl">Total Reach</div>
+          <div class="kpi-lbl">{% if td.reach_estimated %}Estimated Reach{% else %}Total Reach{% endif %}</div>
           <div class="kpi-val">{{ td.reach|floatformat:0 }}</div>
-          <div class="kpi-sub">Estimated audience</div>
+          <div class="kpi-sub">{% if td.reach_estimated %}Est. from circulation{% else %}Estimated audience{% endif %}</div>
         </div>
         {% else %}
         <div class="kpi-card">
@@ -110,7 +144,7 @@
 <div class="slide" id="s-{{ type_key }}-sentiment-trend">
   <div class="slide-content">
     <div class="slide-hdr">
-      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
       <div class="slide-hdr-title">{{ td.label }}: <strong>Sentiment Trend</strong></div>
     </div>
     <div class="slide-body" style="padding-bottom:12px;">
@@ -147,7 +181,7 @@
 <div class="slide" id="s-{{ type_key }}-key-events">
   <div class="slide-content">
     <div class="slide-hdr">
-      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
       <div class="slide-hdr-title">{{ td.label }}: <strong>Key Events &amp; Spikes</strong></div>
     </div>
     <div class="slide-body">
@@ -170,7 +204,7 @@
 <div class="slide" id="s-{{ type_key }}-issue-impact">
   <div class="slide-content">
     <div class="slide-hdr">
-      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
       <div class="slide-hdr-title">{{ td.label }}: <strong>Issue Impact</strong></div>
     </div>
     <div class="slide-body">
@@ -194,7 +228,7 @@
 <div class="slide" id="s-{{ type_key }}-top-sources">
   <div class="slide-content">
     <div class="slide-hdr">
-      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
       <div class="slide-hdr-title">{{ td.label }}: <strong>Top Sources</strong></div>
     </div>
     <div class="slide-body">
@@ -223,26 +257,34 @@
 <div class="slide" id="s-{{ type_key }}-risks">
   <div class="slide-content">
     <div class="slide-hdr">
-      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
       <div class="slide-hdr-title">{{ td.label }}: <strong>Reputational Risks</strong></div>
     </div>
     <div class="slide-body">
       <div class="slide-type-label">{{ td.label }}</div>
       <h2 class="slide-heading" style="color:#dc2626;">Reputational Risks</h2>
-      {% for r in td.risks %}
+      {% for r in td.ai_risks %}
       <div class="rep-card risk">
-        <div>
-          <div class="rep-card-title">{{ r.headline }}</div>
-          <div class="rep-card-desc">{{ r.source }} &mdash; {{ r.date }}</div>
+        <div class="rep-card-title"><span class="rep-tri"></span>{{ r.title }}</div>
+        <div class="rep-card-desc">{{ r.description }}</div>
+        <div class="rep-dials">
+          <div class="rep-dial rep-dial--bound">-10</div>
+          <div class="rep-dial rep-dial--score">{{ r.score }}</div>
         </div>
-        <div class="rep-card-meta">
-          <div class="rep-card-ave">BWP {{ r.ave|floatformat:0 }}</div>
-          <div class="rep-card-src">AVE</div>
-        </div>
+        <div class="rep-card-src">&ndash; {{ r.source }}</div>
       </div>
       {% empty %}
-      <p style="color:#9ca3af;font-size:.86rem;">No negative mentions recorded for this period.</p>
+      {% if has_analysis %}
+      <p style="color:#9ca3af;font-size:.86rem;">No reputational risks identified in {{ td.label }} for this period.</p>
+      {% elif ai_enabled %}
+      <p style="color:#9ca3af;font-size:.86rem;">Run <strong>Generate AI Analysis</strong> to surface the reputational risks for this period.</p>
+      {% else %}
+      <p style="color:#9ca3af;font-size:.86rem;">No reputational risks recorded for this period.</p>
+      {% endif %}
       {% endfor %}
+      {% if td.ai_risks %}
+      <p style="font-size:.67rem;color:#9ca3af;margin-top:12px;">*Impact refers to the total effect that a particular issue has on total sentiment.</p>
+      {% endif %}
     </div>
     <div class="slide-ftr">
       <span>© Social Light Botswana | {% now "Y" %}</span>
@@ -257,26 +299,34 @@
 <div class="slide" id="s-{{ type_key }}-opps">
   <div class="slide-content">
     <div class="slide-hdr">
-      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
       <div class="slide-hdr-title">{{ td.label }}: <strong>Reputational Opportunities</strong></div>
     </div>
     <div class="slide-body">
       <div class="slide-type-label">{{ td.label }}</div>
       <h2 class="slide-heading" style="color:#16a34a;">Reputational Opportunities</h2>
-      {% for o in td.opps %}
+      {% for o in td.ai_opps %}
       <div class="rep-card oppty">
-        <div>
-          <div class="rep-card-title">{{ o.headline }}</div>
-          <div class="rep-card-desc">{{ o.source }} &mdash; {{ o.date }}</div>
+        <div class="rep-card-title"><span class="rep-tri"></span>{{ o.title }}</div>
+        <div class="rep-card-desc">{{ o.description }}</div>
+        <div class="rep-dials">
+          <div class="rep-dial rep-dial--bound">+10</div>
+          <div class="rep-dial rep-dial--score">{{ o.score }}</div>
         </div>
-        <div class="rep-card-meta">
-          <div class="rep-card-ave">BWP {{ o.ave|floatformat:0 }}</div>
-          <div class="rep-card-src">AVE</div>
-        </div>
+        <div class="rep-card-src">&ndash; {{ o.source }}</div>
       </div>
       {% empty %}
-      <p style="color:#9ca3af;font-size:.86rem;">No positive mentions recorded for this period.</p>
+      {% if has_analysis %}
+      <p style="color:#9ca3af;font-size:.86rem;">No reputational opportunities identified in {{ td.label }} for this period.</p>
+      {% elif ai_enabled %}
+      <p style="color:#9ca3af;font-size:.86rem;">Run <strong>Generate AI Analysis</strong> to surface the reputational opportunities for this period.</p>
+      {% else %}
+      <p style="color:#9ca3af;font-size:.86rem;">No reputational opportunities recorded for this period.</p>
+      {% endif %}
       {% endfor %}
+      {% if td.ai_opps %}
+      <p style="font-size:.67rem;color:#9ca3af;margin-top:12px;">*Impact refers to the total effect that a particular issue has on total sentiment.</p>
+      {% endif %}
     </div>
     <div class="slide-ftr">
       <span>© Social Light Botswana | {% now "Y" %}</span>
@@ -291,7 +341,7 @@
 <div class="slide" id="s-{{ type_key }}-word-cloud">
   <div class="slide-content">
     <div class="slide-hdr">
-      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
       <div class="slide-hdr-title">{{ td.label }}: <strong>Word Cloud</strong></div>
     </div>
     <div class="slide-body">
@@ -316,7 +366,7 @@
 <div class="slide" id="s-{{ type_key }}-kpi">
   <div class="slide-content">
     <div class="slide-hdr">
-      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" class="slide-hdr-logo" alt=""/>
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
       <div class="slide-hdr-title">{{ td.label }}: <strong>KPI Performance</strong></div>
     </div>
     <div class="slide-body">
@@ -382,26 +432,150 @@
           </div>
         </div>
       </div>
-      {% if type_key == 'print' and journalists %}
-      <div style="margin-top:18px;">
-        <div class="kpi-lbl" style="margin-bottom:8px;">Top Journalists</div>
-        <table class="journ-table">
-          <thead><tr><th>Author</th><th>Articles</th><th>Positive</th><th>Neutral</th><th>Negative</th><th>AVE</th></tr></thead>
-          <tbody>
-            {% for j in journalists|slice:":6" %}
-            <tr>
-              <td>{{ j.author }}</td>
-              <td>{{ j.total }}</td>
-              <td style="color:#16a34a;">{{ j.pos }}</td>
-              <td style="color:#6b7280;">{{ j.neu }}</td>
-              <td style="color:#dc2626;">{{ j.neg }}</td>
-              <td>BWP {{ j.ave_total|floatformat:0 }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+
+{# ── KPI PERFORMANCE — VISIBILITY vs SENTIMENT (page 2) ───────────────── #}
+<div class="slide" id="s-{{ type_key }}-kpi-scatter">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>KPI Performance</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">KPI Performance</h2>
+      <p class="src-subtitle">KPI Visibility vs Sentiment</p>
+      {% if td.ai_kpi_insights %}
+      <div style="position:relative;height:340px;">
+        <canvas data-kpi-scatter="{{ td.kpi_scatter_json|escape }}"></canvas>
       </div>
+      <p style="font-size:.66rem;color:#9ca3af;margin-top:12px;line-height:1.6;text-align:center;">
+        *Sentiment is scored on a scale between -100 and 100.<br>
+        *Visibility is a measure of volume weighted by influence of the source as well as the prominence and relevance of the mention.<br>
+        The dotted sentiment average line represents the average sentiment score for all KPIs. The dotted visibility average line represents average visibility for all KPIs.
+      </p>
+      {% else %}
+      <p style="color:#9ca3af;font-size:.86rem;">{% if has_analysis %}No significant {{ td.label }} KPI themes to plot for this period.{% elif ai_enabled %}Run <strong>Generate AI Analysis</strong> to plot KPI visibility vs sentiment.{% else %}No KPI data available for this period.{% endif %}</p>
       {% endif %}
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── KPI PERFORMANCE SUMMARY & INSIGHTS ───────────────────────────────── #}
+{% if 'kpi_insights' in td.sel_mods %}
+<div class="slide" id="s-{{ type_key }}-kpi-insights">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>KPI Performance Summary &amp; Insights</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">KPI Performance Summary &amp; Insights</h2>
+      <div class="kpi-ins-list">
+        {% if td.ai_kpi_insights %}
+        {# Detailed AI-generated insights: scored theme + grounded narrative. #}
+        {% for ins in td.ai_kpi_insights %}
+        <div class="kpi-ins-row detail">
+          <span class="kpi-pill kpi-pill--{{ ins.sentiment }}">
+            {% if ins.sentiment == 'positive' %}
+            <svg class="kpi-pill-chev" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg>
+            {% else %}
+            <svg class="kpi-pill-chev" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
+            {% endif %}
+            {{ ins.category }} ({{ ins.score_label }})
+          </span>
+          <span class="kpi-ins-text">{{ ins.text }}</span>
+        </div>
+        {% endfor %}
+        {% elif has_analysis %}
+        {# AI analysis exists but found no significant theme for this media type — clean message, not the shallow keyword counts. #}
+        <p style="color:#9ca3af;font-size:.86rem;">No significant {{ td.label }} coverage to summarise for this period.</p>
+        {% else %}
+        {# Keyword-based fallback when no AI analysis has been generated at all. #}
+        {% for ins in td.kpi_insights %}
+        <div class="kpi-ins-row">
+          <span class="kpi-pill kpi-pill--{{ ins.sentiment }}">
+            <svg class="kpi-pill-chev" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
+            {{ ins.category }} ({{ ins.count }})
+          </span>
+          <span class="kpi-ins-text">{{ ins.text }}</span>
+        </div>
+        {% empty %}
+        <p style="color:#9ca3af;font-size:.86rem;">No data available for this period.</p>
+        {% endfor %}
+        {% if ai_enabled %}
+        <p style="font-size:.72rem;color:#9ca3af;margin-top:6px;">Run <strong>Generate AI Analysis</strong> for detailed, coverage-specific insights.</p>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    <div class="slide-ftr">
+      <span>© Social Light Botswana | {% now "Y" %}</span>
+      <span>Unauthorized Reproduction is Prohibited</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── TOP JOURNALISTS (print only) ─────────────────────────────────────── #}
+{% if type_key == 'print' and journalists %}
+<div class="slide" id="s-{{ type_key }}-journalists">
+  <div class="slide-content">
+    <div class="slide-hdr">
+      <img src="{% static 'images/social_light_logo.png' %}" class="slide-hdr-logo" alt=""/>
+      <div class="slide-hdr-title">{{ td.label }}: <strong>Top Journalists</strong></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-type-label">{{ td.label }}</div>
+      <h2 class="slide-heading">Top Journalists</h2>
+      <p class="src-subtitle">Most active authors by volume &amp; tonality</p>
+      <div class="journ-bars">
+        {% for j in journalists|slice:":10" %}
+        <div class="journ-bar-row">
+          <div class="journ-bar-name">{{ j.author|truncatechars:26 }}</div>
+          <div class="journ-bar-outer">
+            <div class="journ-bar-track" style="width:{{ j.pct }}%;">
+              <div class="journ-bar-seg pos" style="flex:{{ j.pos }};"></div>
+              <div class="journ-bar-seg neu" style="flex:{{ j.neu }};"></div>
+              <div class="journ-bar-seg neg" style="flex:{{ j.neg }};"></div>
+            </div>
+          </div>
+          <div class="journ-bar-val">{{ j.total }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      <div style="display:flex;gap:16px;font-size:.72rem;color:#6b7280;margin:10px 0 16px;justify-content:center;">
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#22c55e;display:inline-block;"></span>Positive</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#9ca3af;display:inline-block;"></span>Neutral</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block;"></span>Negative</span>
+      </div>
+      <table class="journ-table">
+        <thead><tr><th>Author</th><th>Articles</th><th>Positive</th><th>Neutral</th><th>Negative</th><th>AVE</th></tr></thead>
+        <tbody>
+          {% for j in journalists|slice:":8" %}
+          <tr>
+            <td>{{ j.author }}</td>
+            <td>{{ j.total }}</td>
+            <td style="color:#16a34a;">{{ j.pos }}</td>
+            <td style="color:#6b7280;">{{ j.neu }}</td>
+            <td style="color:#dc2626;">{{ j.neg }}</td>
+            <td>BWP {{ j.ave_total|floatformat:0 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
     <div class="slide-ftr">
       <span>© Social Light Botswana | {% now "Y" %}</span>
@@ -525,8 +699,9 @@
                 '<span class="ke-label" style="color:'+lblColor+'">'+lblText+'</span>'+ 
               '</div>'+ 
               '<span class="ke-date">'+d+'</span>'+ 
-            '</div>'+ 
-            (ev.summary ? '<div class="ke-desc">*'+ev.summary+'</div>' : '<div class="ke-desc" style="color:#9ca3af;">'+ev.headline+'</div>');
+            '</div>'+
+            (ev.headline ? '<div class="ke-desc">'+ev.headline+'</div>' : '<div class="ke-desc" style="color:#9ca3af;">No headline.</div>')+
+            (ev.summary && ev.summary !== ev.headline ? '<div class="ke-sub">'+ev.summary+'</div>' : '');
           keList.appendChild(card);
         });
       } catch(e){ console.warn('key-events',e); }
@@ -612,6 +787,70 @@
         });
       } catch(e){ console.warn('word-cloud',e); }
     }
+
+    /* ── KPI Visibility vs Sentiment scatter (quadrant chart) ── */
+    buildCanvasChart('canvas[data-kpi-scatter]', function(canvas) {
+      try {
+        var d = parseData(canvas.dataset.kpiScatter, {points:[], avg_x:0, avg_y:0});
+        var pts = d.points || [];
+        var avgX = d.avg_x || 0, avgY = d.avg_y || 0;
+        var maxX = Math.max(2, Math.ceil(Math.max.apply(null, pts.map(function(p){return p.x;}).concat([avgX, 1]))) + 1);
+
+        // Custom plugin: average lines, quadrant labels, point labels.
+        var quadrantPlugin = {
+          id:'kpiQuadrant',
+          afterDatasetsDraw: function(chart){
+            var ctx = chart.ctx, xs = chart.scales.x, ys = chart.scales.y;
+            var vx = xs.getPixelForValue(avgX), vy = ys.getPixelForValue(avgY);
+            ctx.save();
+            ctx.setLineDash([5,4]); ctx.strokeStyle='#9ca3af'; ctx.lineWidth=1;
+            ctx.beginPath(); ctx.moveTo(vx, ys.top); ctx.lineTo(vx, ys.bottom); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(xs.left, vy); ctx.lineTo(xs.right, vy); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle='#6b7280'; ctx.font='600 11px sans-serif'; ctx.textAlign='left'; ctx.textBaseline='bottom';
+            ctx.fillText('KPI Average: '+avgY, Math.min(vx+6, xs.right-90), vy-3);
+            ctx.font='700 9.5px sans-serif';
+            function lbl(lines, x, y, color, align){
+              ctx.fillStyle=color; ctx.textAlign=align; ctx.textBaseline='top';
+              lines.forEach(function(t,i){ ctx.fillText(t, x, y + i*12); });
+            }
+            lbl(['Above-average Sentiment','Below-average Visibility'], xs.left+6, ys.top+4, '#16a34a','left');
+            lbl(['Above-average Sentiment','Above-average Visibility'], xs.right-6, ys.top+4, '#16a34a','right');
+            lbl(['Below-average Visibility','Below-average Sentiment'], xs.left+6, ys.bottom-26, '#dc2626','left');
+            lbl(['Above-average Visibility','Below-average Sentiment'], xs.right-6, ys.bottom-26, '#dc2626','right');
+            ctx.font='600 10px sans-serif'; ctx.fillStyle='#374151'; ctx.textAlign='left'; ctx.textBaseline='middle';
+            pts.forEach(function(p){
+              ctx.fillText(p.label, xs.getPixelForValue(p.x)+9, ys.getPixelForValue(p.y));
+            });
+            ctx.restore();
+          }
+        };
+
+        new Chart(canvas, {
+          type:'scatter',
+          data:{ datasets:[{
+            data: pts.map(function(p){ return {x:p.x, y:p.y, name:p.label}; }),
+            pointRadius:6, pointHoverRadius:8,
+            pointBackgroundColor: pts.map(function(p){ return p.y > avgY ? '#22c55e' : '#9ca3af'; }),
+            pointBorderColor: pts.map(function(p){ return p.y > avgY ? '#16a34a' : '#6b7280'; }),
+            pointBorderWidth:1.5,
+          }]},
+          options:{
+            responsive:true, maintainAspectRatio:false,
+            layout:{ padding:{ right:90, top:20 } },
+            plugins:{
+              legend:{display:false},
+              tooltip:{ callbacks:{ label:function(c){ return (c.raw.name||'')+': '+c.raw.x+' mentions, sentiment '+c.raw.y; } } }
+            },
+            scales:{
+              x:{ min:0, max:maxX, title:{display:true,text:'Visibility* (mentions)',font:{size:10},color:'#6b7280'}, ticks:{font:{size:9},stepSize:1,precision:0}, grid:{color:'rgba(0,0,0,.05)'} },
+              y:{ min:-100, max:100, title:{display:true,text:'Sentiment* (-100 to +100)',font:{size:10},color:'#6b7280'}, ticks:{stepSize:20,font:{size:9}}, grid:{color:'rgba(0,0,0,.05)'} }
+            }
+          },
+          plugins:[quadrantPlugin]
+        });
+      } catch(e){ console.warn('kpi-scatter',e); }
+    });
   }
 
   window._reportFullBuildSectionCharts = buildSectionCharts;

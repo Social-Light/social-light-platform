@@ -4,39 +4,55 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Social Light — Media Intelligence Platform</title>
+  <link rel="icon" type="image/x-icon" href="{% static 'favicon/favicon.ico' %}?v=2">
+  <link rel="icon" type="image/svg+xml" href="{% static 'favicon/favicon.svg' %}?v=2">
+  <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon/favicon-96x96.png' %}?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}?v=2">
+  <link rel="manifest" href="{% static 'favicon/site.webmanifest' %}?v=2">
+  <meta name="theme-color" content="#ffffff">
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <style>
-    :root{--navy:#0f2459;--navy-dk:#070f26;--blue:#1d4ed8;--blue-lt:#3b82f6;--blue-xl:#60a5fa;}
+    :root{--navy:#3891C7;--navy-dk:#1d4878;--blue:#4294CE;--blue-lt:#5baee0;--blue-xl:#8dcaed;}
     *,*::before,*::after{box-sizing:border-box;}
     html{scroll-behavior:smooth;}
     body{font-family:'Inter',system-ui,sans-serif;color:#0f172a;background:#fff;-webkit-font-smoothing:antialiased;margin:0;}
 
     /* Nav */
     .site-nav{position:fixed;top:0;left:0;right:0;z-index:999;transition:background .3s,box-shadow .3s;}
-    .site-nav.scrolled{background:rgba(7,15,38,.95);backdrop-filter:blur(12px);box-shadow:0 1px 0 rgba(255,255,255,.06);}
+    .site-nav.scrolled{background:rgba(29,72,120,.97);backdrop-filter:blur(12px);box-shadow:0 1px 0 rgba(255,255,255,.06);}
     .nav-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:18px 24px;}
     .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
     .nav-logo img{width:38px;height:38px;object-fit:contain;border-radius:8px;}
     .nav-logo-name{font-size:14px;font-weight:800;color:#fff;letter-spacing:.07em;display:block;}
     .nav-logo-sub{font-size:8px;color:rgba(255,255,255,.4);letter-spacing:.14em;text-transform:uppercase;display:block;margin-top:1px;}
-    .nav-signin{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;transition:background .15s,transform .15s;font-family:inherit;}
-    .nav-signin:hover{background:#1a45c4;transform:translateY(-1px);color:#fff;}
+    .nav-signin{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;background:#4294CE;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;transition:background .15s,transform .15s;font-family:inherit;}
+    .nav-signin:hover{background:#306EB1;transform:translateY(-1px);color:#fff;}
+    .nav-actions{display:flex;align-items:center;gap:10px;}
+    .nav-dropdown-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s,transform .15s;font-family:inherit;}
+    .nav-dropdown-btn:hover{background:rgba(255,255,255,.14);transform:translateY(-1px);}
+    .service-dropdown-menu{min-width:280px;background:rgba(15,23,42,.98);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);border-radius:18px;box-shadow:0 18px 40px rgba(15,23,42,.25);padding:8px;}
+    .service-dropdown-item{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;margin:0 6px;transition:background .2s,transform .2s;color:#fff;}
+    .service-dropdown-item:hover,.service-dropdown-item:focus{background:rgba(255,255,255,.06);transform:translateY(-1px);text-decoration:none;color:#fff;}
+    .service-item-title{display:block;font-size:15px;font-weight:700;line-height:1.2;}
+    .service-item-desc{display:block;font-size:13px;color:rgba(255,255,255,.7);line-height:1.4;margin-top:4px;}
+    .service-dropdown-item svg{flex-shrink:0;color:#7dd3fc;}
+    .dropdown-item{padding:0;border:none;background:transparent;}
 
     /* Hero */
     .hero{position:relative;min-height:100vh;overflow:hidden;display:flex;align-items:center;background:var(--navy-dk);}
     .hero-bg{position:absolute;inset:0;background:url('{% static "images/image5.jpg" %}') center center/cover no-repeat;opacity:.22;}
-    .hero-gradient{position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 60% 50%,rgba(29,78,216,.18) 0%,transparent 70%),linear-gradient(160deg,rgba(7,15,38,.98) 0%,rgba(15,36,89,.92) 50%,rgba(7,15,38,.96) 100%);}
+    .hero-gradient{position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 60% 50%,rgba(66,148,206,.22) 0%,transparent 70%),linear-gradient(160deg,rgba(18,38,80,.98) 0%,rgba(48,110,177,.88) 55%,rgba(18,38,80,.97) 100%);}
     .hero-content{position:relative;z-index:2;max-width:1160px;margin:0 auto;padding:120px 24px 80px;display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;}
     @media(max-width:900px){.hero-content{grid-template-columns:1fr;gap:40px;text-align:center;}.hero-ctas,.hero-trust{justify-content:center!important;}}
-    .hero-eyebrow{display:inline-flex;align-items:center;gap:7px;background:rgba(29,78,216,.18);border:1px solid rgba(29,78,216,.35);border-radius:100px;padding:5px 14px;font-size:12px;font-weight:600;color:var(--blue-xl);letter-spacing:.06em;text-transform:uppercase;margin-bottom:22px;}
+    .hero-eyebrow{display:inline-flex;align-items:center;gap:7px;background:rgba(66,148,206,.2);border:1px solid rgba(66,148,206,.4);border-radius:100px;padding:5px 14px;font-size:12px;font-weight:600;color:var(--blue-xl);letter-spacing:.06em;text-transform:uppercase;margin-bottom:22px;}
     .hero-title{font-size:clamp(38px,5.5vw,64px);font-weight:900;color:#fff;line-height:1.05;letter-spacing:-.03em;margin-bottom:22px;}
-    .hero-title span{background:linear-gradient(90deg,var(--blue-xl),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .hero-title span{background:linear-gradient(90deg,#fff,var(--blue-xl));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
     .hero-sub{font-size:17px;color:rgba(255,255,255,.6);line-height:1.75;max-width:480px;margin-bottom:36px;}
     .hero-ctas{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
-    .btn-hero-primary{display:inline-flex;align-items:center;gap:8px;padding:14px 28px;background:linear-gradient(135deg,var(--blue) 0%,var(--navy) 100%);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;font-family:inherit;text-decoration:none;cursor:pointer;box-shadow:0 4px 20px rgba(29,78,216,.45);transition:transform .2s,box-shadow .2s;}
-    .btn-hero-primary:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(29,78,216,.55);color:#fff;}
+    .btn-hero-primary{display:inline-flex;align-items:center;gap:8px;padding:14px 28px;background:linear-gradient(135deg,#4294CE 0%,#306EB1 100%);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;font-family:inherit;text-decoration:none;cursor:pointer;box-shadow:0 4px 20px rgba(66,148,206,.45);transition:transform .2s,box-shadow .2s;}
+    .btn-hero-primary:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(48,110,177,.55);color:#fff;}
     .btn-hero-outline{display:inline-flex;align-items:center;gap:8px;padding:13px 24px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.85);border:1.5px solid rgba(255,255,255,.2);border-radius:10px;font-size:15px;font-weight:600;font-family:inherit;text-decoration:none;transition:background .15s,border-color .15s;}
     .btn-hero-outline:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.4);color:#fff;}
     .hero-trust{display:flex;align-items:center;gap:12px;margin-top:28px;font-size:13px;color:rgba(255,255,255,.4);flex-wrap:wrap;}
@@ -53,7 +69,7 @@
     .hero-chip-lbl{font-size:11px;color:rgba(255,255,255,.55);display:block;margin-top:2px;}
 
     /* Stats strip */
-    .stats-strip{background:linear-gradient(135deg,var(--navy) 0%,#122048 100%);padding:52px 0;}
+    .stats-strip{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-dk) 100%);padding:52px 0;}
     .stat-block{text-align:center;padding:0 8px;}
     .stat-block-val{font-size:40px;font-weight:900;color:#fff;letter-spacing:-.03em;display:block;line-height:1;}
     .stat-block-lbl{font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;display:block;}
@@ -61,8 +77,8 @@
     /* Sections */
     section{padding:96px 0;}
     .section-inner{max-width:1160px;margin:0 auto;padding:0 24px;}
-    .section-tag{display:inline-block;padding:4px 14px;border-radius:100px;background:#eff6ff;color:var(--blue);font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;}
-    .section-tag-dark{background:rgba(29,78,216,.2);color:#60a5fa;}
+    .section-tag{display:inline-block;padding:4px 14px;border-radius:100px;background:#dbeeff;color:#306EB1;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;}
+    .section-tag-dark{background:rgba(66,148,206,.2);color:#8dcaed;}
     .section-title{font-size:clamp(28px,4vw,42px);font-weight:900;color:#0f172a;letter-spacing:-.02em;margin-bottom:14px;line-height:1.1;}
     .section-title-light{color:#fff;}
     .section-sub{font-size:16px;color:#64748b;line-height:1.75;max-width:580px;}
@@ -83,10 +99,10 @@
     .feat-desc{font-size:13.5px;color:#64748b;line-height:1.65;}
 
     /* How it works */
-    .hiw-section{background:linear-gradient(160deg,var(--navy-dk) 0%,var(--navy) 60%,#122d6a 100%);}
+    .hiw-section{background:linear-gradient(160deg,var(--navy-dk) 0%,var(--navy) 60%,var(--navy-dk) 100%);}
     .hiw-step{display:flex;align-items:flex-start;gap:20px;padding:28px 0;border-bottom:1px solid rgba(255,255,255,.07);}
     .hiw-step:last-child{border-bottom:none;padding-bottom:0;}
-    .hiw-num{width:48px;height:48px;border-radius:50%;flex-shrink:0;background:rgba(29,78,216,.25);border:1.5px solid rgba(29,78,216,.5);color:#60a5fa;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+    .hiw-num{width:48px;height:48px;border-radius:50%;flex-shrink:0;background:rgba(66,148,206,.25);border:1.5px solid rgba(66,148,206,.55);color:#8dcaed;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;}
     .hiw-step-title{font-size:17px;font-weight:700;color:#fff;margin-bottom:6px;}
     .hiw-step-desc{font-size:14px;color:rgba(255,255,255,.55);line-height:1.65;margin:0;}
     .hiw-img{border-radius:16px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);}
@@ -103,7 +119,7 @@
     /* CTA */
     .cta-section{position:relative;overflow:hidden;padding:100px 0;}
     .cta-bg{position:absolute;inset:0;background:url('{% static "images/image4.jpg" %}') center center/cover no-repeat;}
-    .cta-overlay{position:absolute;inset:0;background:linear-gradient(160deg,rgba(7,15,38,.96) 0%,rgba(15,36,89,.92) 100%);}
+    .cta-overlay{position:absolute;inset:0;background:linear-gradient(160deg,rgba(18,38,80,.96) 0%,rgba(48,110,177,.92) 100%);}
     .cta-inner{position:relative;z-index:2;text-align:center;}
     .cta-title{font-size:clamp(28px,4vw,48px);font-weight:900;color:#fff;letter-spacing:-.03em;margin-bottom:16px;}
     .cta-sub{font-size:17px;color:rgba(255,255,255,.6);margin-bottom:36px;max-width:520px;margin-left:auto;margin-right:auto;}
@@ -126,16 +142,48 @@
 <nav class="site-nav" id="siteNav">
   <div class="nav-inner">
     <a href="{% url 'monitor:home' %}" class="nav-logo">
-      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" alt="Social Light"/>
+      <img src="{% static 'images/social_light_logo.png' %}" alt="Social Light"/>
       <div>
         <span class="nav-logo-name">SOCIAL LIGHT</span>
         <span class="nav-logo-sub">Globally African</span>
       </div>
     </a>
-    <a href="{% url 'monitor:login' %}" class="nav-signin">
-      Sign In
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-    </a>
+    <div class="nav-actions">
+      <div class="dropdown">
+        <button class="nav-dropdown-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          Services
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end service-dropdown-menu">
+          <li>
+            <a class="dropdown-item service-dropdown-item" href="{{ article_extractor_url }}" target="_blank" rel="noopener">
+              <div>
+                <span class="service-item-title">Extractor</span>
+                <span class="service-item-desc">Extract content from web sources</span>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item service-dropdown-item" href="#">
+              <div>
+                <span class="service-item-title">Crawler</span>
+                <span class="service-item-desc">Scan sites and collect pages</span>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+          </li>
+        </ul>
+      </div>
+      <!-- TEMPORARY: register link -->
+      <a href="https://docs.google.com/forms/d/e/1FAIpQLSf6HpLQeEEOC6OTa2vyfNLyCaaTtE47_1obmEp5L84iDF7Yuw/viewform?usp=header" target="_blank" rel="noopener" class="nav-signin">
+        Register Here
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+      <a href="{% url 'monitor:login' %}" class="nav-signin">
+        Sign In
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+    </div>
   </div>
 </nav>
 
@@ -147,15 +195,17 @@
     <div>
       <div class="hero-eyebrow">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Real-time Media Intelligence
+        Intelligence-Driven Communications
       </div>
-      <h1 class="hero-title">Know what the<br/>media says about<br/><span>your brand.</span></h1>
-      <p class="hero-sub">Track every mention across broadcast, print, online and social media. Analyse sentiment, benchmark competitors, and turn coverage into decisions.</p>
+      <h1 class="hero-title">While the world<br/>watches the world,<br/>we watch <span>Africa.</span></h1>
+      <p class="hero-sub">Intelligence-driven communications for a connected Africa. We go beyond monitoring — helping businesses, government, NGOs and development organisations understand their environment, own their narrative, and grow their presence across the continent.</p>
       <div class="hero-ctas">
         <a href="{% url 'monitor:login' %}" class="btn-hero-primary">
           Get Started
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </a>
+        <!-- TEMPORARY: register link -->
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSf6HpLQeEEOC6OTa2vyfNLyCaaTtE47_1obmEp5L84iDF7Yuw/viewform?usp=header" target="_blank" rel="noopener" class="btn-hero-outline">Register Here</a>
         <a href="#features" class="btn-hero-outline">See Features</a>
       </div>
       <div class="hero-trust">
@@ -198,9 +248,9 @@
 <section class="features-section" id="features">
   <div class="section-inner">
     <div class="text-center mb-5">
-      <span class="section-tag">Platform Features</span>
-      <h2 class="section-title">Everything you need to master<br/>your media presence</h2>
-      <p class="section-sub mx-auto">One platform for monitoring, analysing, and reporting on every piece of media coverage your brand receives.</p>
+      <span class="section-tag">Intelligence Beyond Monitoring</span>
+      <h2 class="section-title">Knowing what is said is powerful.<br/>Knowing how to respond is transformative.</h2>
+      <p class="section-sub mx-auto">Our flagship Media Monitoring as a Service turns thousands of daily mentions across Botswana and the SADC region into timely, accurate, decision-ready intelligence.</p>
     </div>
     <div class="row g-4">
       <div class="col-md-4">
@@ -209,7 +259,7 @@
           <div class="feat-body">
             <div class="feat-icon" style="background:#eff6ff;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2"><path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/></svg></div>
             <h3 class="feat-title">Social Media Monitoring</h3>
-            <p class="feat-desc">Track brand mentions, hashtags, and conversations across Facebook, Twitter, Instagram, LinkedIn and more in real time.</p>
+            <p class="feat-desc">Track brand mentions, hashtags, and conversations across Facebook, X, Instagram, LinkedIn and more in real time.</p>
           </div>
         </div>
       </div>
@@ -272,21 +322,21 @@
   <div class="section-inner">
     <div class="row align-items-center g-5">
       <div class="col-lg-5">
-        <span class="section-tag section-tag-dark">How It Works</span>
-        <h2 class="section-title section-title-light">Three steps to<br/>total media clarity</h2>
-        <p class="section-sub section-sub-light">From raw mentions to boardroom-ready insights — Social Light handles every step of the media intelligence pipeline.</p>
+        <span class="section-tag section-tag-dark">From Insight to Action</span>
+        <h2 class="section-title section-title-light">Decision-ready intelligence,<br/>not just data</h2>
+        <p class="section-sub section-sub-light">We turn thousands of daily media mentions into the confidence to respond to shifting narratives, get ahead of a crisis, and make evidence-based decisions.</p>
         <div class="mt-5">
           <div class="hiw-step">
             <div class="hiw-num">1</div>
-            <div><div class="hiw-step-title">Capture Every Mention</div><p class="hiw-step-desc">Our system ingests broadcast, print, online and social data automatically — or via manual entry — all in one place.</p></div>
+            <div><div class="hiw-step-title">Understand &amp; Anticipate</div><p class="hiw-step-desc">Read public sentiment and stakeholder perception, and identify emerging trends before they become headlines.</p></div>
           </div>
           <div class="hiw-step">
             <div class="hiw-num">2</div>
-            <div><div class="hiw-step-title">Analyse &amp; Compare</div><p class="hiw-step-desc">Sentiment analysis, AVE calculations, reach metrics, and competitor benchmarking surface the insights that matter.</p></div>
+            <div><div class="hiw-step-title">Benchmark &amp; Protect</div><p class="hiw-step-desc">Track competitors, benchmark your position, and manage reputational risk with speed and precision.</p></div>
           </div>
           <div class="hiw-step">
             <div class="hiw-num">3</div>
-            <div><div class="hiw-step-title">Report &amp; Decide</div><p class="hiw-step-desc">Generate branded PDF and PowerPoint reports for stakeholders with a single click. Data that drives decisions.</p></div>
+            <div><div class="hiw-step-title">Report &amp; Decide</div><p class="hiw-step-desc">Evaluate campaign performance with measurable clarity in branded PDF and PowerPoint reports, generated with a single click.</p></div>
           </div>
         </div>
       </div>
@@ -302,9 +352,9 @@
   <div class="section-inner">
     <div class="row align-items-center g-5">
       <div class="col-lg-5">
-        <span class="section-tag section-tag-dark">Built for Africa</span>
-        <h2 class="section-title section-title-light">Designed for every<br/>African media landscape</h2>
-        <p class="section-sub section-sub-light mb-4">From the Botswana Daily News to regional broadcast stations — Social Light covers the channels that matter to your market.</p>
+        <span class="section-tag section-tag-dark">The Ground We Own</span>
+        <h2 class="section-title section-title-light">Globally African.<br/>Locally unmatched.</h2>
+        <p class="section-sub section-sub-light mb-4">Global platforms treat Africa as a footnote. We treat it as home. Social Light was built here, for here — covering the publications, broadcasters, forums and social channels that global tools overlook, with the local context that turns raw mentions into real understanding.</p>
         <div class="d-flex flex-wrap gap-2 mb-4">
           <span class="media-pill"><span class="pill-dot" style="background:#a855f7;"></span>Broadcast Radio</span>
           <span class="media-pill"><span class="pill-dot" style="background:#3b82f6;"></span>Television</span>
@@ -335,8 +385,8 @@
   <div class="cta-bg"></div>
   <div class="cta-overlay"></div>
   <div class="section-inner cta-inner">
-    <h2 class="cta-title">Ready to take control of<br/>your media presence?</h2>
-    <p class="cta-sub">Join organisations across Africa using Social Light to monitor, analyse, and act on their media coverage.</p>
+    <h2 class="cta-title">Understand your environment.<br/>Shape your narrative. Grow with intention.</h2>
+    <p class="cta-sub">We don't just monitor conversations or post content — we help you grow with intention. Join organisations across Africa that trust Social Light.</p>
     <a href="{% url 'monitor:login' %}" class="btn-hero-primary" style="font-size:16px;padding:15px 32px;">
       Sign In to Dashboard
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
@@ -348,7 +398,7 @@
 <footer>
   <div class="footer-inner">
     <div class="footer-logo">
-      <img src="{% static 'images/social_lightbw_logo.jpeg' %}" alt="Social Light"/>
+      <img src="{% static 'images/social_light_logo.png' %}" alt="Social Light"/>
       <div><span class="footer-logo-name">SOCIAL LIGHT</span><span class="footer-logo-sub">Globally African</span></div>
     </div>
     <div class="footer-copy">&copy; {% now "Y" %} Social Light. All rights reserved.</div>

@@ -82,10 +82,6 @@
         <input type="email" id="uEmail" class="form-control" placeholder="user@example.com" />
       </div>
       <div class="form-group">
-        <label class="form-label">Password</label>
-        <input type="password" id="uPassword" class="form-control" placeholder="Temporary password" />
-      </div>
-      <div class="form-group">
         <label class="form-label">Role</label>
         <select id="uRole" class="form-select">
           {% for val, label in role_choices %}
@@ -139,11 +135,36 @@
     </div>
   </div>
 </div>
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay hidden" id="deleteUserModal">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-header" style="border-bottom:none;padding-bottom:0;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:40px;height:40px;border-radius:50%;background:#fef2f2;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        </div>
+        <div>
+          <h2 class="modal-title" style="font-size:16px;margin:0;">Delete User</h2>
+          <p style="margin:2px 0 0;font-size:13px;color:#64748b;">This action cannot be undone.</p>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeModal('deleteUserModal')">&times;</button>
+    </div>
+    <div class="modal-body" style="padding-top:16px;">
+      <p style="font-size:14px;color:#374151;margin:0;">Are you sure you want to delete <strong id="deleteUserName"></strong>? Their account and access will be permanently removed.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('deleteUserModal')">Cancel</button>
+      <button class="btn" id="deleteUserConfirmBtn" style="background:#ef4444;color:#fff;border:none;" onclick="confirmDeleteUser()">Delete User</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 const ORG_ID = '{{ org.id }}';
+let _deleteUserId = null;
 
 function createUser() {
   const first = document.getElementById('uFirst').value.trim();
@@ -153,9 +174,8 @@ function createUser() {
     first_name: first,
     last_name: document.getElementById('uLast').value.trim(),
     email,
-    password: document.getElementById('uPassword').value || 'changeme123',
     role: document.getElementById('uRole').value,
-  }).then(() => { closeModal('addUserModal'); location.reload(); });
+  }).then(() => { flashToast('User added', 'success'); location.reload(); });
 }
 
 function editUser(id, first, last, email, role) {
@@ -174,12 +194,23 @@ function saveUser() {
     last_name: document.getElementById('editULast').value.trim(),
     email: document.getElementById('editUEmail').value.trim(),
     role: document.getElementById('editURole').value,
-  }).then(() => { closeModal('editUserModal'); location.reload(); });
+  }).then(() => { flashToast('User updated', 'success'); location.reload(); });
 }
 
 function deleteUser(id, name) {
-  if (!confirm(`Delete user "${name}"?`)) return;
-  apiRequest(`/api/${ORG_ID}/users/${id}/delete/`, 'DELETE').then(() => location.reload());
+  _deleteUserId = id;
+  document.getElementById('deleteUserName').textContent = name;
+  openModal('deleteUserModal');
+}
+
+function confirmDeleteUser() {
+  if (!_deleteUserId) return;
+  const btn = document.getElementById('deleteUserConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  apiRequest(`/api/${ORG_ID}/users/${_deleteUserId}/delete/`, 'DELETE')
+    .then(() => { closeModal('deleteUserModal'); location.reload(); })
+    .catch(err => { btn.disabled = false; btn.textContent = 'Delete User'; alert(err.message || 'Failed to delete user.'); });
 }
 </script>
 {% endblock %}

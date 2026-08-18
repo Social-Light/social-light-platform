@@ -1,4 +1,5 @@
 {% extends 'monitor/base.html' %}
+{% load humanize %}
 {% block title %}Competitor Analysis{% endblock %}
 
 {% block content %}
@@ -7,10 +8,16 @@
     <h1 class="page-title">Competitor Analysis</h1>
     <p class="page-subtitle">Monitor and analyze competitor media presence</p>
   </div>
-  <button class="btn btn-primary" onclick="openModal('addCompModal')">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    Add Competitor
-  </button>
+  <div style="display:flex; gap:8px;">
+    <button class="btn btn-secondary" onclick="openModal('uploadCompModal')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Load Online Competitors
+    </button>
+    <button class="btn btn-primary" onclick="openModal('addCompModal')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Competitor
+    </button>
+  </div>
 </div>
 
 {% if competitors %}
@@ -41,6 +48,7 @@
       <span class="legend-dot" style="background:#818cf8"></span><span class="legend-label">Online Articles</span>
       <span class="legend-dot" style="background:#34d399"></span><span class="legend-label">Broadcast Articles</span>
       <span class="legend-dot" style="background:#f87171"></span><span class="legend-label">Print Media Articles</span>
+      <span class="legend-dot" style="background:#fbbf24"></span><span class="legend-label">Social Posts</span>
     </div>
     <div class="chart-body">
       <canvas id="yearlyLineChart"></canvas>
@@ -72,6 +80,7 @@
   <button class="comp-tab active" data-tab="online" onclick="switchTab('online')">Online ({{ online_count }})</button>
   <button class="comp-tab" data-tab="broadcast" onclick="switchTab('broadcast')">Broadcast ({{ broadcast_count }})</button>
   <button class="comp-tab" data-tab="print" onclick="switchTab('print')">Print ({{ print_count }})</button>
+  <button class="comp-tab" data-tab="social" onclick="switchTab('social')">Social ({{ social_count }})</button>
 </div>
 
 <!-- Online Tab -->
@@ -112,12 +121,12 @@
           </td>
           <td>{{ art.source }}</td>
           <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
-          <td>{{ art.reach|default:"—" }}</td>
-          <td>{{ art.ave|floatformat:0 }}</td>
+          <td>{{ art.reach|default:"—"|intcomma }}</td>
+          <td>{{ art.ave|floatformat:0|intcomma }}</td>
           <td>{{ art.date_published|date:"d/m/Y" }}</td>
           <td>{{ art.country|default:"—" }}</td>
           <td>
-            <button class="icon-btn icon-btn--danger" data-type="online" data-id="{{ art.id }}" onclick="deleteArticle(this)">
+            <button class="icon-btn icon-btn--danger" data-type="competitor" data-id="{{ art.id }}" onclick="deleteArticle(this)">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
             </button>
           </td>
@@ -126,7 +135,7 @@
       </tbody>
     </table>
     {% else %}
-    <div class="empty-state-inline">No online articles match competitor names.</div>
+    <div class="empty-state-inline">No online competitor articles loaded yet. Use “Load Online Competitors” to import a CSV.</div>
     {% endif %}
   </div>
 </div>
@@ -167,7 +176,7 @@
           </td>
           <td>{{ art.source }}</td>
           <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
-          <td>{{ art.ave|floatformat:0 }}</td>
+          <td>{{ art.ave|floatformat:0|intcomma }}</td>
           <td>{{ art.date_published|date:"d/m/Y" }}</td>
           <td>{{ art.country|default:"—" }}</td>
           <td>
@@ -221,7 +230,7 @@
           </td>
           <td>{{ art.source }}</td>
           <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
-          <td>{{ art.ave|floatformat:0 }}</td>
+          <td>{{ art.ave|floatformat:0|intcomma }}</td>
           <td>{{ art.date_published|date:"d/m/Y" }}</td>
           <td>{{ art.country|default:"—" }}</td>
           <td>
@@ -235,6 +244,62 @@
     </table>
     {% else %}
     <div class="empty-state-inline">No print articles match competitor names.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Social Tab -->
+<div class="comp-tab-content" id="tab-social">
+  <div class="table-card">
+    <div class="table-card-header">
+      <h3 class="table-section-title">Social Media Coverage</h3>
+      <p class="table-section-sub">Competitor mentions in social media posts</p>
+    </div>
+    {% if social_articles %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Competitor</th>
+          <th>Post</th>
+          <th>Page / Platform</th>
+          <th>Sentiment</th>
+          <th>Reach</th>
+          <th>AVE</th>
+          <th>Date</th>
+          <th>Country</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for art in social_articles %}
+        <tr>
+          <td>
+            <div class="comp-cell">
+              <div class="comp-avatar comp-avatar--sm">{{ art.competitor_name|first|upper }}</div>
+              <span class="comp-cell-name">{{ art.competitor_name }}</span>
+            </div>
+          </td>
+          <td class="headline-cell">
+            {% if art.url %}<a href="{{ art.url }}" target="_blank" class="article-link">{{ art.headline|truncatechars:80 }}</a>
+            {% else %}{{ art.headline|truncatechars:80 }}{% endif %}
+          </td>
+          <td>{{ art.source }}</td>
+          <td><span class="sentiment-badge sentiment-badge--{{ art.sentiment }}">{{ art.sentiment|capfirst }}</span></td>
+          <td>{{ art.reach|default:"—"|intcomma }}</td>
+          <td>{{ art.ave|floatformat:0|intcomma }}</td>
+          <td>{{ art.date_published|date:"d/m/Y" }}</td>
+          <td>{{ art.country|default:"—" }}</td>
+          <td>
+            <button class="icon-btn icon-btn--danger" data-type="social" data-id="{{ art.id }}" onclick="deleteArticle(this)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state-inline">No social posts match competitor names.</div>
     {% endif %}
   </div>
 </div>
@@ -262,6 +327,11 @@
         <input type="text" id="compName" class="form-control" placeholder="Organisation name" />
       </div>
       <div class="form-group">
+        <label class="form-label">Other names / keywords</label>
+        <input type="text" id="compAliases" class="form-control" placeholder="e.g. FNB, First National Bank" />
+        <small class="text-muted">Comma-separated. An article matches this competitor if the name or any of these appears in it.</small>
+      </div>
+      <div class="form-group">
         <label class="form-label">Website</label>
         <input type="url" id="compWebsite" class="form-control" placeholder="https://competitor.com" />
       </div>
@@ -276,6 +346,31 @@
     </div>
   </div>
 </div>
+
+<!-- Load Online Competitors CSV Modal -->
+<div class="modal-overlay hidden" id="uploadCompModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Load Online Competitor Articles</h2>
+        <p class="modal-subtitle">Bulk import competitor coverage. The <code>company</code> column maps each row to a competitor (created automatically if new).</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('uploadCompModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">CSV File</label>
+        <input type="file" id="compCsvFile" class="form-control" accept=".csv,text/csv" />
+        <small class="text-muted">Expected columns: _id, company, title, url, snippet, source, publication_date, country, matched_keywords, sentiment, reach, cpm, ave, rank, coverage_type</small>
+      </div>
+      <div id="compCsvResult" style="margin-top:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('uploadCompModal')">Cancel</button>
+      <button class="btn btn-primary" id="compCsvUploadBtn" onclick="uploadCompetitorCsv()">Upload</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -286,7 +381,8 @@
   "months":    {{ months_json|safe }},
   "onlineY":   {{ online_yearly_json|safe }},
   "broadcastY":{{ broadcast_yearly_json|safe }},
-  "printY":    {{ print_yearly_json|safe }}
+  "printY":    {{ print_yearly_json|safe }},
+  "socialY":   {{ social_yearly_json|safe }}
 }
 </script>
 <script>
@@ -308,6 +404,7 @@ const MONTHS      = _cd.months;
 const ONLINE_Y    = _cd.onlineY;
 const BROADCAST_Y = _cd.broadcastY;
 const PRINT_Y     = _cd.printY;
+const SOCIAL_Y    = _cd.socialY;
 
 const PALETTE = [
   '#f87171','#fb923c','#fbbf24','#a3e635','#34d399',
@@ -353,6 +450,7 @@ function buildLine() {
         { label: 'Online Articles',    data: ONLINE_Y,    borderColor: '#818cf8', backgroundColor: 'rgba(129,140,248,0.08)', tension: 0.3, pointRadius: 4, fill: true },
         { label: 'Broadcast Articles', data: BROADCAST_Y, borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.08)',  tension: 0.3, pointRadius: 4, fill: true },
         { label: 'Print Media Articles', data: PRINT_Y,   borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.08)', tension: 0.3, pointRadius: 4, fill: true },
+        { label: 'Social Posts',       data: SOCIAL_Y,   borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.08)',  tension: 0.3, pointRadius: 4, fill: true },
       ],
     },
     options: {
@@ -377,9 +475,10 @@ function addComp() {
   if (!name) return alert('Name is required');
   apiRequest(`/api/${ORG_ID}/competitors/`, 'POST', {
     name,
+    aliases: document.getElementById('compAliases').value.trim(),
     website: document.getElementById('compWebsite').value.trim(),
     notes: document.getElementById('compNotes').value.trim(),
-  }).then(() => { closeModal('addCompModal'); location.reload(); });
+  }).then(() => { flashToast('Competitor added', 'success'); location.reload(); });
 }
 
 // ── Article deletion ──────────────────────────────────────────────────────────
@@ -387,7 +486,55 @@ function deleteArticle(btn) {
   var type = btn.getAttribute('data-type');
   var id   = btn.getAttribute('data-id');
   if (!confirm('Remove this article?')) return;
-  apiRequest('/api/' + ORG_ID + '/' + type + '/' + id + '/delete/', 'DELETE').then(function() { location.reload(); });
+  var url = (type === 'competitor')
+    ? '/api/' + ORG_ID + '/competitors/articles/' + id + '/delete/'
+    : '/api/' + ORG_ID + '/' + type + '/' + id + '/delete/';
+  apiRequest(url, 'DELETE').then(function() { flashToast('Article removed', 'success'); location.reload(); });
+}
+
+// ── Load online competitor articles (CSV) ─────────────────────────────────────
+function uploadCompetitorCsv() {
+  var input = document.getElementById('compCsvFile');
+  var resultEl = document.getElementById('compCsvResult');
+  var btn = document.getElementById('compCsvUploadBtn');
+  var file = input.files && input.files[0];
+  if (!file) { resultEl.innerHTML = '<span style="color:#dc2626;">Please choose a CSV file.</span>'; return; }
+
+  var fd = new FormData();
+  fd.append('file', file);
+  btn.disabled = true;
+  btn.textContent = 'Uploading...';
+  resultEl.innerHTML = '';
+
+  fetch('/api/' + ORG_ID + '/competitors/articles/upload/', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') || '' },
+    body: fd,
+  })
+    .then(async function (res) {
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(data.error || ('Upload failed: ' + res.status));
+      return data;
+    })
+    .then(function (data) {
+      var hasErrors = data.errors && data.errors.length > 0;
+      var html = '<div style="color:' + (data.created > 0 ? '#059669' : '#dc2626') + ';">Imported ' + data.created + ' competitor article(s).</div>';
+      if (hasErrors) {
+        html += '<details open style="margin-top:8px;"><summary>' + data.errors.length + ' row(s) skipped</summary><ul style="margin:6px 0 0 18px;">' +
+          data.errors.slice(0, 20).map(function (e) { return '<li>' + e + '</li>'; }).join('') + '</ul></details>';
+        html += '<button type="button" class="btn btn-secondary" style="margin-top:10px;" onclick="location.reload()">Reload page</button>';
+      }
+      resultEl.innerHTML = html;
+      // Only auto-close on a clean import — if rows were skipped, leave the
+      // modal open so the reasons stay readable instead of vanishing in 1.2s.
+      if (!hasErrors) {
+        setTimeout(function () { closeModal('uploadCompModal'); location.reload(); }, 1200);
+      }
+    })
+    .catch(function (err) {
+      resultEl.innerHTML = '<span style="color:#dc2626;">' + err.message + '</span>';
+    })
+    .finally(function () { btn.disabled = false; btn.textContent = 'Upload'; });
 }
 </script>
 
