@@ -19,6 +19,7 @@ import logging
 import re
 
 from django.conf import settings
+from django.urls import reverse
 
 from .relevancy import filter_relevant
 
@@ -71,6 +72,20 @@ def _store(org, date_from, date_to, payload):
     ReportAnalysis.objects.update_or_create(
         organization=org, date_from=date_from, date_to=date_to,
         defaults={'payload': payload},
+    )
+
+
+def _log_analysis_event(org, date_from, date_to):
+    """Record an Event so alert digests notify recipients that a fresh AI analysis
+    is available for this period. Only called for a genuinely new/regenerated
+    result — not for the empty-coverage sentinel or a reused cached analysis."""
+    from .models import Event
+    base = (getattr(settings, 'SITE_URL', 'https://sociallight.africa') or '').rstrip('/')
+    Event.objects.create(
+        organization=org, category='report', event_type='analysis_generated',
+        title=f'AI analysis ready: {org.name} ({date_from}–{date_to})',
+        summary='ESG, stakeholder and sectorial competitor analysis has been generated for this period.',
+        url=f"{base}{reverse('monitor:report_full', args=[org.id])}?date_from={date_from}&date_to={date_to}",
     )
 
 
@@ -156,6 +171,7 @@ def generate_analysis(org, date_from, date_to, force=False):
         raise ReportAIError('Analysis failed to generate. Check the server logs for details.')
 
     _store(org, date_from, date_to, result)
+    _log_analysis_event(org, date_from, date_to)
     return result
 
 

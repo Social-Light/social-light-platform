@@ -27,12 +27,19 @@ def _pub_ordinal(obj):
     return d.toordinal() if d else 0
 
 
-def gather(org, since):
+def gather(org, since, alert=None):
     """
     Return (online, print, social, broadcast) lists of records that came through
     since `since` (a datetime watermark, by created_at), each sorted with the
     org's country first and then newest publication date first.
+
+    When `alert` is given and its categories exclude 'mention' (see
+    Alert.wants_category), all four lists come back empty — the alert has been
+    configured to skip raw media mentions entirely (e.g. reports/system only).
     """
+    if alert is not None and not alert.wants_category('mention'):
+        return [], [], [], []
+
     oc = org.country or ''
 
     def collect(manager):
@@ -48,6 +55,18 @@ def gather(org, since):
         collect(org.social_posts),
         collect(org.broadcast_mentions),
     )
+
+
+def gather_events(org, since, categories=None):
+    """Return Event rows for `org` created since `since`, newest first, capped like
+    the mention collections above. `categories` (an iterable of Event.category
+    values) restricts which categories come back; falsy/None means all of them —
+    mirrors Alert.wants_category's "empty means everything" convention."""
+    from .models import Event
+    qs = Event.objects.filter(organization=org, created_at__gte=since).order_by('-created_at')
+    if categories:
+        qs = qs.filter(category__in=categories)
+    return list(qs[:50])
 
 
 def start_of_today():
@@ -103,8 +122,11 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True, rec
     if since is None:
         since = alert.last_sent_at or start_of_today()
 
-    online, print_arts, social, broadcast = gather(org, since)
-    total = len(online) + len(print_arts) + len(social) + len(broadcast)
+    online, print_arts, social, broadcast = gather(org, since, alert)
+    events = gather_events(org, since, alert.categories)
+    reports = [e for e in events if e.category == 'report']
+    system_events = [e for e in events if e.category == 'system']
+    total = len(online) + len(print_arts) + len(social) + len(broadcast) + len(reports) + len(system_events)
 
     if not force and alert.frequency == 'immediate' and total == 0:
         return {'sent': False, 'reason': 'no new records', 'total': 0, 'recipients': recipients}
@@ -137,10 +159,14 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True, rec
         'print_articles':     print_arts,
         'social_posts':       social,
         'broadcast_mentions': broadcast,
+        'reports':            reports,
+        'system_events':      system_events,
         'online_count':       len(online),
         'print_count':        len(print_arts),
         'social_count':       len(social),
         'broadcast_count':    len(broadcast),
+        'reports_count':      len(reports),
+        'system_count':       len(system_events),
     }
 
     html_body = render_to_string('monitor/email/daily_digest.html', context)

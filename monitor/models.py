@@ -2,6 +2,7 @@ import re
 import uuid
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.contrib.contenttypes.fields import GenericForeignKey
 
 
 SENTIMENT_CHOICES = [
@@ -10,6 +11,7 @@ SENTIMENT_CHOICES = [
     ('negative', 'Negative'),
     ('mixed', 'Mixed'),
 ]
+
 
 COVERAGE_CHOICES = [
     ('Earned', 'Earned'),
@@ -436,6 +438,13 @@ class Campaign(models.Model):
         return True
 
 
+EVENT_CATEGORY_CHOICES = [
+    ('mention', 'Media Mention'),
+    ('report', 'Report / Analysis'),
+    ('system', 'System Update'),
+]
+
+
 class Alert(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='alerts')
     name = models.CharField(max_length=200)
@@ -453,6 +462,11 @@ class Alert(models.Model):
     banner_image = models.FileField(upload_to='alert_banners/', blank=True, null=True)
     is_active = models.BooleanField(default=True)
     last_sent_at = models.DateTimeField(null=True, blank=True, help_text='When the digest was last sent (watermark for new records)')
+    # Which Event categories this alert's digest includes (see EVENT_CATEGORY_CHOICES).
+    # Empty list = no restriction = every category, so existing alerts created before
+    # this field existed keep behaving exactly as they did (mentions only, since that
+    # was all there was to send) while still picking up new categories automatically.
+    categories = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -462,5 +476,44 @@ class Alert(models.Model):
         raw = self.recipients or self.email or ''
         return [e.strip() for e in raw.split(',') if e.strip()]
 
+    def wants_category(self, category):
+        """True when this alert's digest should include events of `category`.
+        An empty `categories` list means "everything" (see field docstring)."""
+        return not self.categories or category in self.categories
+
     class Meta:
         ordering = ['name']
+
+
+class Event(models.Model):
+    """A unified, source-agnostic log of things worth notifying an organisation's
+    users about — a new AI-generated report, a saga/issue report, a system update,
+    or (in future) a new item from any social-media API integration.
+
+    This is deliberately separate from the raw coverage tables (OnlineArticle,
+    SocialMediaPost, etc.) — those remain the durable store for mention content and
+    are unaffected by this model. Event exists purely so the notification pipeline
+    (Alert + alert_email.gather) has one place to look for "what's new" regardless
+    of which part of the system produced it, instead of every new content type
+    needing its own bespoke wiring into the digest.
+
+    `related_object` is an optional generic pointer back to the record the event is
+    about (e.g. the IssueReport itself), so an email can deep-link to it.
+    """
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='events')
+    category = models.CharField(max_length=20, choices=EVENT_CATEGORY_CHOICES)
+    event_type = models.CharField(max_length=100, help_text="e.g. 'report_generated', 'issue_report_created'")
+    title = models.CharField(max_length=300)
+    summary = models.TextField(blank=True)
+    url = models.URLField(blank=True, max_length=500)
+    content_type = models.ForeignKey(
+        'contenttypes.ContentType', on_delete=models.SET_NULL, null=True, blank=True)
+    object_id = models.CharField(max_length=64, blank=True)
+    related_object = GenericForeignKey('content_type', 'object_id')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.category}] {self.title}"

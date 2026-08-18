@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Organization, User
+from .models import Organization, User, Event
 
 @admin.register(Organization)
 class OrganizationAdmin(admin.ModelAdmin):
@@ -22,6 +22,14 @@ class OrganizationAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+@admin.register(Event)
+class EventAdmin(admin.ModelAdmin):
+    list_display = ('title', 'organization', 'category', 'event_type', 'created_at')
+    list_filter = ('category', 'event_type', 'created_at')
+    search_fields = ('title', 'summary', 'organization__name')
+    readonly_fields = ('created_at',)
+
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):

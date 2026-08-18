@@ -11,6 +11,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.db.models import Count, Sum, Q
@@ -19,14 +20,22 @@ from django.utils import timezone
 from .models import (
     Organization, User, Keyword, Competitor, CompetitorArticle,
     OnlineArticle, PrintArticle, SocialMediaPost, BroadcastMention, Alert, MediaSource,
-    GeneratedReport, IssueReport, Campaign,
+    GeneratedReport, IssueReport, Campaign, Event,
     SENTIMENT_CHOICES, COVERAGE_CHOICES, PLATFORM_CHOICES, INDUSTRY_CHOICES, ROLE_CHOICES,
-    SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES,
+    SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES, EVENT_CATEGORY_CHOICES,
 )
 from .relevancy import compute_relevancy, filter_relevant
 from .print_metrics import estimate_print_reach as _print_reach
 from .alert_email import build_and_send, start_of_today
 from .org_email import send_org_disabled_email, send_org_enabled_email
+
+
+def _absolute_url(path):
+    """Prefix a path with settings.SITE_URL — used when building links inside
+    Event records, which are read outside of a request (by the alert digest)."""
+    base = getattr(settings, 'SITE_URL', 'https://sociallight.africa').rstrip('/')
+    return f"{base}{path}"
+
 
 COMPETITOR_SUGGESTIONS = {
     'Banking & Financial Services': [
@@ -2217,6 +2226,12 @@ def report_save(request, org_id):
         date_from=date_from,
         date_to=date_to,
     )
+    Event.objects.create(
+        organization=org, category='report', event_type='report_generated',
+        title=f'New report ready: {report.title}',
+        summary=f'{report_type} report generated' + (f' for {date_from}–{date_to}.' if date_from and date_to else '.'),
+        url=_absolute_url(reverse('monitor:reports', args=[org.id])),
+    )
     return JsonResponse({'id': str(report.id)})
 
 
@@ -2872,6 +2887,21 @@ def _clean_recipients(raw):
     return ', '.join(out)
 
 
+def _clean_categories(data, multipart):
+    """Pull the checked Event categories out of the alert form/payload.
+    Multipart (checkbox) submissions repeat the 'categories' key once per checked
+    box, so QueryDict.getlist is needed instead of .get. Unknown values are
+    dropped; an empty result means "no restriction" (see Alert.categories)."""
+    valid = {c for c, _ in EVENT_CATEGORY_CHOICES}
+    if multipart and hasattr(data, 'getlist'):
+        raw = data.getlist('categories')
+    else:
+        raw = data.get('categories') or []
+        if isinstance(raw, str):
+            raw = [raw]
+    return [c for c in raw if c in valid]
+
+
 @login_required
 @require_http_methods(['POST'])
 def alert_create(request, org_id):
@@ -2889,6 +2919,7 @@ def alert_create(request, org_id):
         email_subject=(data.get('email_subject', '') or '').strip(),
         start_date=data.get('start_date') or None,
         delivery_time=data.get('delivery_time') or None,
+        categories=_clean_categories(data, multipart),
     )
     if multipart and 'banner_image' in request.FILES:
         alert.banner_image = request.FILES['banner_image']
@@ -2909,6 +2940,12 @@ def alert_update(request, org_id, alert_id):
     if 'recipients' in data:
         alert.recipients = _clean_recipients(data['recipients'])
         alert.email = alert.recipients.split(',')[0].strip() if alert.recipients else ''
+    # 'categories_touched' always accompanies the categories checkboxes so an
+    # all-unchecked submission (which sends no 'categories' key at all) is still
+    # distinguishable from a caller that omitted the field entirely and should
+    # leave the alert's existing categories untouched.
+    if 'categories_touched' in data:
+        alert.categories = _clean_categories(data, multipart)
     if 'start_date' in data:
         alert.start_date = data['start_date'] or None
     if 'delivery_time' in data:

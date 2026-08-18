@@ -26,6 +26,7 @@ import re
 
 from django.conf import settings
 from django.db.models import Q
+from django.urls import reverse
 
 from .relevancy import filter_relevant
 from .report_ai import ReportAIError, _parse_json, _sent, MODEL
@@ -175,7 +176,22 @@ def generate_issue_report(org, title, issue_query, date_from, date_to, created_b
         payload=payload,
         created_by=created_by,
     )
+    _log_report_event(report)
     return report
+
+
+def _log_report_event(report):
+    """Record an Event so alert digests notify recipients about a newly created
+    issue/campaign report. Not called on regenerate_narrative — only a brand-new
+    report counts as something worth a fresh notification."""
+    from .models import Event
+    base = (getattr(settings, 'SITE_URL', 'https://sociallight.africa') or '').rstrip('/')
+    Event.objects.create(
+        organization=report.organization, category='report', event_type='issue_report_created',
+        title=f'New {report.type_label} report: {report.title}',
+        summary=report.issue_query[:200],
+        url=f"{base}{reverse('monitor:report_issue', args=[report.organization.id, report.id])}",
+    )
 
 
 def regenerate_narrative(report):
