@@ -14,13 +14,13 @@ from django.http import HttpResponse, JsonResponse
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.db.models import Count, Sum, Q
+from django.db.models import Count, Prefetch, Sum, Q
 from django.utils import timezone
 
 from .models import (
     Organization, User, Keyword, Competitor, CompetitorArticle,
     OnlineArticle, PrintArticle, SocialMediaPost, BroadcastMention, Alert, MediaSource,
-    GeneratedReport, IssueReport, Campaign, Event,
+    GeneratedReport, IssueReport, Campaign, Event, SectorStory,
     SENTIMENT_CHOICES, COVERAGE_CHOICES, PLATFORM_CHOICES, INDUSTRY_CHOICES, ROLE_CHOICES,
     SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES, EVENT_CATEGORY_CHOICES,
 )
@@ -106,7 +106,26 @@ def paginate_media(request, qs, page_size=MEDIA_PAGE_SIZE):
 def home(request):
     if request.user.is_authenticated:
         return redirect('monitor:organizations')
-    return render(request, 'monitor/landing.html')
+    from .models import CommodityQuote, Publication, Sector, trial_period_days
+
+    # Sectors with no published stories are dropped rather than rendered as an
+    # empty tab. Stories are prefetched filtered so the template never has to.
+    published_stories = Prefetch(
+        'stories',
+        queryset=SectorStory.objects.filter(is_published=True),
+        to_attr='published_stories',
+    )
+    sectors = [
+        s for s in Sector.objects.filter(is_published=True).prefetch_related(published_stories)
+        if s.published_stories
+    ]
+
+    return render(request, 'monitor/landing.html', {
+        'trial_days': trial_period_days(),
+        'sectors': sectors,
+        'commodity_quotes': CommodityQuote.objects.filter(is_published=True),
+        'publications': Publication.objects.filter(is_published=True),
+    })
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -143,9 +162,25 @@ def logout_view(request):
 
 # ── Organizations ─────────────────────────────────────────────────────────────
 
+def visible_organizations(user):
+    """Organisations a user is allowed to see. Platform admins see every client;
+    everyone else sees only their own — public self-signup means an account no
+    longer implies any relationship with the other organisations on the
+    platform."""
+    if user.is_superuser or getattr(user, 'role', '') == 'platform_admin':
+        return Organization.objects.all().order_by('name')
+    if user.organization_id:
+        return Organization.objects.filter(id=user.organization_id)
+    return Organization.objects.none()
+
+
 @login_required
 def organizations(request):
-    orgs = Organization.objects.all().order_by('name')
+    orgs = visible_organizations(request.user)
+    # A user tied to exactly one organisation has nothing to choose between —
+    # send them straight into it.
+    if request.user.role != 'platform_admin' and orgs.count() == 1:
+        return redirect('monitor:dashboard', org_id=orgs.first().id)
     return render(request, 'monitor/organizations.html', {
         'orgs': orgs,
         'industry_choices': INDUSTRY_CHOICES,
@@ -155,6 +190,8 @@ def organizations(request):
 
 @login_required
 def manage_organizations(request):
+    if request.user.role != 'platform_admin' and not request.user.is_superuser:
+        return redirect('monitor:organizations')
     orgs = Organization.objects.all().order_by('name')
     return render(request, 'monitor/manage_organizations.html', {
         'orgs': orgs,

@@ -1,8 +1,20 @@
+import math
 import re
 import uuid
+from datetime import timedelta
+
+from django.conf import settings as django_settings
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey
+from django.utils import timezone
+
+
+def trial_period_days():
+    """Length of the free trial, in days. Settable per-deployment via the
+    TRIAL_PERIOD_DAYS setting so the 14 days can be changed without a code
+    change."""
+    return int(getattr(django_settings, 'TRIAL_PERIOD_DAYS', 14))
 
 
 SENTIMENT_CHOICES = [
@@ -60,6 +72,125 @@ INDUSTRY_CHOICES = [
 ]
 
 
+BILLING_PERIOD_CHOICES = [
+    ('monthly', 'Per month'),
+    ('quarterly', 'Per quarter'),
+    ('annual', 'Per year'),
+]
+
+
+CURRENCY_SYMBOLS = {'USD': '$', 'ZAR': 'R', 'GBP': '£', 'EUR': '€'}
+
+
+class Package(models.Model):
+    """A purchasable subscription tier. Prices, bullets and card styling all live
+    here rather than in the templates, so the public price list is maintained
+    from the Django admin — the platform advertises one public price list, the
+    same for every client, so there are no per-organisation prices anywhere in
+    the system."""
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=100, unique=True)
+    eyebrow = models.CharField(max_length=60, blank=True,
+                               help_text='Small label above the name, e.g. "Full scope".')
+    tagline = models.CharField(max_length=200, blank=True,
+                               help_text='One line under the package name, e.g. "Growing organisations and agencies".')
+
+    # ── Price ────────────────────────────────────────────────────────────────
+    price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    currency = models.CharField(max_length=8, default='USD')
+    billing_period = models.CharField(max_length=20, choices=BILLING_PERIOD_CHOICES, default='monthly')
+    price_override = models.CharField(max_length=40, blank=True,
+                                      help_text='Shown instead of a figure, e.g. "Custom". Hides the period.')
+    price_note = models.CharField(max_length=160, blank=True,
+                                  help_text='Line under the price, e.g. "Billed annually · $588 per year".')
+
+    # ── Card contents ────────────────────────────────────────────────────────
+    # Plain strings, one per bullet, shown in order with a tick.
+    features = models.JSONField(default=list, blank=True)
+    # Bullets shown greyed out with a dash — what this tier does *not* include.
+    excluded_features = models.JSONField(default=list, blank=True)
+    exclusion_note = models.CharField(max_length=60, blank=True,
+                                      help_text='Small note under each exclusion, e.g. "Enterprise only".')
+    highlight_title = models.CharField(max_length=60, blank=True,
+                                       help_text='Callout box heading, e.g. "Only on Enterprise".')
+    highlight_body = models.CharField(max_length=300, blank=True, help_text='Callout box text.')
+
+    # ── Presentation & call to action ────────────────────────────────────────
+    accent_color = models.CharField(max_length=7, default='#3891C7',
+                                    help_text='Colour of the bar across the top of the card.')
+    is_dark = models.BooleanField(default=False, help_text='Render this card on a dark background.')
+    cta_label = models.CharField(max_length=40, blank=True,
+                                 help_text='Button text. Defaults to "Start free trial".')
+    contact_only = models.BooleanField(
+        default=False,
+        help_text='This tier is arranged with sales rather than picked self-service.')
+
+    is_featured = models.BooleanField(default=False, help_text='Highlights this package as the recommended tier.')
+    is_active = models.BooleanField(default=True, help_text='Uncheck to hide from the price list without deleting it.')
+    sort_order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['sort_order', 'price', 'name']
+
+    def __str__(self):
+        return self.name
+
+    def _bullets(self, raw):
+        """Bullets as a clean list of strings, tolerating a newline-separated
+        string having been saved into the JSON field by hand in the admin."""
+        raw = raw or []
+        if isinstance(raw, str):
+            raw = raw.splitlines()
+        return [str(f).strip() for f in raw if str(f).strip()]
+
+    @property
+    def feature_list(self):
+        return self._bullets(self.features)
+
+    @property
+    def exclusion_list(self):
+        return self._bullets(self.excluded_features)
+
+    @property
+    def currency_symbol(self):
+        return CURRENCY_SYMBOLS.get(self.currency, f'{self.currency} ')
+
+    @property
+    def price_display(self):
+        """The headline figure — or the override ("Custom") for tiers that are
+        quoted rather than listed."""
+        if self.price_override:
+            return self.price_override
+        if not self.price:
+            return 'Talk to us'
+        return f"{self.currency_symbol}{self.price:,.0f}"
+
+    @property
+    def shows_period(self):
+        return bool(self.price) and not self.price_override
+
+    @property
+    def period_suffix(self):
+        return {'monthly': '/ month', 'quarterly': '/ quarter', 'annual': '/ year'}.get(self.billing_period, '')
+
+    @property
+    def period_display(self):
+        return dict(BILLING_PERIOD_CHOICES).get(self.billing_period, self.billing_period)
+
+    @property
+    def button_label(self):
+        return self.cta_label or ('Contact sales' if self.contact_only else 'Start free trial')
+
+
+PLAN_STATUS_CHOICES = [
+    ('trial', 'Free trial'),
+    ('active', 'Paid subscription'),
+    ('pending', 'Awaiting activation'),
+    ('expired', 'Trial ended'),
+]
+
+
 class Organization(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200)
@@ -76,6 +207,18 @@ class Organization(models.Model):
     logo = models.FileField(upload_to='logos/', blank=True, null=True)
     gradient_color1 = models.CharField(max_length=7, default='#1d4ed8')
     gradient_color2 = models.CharField(max_length=7, default='#0f172a')
+
+    # ── Subscription / free trial ────────────────────────────────────────────
+    # Defaults to 'active' so every organisation that existed before self-signup
+    # was introduced keeps unrestricted access; only organisations created
+    # through the public trial signup start as 'trial'.
+    plan_status = models.CharField(max_length=20, choices=PLAN_STATUS_CHOICES, default='active')
+    package = models.ForeignKey(Package, on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name='organizations')
+    trial_started_at = models.DateTimeField(null=True, blank=True)
+    trial_ends_at = models.DateTimeField(null=True, blank=True)
+    subscription_activated_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -83,6 +226,57 @@ class Organization(models.Model):
 
     class Meta:
         ordering = ['name']
+
+    # ── Trial helpers ────────────────────────────────────────────────────────
+    def start_trial(self, days=None):
+        """Put the organisation on a fresh free trial. Called at signup."""
+        days = trial_period_days() if days is None else days
+        now = timezone.now()
+        self.plan_status = 'trial'
+        self.trial_started_at = now
+        self.trial_ends_at = now + timedelta(days=days)
+
+    def activate_package(self, package):
+        """Move the organisation onto a paid package — the manual step a platform
+        admin performs once payment for a requested package has landed."""
+        self.package = package
+        self.plan_status = 'active'
+        self.subscription_activated_at = timezone.now()
+        self.save(update_fields=['package', 'plan_status', 'subscription_activated_at'])
+
+    @property
+    def effective_plan_status(self):
+        """The real status right now. A trial flips to 'expired' the moment
+        ``trial_ends_at`` passes — computed on read, so access is cut off exactly
+        on time without a scheduled job having to run."""
+        if self.plan_status == 'trial' and self.trial_ends_at and timezone.now() >= self.trial_ends_at:
+            return 'expired'
+        return self.plan_status
+
+    @property
+    def is_on_trial(self):
+        return self.effective_plan_status == 'trial'
+
+    @property
+    def trial_has_expired(self):
+        return self.effective_plan_status in ('expired', 'pending')
+
+    @property
+    def trial_days_left(self):
+        """Whole days of trial remaining, rounded up — a trial with six hours to
+        run reads as "1 day left", never "0 days left" while still usable."""
+        if not self.trial_ends_at:
+            return 0
+        remaining = (self.trial_ends_at - timezone.now()).total_seconds()
+        if remaining <= 0:
+            return 0
+        return max(1, math.ceil(remaining / 86400))
+
+    @property
+    def has_platform_access(self):
+        """False once the trial has run out and no package has been activated —
+        the single check the access middleware and templates both read."""
+        return self.effective_plan_status in ('trial', 'active')
 
 
 class User(AbstractUser):
@@ -339,6 +533,7 @@ class ReportAnalysis(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='report_analyses')
     date_from = models.DateField()
     date_to = models.DateField()
+
     payload = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -517,3 +712,140 @@ class Event(models.Model):
 
     def __str__(self):
         return f"[{self.category}] {self.title}"
+
+
+REQUEST_STATUS_CHOICES = [
+    ('pending', 'Pending'),
+    ('approved', 'Approved & activated'),
+    ('declined', 'Declined'),
+]
+
+
+class SubscriptionRequest(models.Model):
+    """An organisation asking to be put on a paid package, raised from the
+    paywall the user hits when their free trial ends.
+
+    Payment is settled off-platform (invoice / EFT) and a platform admin then
+    activates the package from the Django admin, which is what actually restores
+    access. This record is the audit trail of who asked for what and when.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='subscription_requests')
+    package = models.ForeignKey(Package, on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name='requests')
+    requested_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True)
+    contact_name = models.CharField(max_length=200, blank=True)
+    contact_email = models.EmailField(blank=True)
+    contact_phone = models.CharField(max_length=50, blank=True)
+    note = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=REQUEST_STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    handled_at = models.DateTimeField(null=True, blank=True)
+    handled_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='handled_subscription_requests')
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.organization.name} → {self.package.name if self.package else 'no package'}"
+
+
+# ── Public marketing content ─────────────────────────────────────────────────
+# Everything below feeds the public landing page. It is deliberately NOT derived
+# from OnlineArticle/PrintArticle/BroadcastMention: those are scoped to an
+# Organization, so publishing them would disclose which clients we monitor and
+# what we monitor them for. Editors promote items here by hand instead, and
+# nothing appears publicly until is_published is set.
+
+class Sector(models.Model):
+    """A tab on the public "Sector Intelligence" page."""
+    name = models.CharField(max_length=80)
+    slug = models.SlugField(max_length=80, unique=True)
+    heading = models.CharField(
+        max_length=200, blank=True,
+        help_text='Heading above the story list. Defaults to "Top <name> intelligence this week".')
+    shows_ticker = models.BooleanField(
+        default=False, help_text='Show the commodities ticker while this sector is selected.')
+    is_published = models.BooleanField(default=True)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def display_heading(self):
+        return self.heading or f'Top {self.name.lower()} intelligence this week'
+
+
+class SectorStory(models.Model):
+    """One ranked story under a sector. Written or approved by an editor."""
+    sector = models.ForeignKey(Sector, on_delete=models.CASCADE, related_name='stories')
+    title = models.CharField(max_length=300)
+    summary = models.TextField(blank=True)
+    source_label = models.CharField(
+        max_length=120, help_text='How the source is credited, e.g. "Regional business press".')
+    url = models.URLField(blank=True, max_length=2000,
+                          help_text='Optional link out to the story.')
+    published_on = models.DateField()
+    display_order = models.PositiveIntegerField(
+        default=0, help_text='Rank within the sector. Lower numbers appear first.')
+    is_published = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['display_order', '-published_on']
+        verbose_name_plural = 'Sector stories'
+
+    def __str__(self):
+        return self.title[:70]
+
+
+class CommodityQuote(models.Model):
+    """A row in the commodities ticker.
+
+    price_display is free text so a quote can be a price, an index level or a
+    range without the model guessing at units. change_percent drives the arrow
+    and its colour; leave it at zero for a flat reading.
+    """
+    name = models.CharField(max_length=80)
+    price_display = models.CharField(max_length=40, help_text='Shown as written, e.g. "$2,412.30".')
+    change_percent = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    is_published = models.BooleanField(default=True)
+    display_order = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+
+    def __str__(self):
+        return f'{self.name} {self.price_display}'
+
+    @property
+    def is_up(self):
+        return self.change_percent >= 0
+
+    @property
+    def change_display(self):
+        return f'{"▲" if self.is_up else "▼"} {abs(self.change_percent):.1f}%'
+
+
+class Publication(models.Model):
+    """A card on the public "Publications & news" page."""
+    kind = models.CharField(max_length=80, help_text='e.g. "Weekly digest", "Sector report".')
+    title = models.CharField(max_length=200)
+    blurb = models.TextField(blank=True)
+    url = models.URLField(blank=True, max_length=2000)
+    published_on = models.DateField()
+    is_published = models.BooleanField(default=True)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['display_order', '-published_on']
+
+    def __str__(self):
+        return self.title

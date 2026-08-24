@@ -4,9 +4,12 @@ from .models import Organization
 
 
 def all_orgs(request):
-    if request.user.is_authenticated:
-        return {'all_orgs': Organization.objects.all().order_by('name')}
-    return {'all_orgs': []}
+    """Organisations offered in the header's "Switch Organisations" picker —
+    every client for a platform admin, only their own for everyone else."""
+    if not request.user.is_authenticated:
+        return {'all_orgs': []}
+    from .views import visible_organizations
+    return {'all_orgs': visible_organizations(request.user)}
 
 
 def external_links(request):

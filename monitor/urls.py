@@ -1,15 +1,22 @@
 from django.urls import path
 from . import views
+from . import subscription_views
 
 app_name = 'monitor'
 
 urlpatterns = [
     # Landing
     path('', views.home, name='home'),
+    path('pricing/', subscription_views.pricing, name='pricing'),
 
     # Auth
     path('login/', views.login_view, name='login'),
+    path('signup/', subscription_views.signup, name='signup'),
     path('logout/', views.logout_view, name='logout'),
+
+    # Subscription / free trial
+    path('app/billing/', subscription_views.billing, name='billing'),
+    path('app/billing/request/', subscription_views.package_request, name='package_request'),
 
     # Organizations
     path('app/organizations/', views.organizations, name='organizations'),
