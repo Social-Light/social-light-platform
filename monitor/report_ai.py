@@ -1,7 +1,7 @@
 """AI-generated report analysis: ESG, Stakeholder, Sectorial Competitor, and
 Reputational Risks / Opportunities.
 
-A single Groq call (llama-3.3-70b-versatile) per (organisation, period)
+A single Groq call (openai/gpt-oss-120b) per (organisation, period)
 produces the structured data for report sections that the raw models can't
 supply on their own. The result is persisted in the ReportAnalysis model and
 reused for the life of that record — there is no time-based expiry. It is
@@ -13,6 +13,21 @@ Generation is on demand (the report's "Generate AI Analysis" button); page loads
 call ``get_cached_analysis`` only. If the SDK/API key is missing or a generation
 fails, the helpers return None / raise ReportAIError and the report simply omits
 the AI sections instead of erroring.
+
+2026-08-24: was hardcoded to Groq's llama-3.3-70b-versatile, which GET
+https://api.groq.com/openai/v1/models confirmed is no longer on this account's
+catalog at all (calls were failing outright). A same-day attempt to move to
+Groq's openai/gpt-oss-120b (matching the fallback media-monitor's discovery/
+services/query_planner.py made for the same reason) hit a harder wall: that
+model's rate limit on this account is 8,000 TPM combined input+output — verified
+against the real API — and the fixed prompt overhead (system prompt + the full
+JSON-schema instructions) plus a JSON output big enough to avoid truncation left
+room for only ~7 sample mentions, too thin to be a real analysis. Moved to
+Anthropic instead (this is also what README.md/RUNBOOK.md always documented —
+Groq was an undocumented substitution at some point). Uses Messages API
+structured outputs (``output_config.format``, a JSON schema) rather than a
+"return JSON" prompt instruction — the response is guaranteed to match the
+schema, not just be syntactically valid JSON.
 """
 import json
 import logging
@@ -25,7 +40,7 @@ from .relevancy import filter_relevant
 
 logger = logging.getLogger(__name__)
 
-MODEL = getattr(settings, 'REPORT_AI_MODEL', 'llama-3.3-70b-versatile')
+MODEL = getattr(settings, 'REPORT_AI_MODEL', 'claude-opus-5')
 MAX_MENTIONS = 60  # cap the prompt size / token cost
 
 # ESG Analysis is a matrix: SASB-style issues (rows) × stakeholders (columns),
@@ -138,9 +153,9 @@ def generate_analysis(org, date_from, date_to, force=False):
             return rec.payload or None  # reuse stored result (empty-dict → no coverage)
 
     # Trim stray whitespace/quotes that often sneak in from .env files.
-    api_key = (getattr(settings, 'GROQ_API_KEY', '') or '').strip().strip('"').strip("'")
+    api_key = (getattr(settings, 'ANTHROPIC_API_KEY', '') or '').strip().strip('"').strip("'")
     if not api_key:
-        raise ReportAIError('AI is not configured — set GROQ_API_KEY.')
+        raise ReportAIError('AI is not configured — set ANTHROPIC_API_KEY.')
 
     payload = _gather(org, date_from, date_to)
     if not payload['mentions']:
@@ -148,20 +163,20 @@ def generate_analysis(org, date_from, date_to, force=False):
         return None
 
     try:
-        import groq
+        import anthropic
     except ImportError:
-        raise ReportAIError('The "groq" package is not installed (pip install groq).')
+        raise ReportAIError('The "anthropic" package is not installed (pip install anthropic).')
 
     try:
-        result = _normalise(_call_groq(api_key, org, date_from, date_to, payload))
-    except groq.AuthenticationError:
-        raise ReportAIError('Groq authentication failed — the API key is invalid. '
-                            'Check GROQ_API_KEY.')
-    except groq.RateLimitError:
-        raise ReportAIError('Groq rate limit reached. Please try again shortly.')
-    except groq.APIStatusError as exc:
-        raise ReportAIError(f'Groq API error (HTTP {exc.status_code}). Please try again.')
-    except groq.APIConnectionError:
+        result = _normalise(_call_ai(api_key, org, date_from, date_to, payload))
+    except anthropic.AuthenticationError:
+        raise ReportAIError('Anthropic authentication failed — the API key is invalid. '
+                            'Check ANTHROPIC_API_KEY.')
+    except anthropic.RateLimitError:
+        raise ReportAIError('Anthropic rate limit reached. Please try again shortly.')
+    except anthropic.APIStatusError as exc:
+        raise ReportAIError(f'Anthropic API error (HTTP {exc.status_code}). Please try again.')
+    except anthropic.APIConnectionError:
         raise ReportAIError('Could not reach the AI service in time (timeout or network). '
                             'Try again, or use a shorter reporting period.')
     except ReportAIError:
@@ -227,14 +242,124 @@ def _gather(org, date_from, date_to):
     return {'mentions': mentions[:MAX_MENTIONS], 'competitors': competitors}
 
 
-# ── Groq call ─────────────────────────────────────────────────────────────────
+# ── JSON schema for the structured-output call below ──────────────────────────
+# Mirrors the shape the prompt asks for. Kept loose on exact array lengths
+# (minItems only where the count is fixed by the ESG issue list) — _normalise()
+# below is still the defensive layer that clamps/coerces values, on the
+# principle of never trusting a model's shape blindly even under a schema.
 
-def _call_groq(api_key, org, date_from, date_to, payload):
-    import groq  # lazy import so the app runs without the SDK installed
+_SCORE_SCHEMA = {"type": "number", "minimum": -100, "maximum": 100}
+
+
+def _risk_opportunity_schema():
+    """reputational_risks and reputational_opportunities share this shape —
+    a factory (not a shared dict) so nothing downstream can mutate one and
+    silently affect the other."""
+    return {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "description": {"type": "string"},
+            "score": {"type": "integer", "minimum": 1, "maximum": 10},
+            "media": {"type": "string", "enum": ["Social", "Online", "Print", "Broadcast"]},
+            "source": {"type": "string"},
+        },
+        "required": ["title", "description", "score", "media", "source"],
+        "additionalProperties": False,
+    }
+
+
+REPORT_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "esg": {
+            "type": "array",
+            "minItems": len(_ESG_ISSUES), "maxItems": len(_ESG_ISSUES),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "issue": {"type": "string"},
+                    "scores": {
+                        "type": "object",
+                        "properties": {k: _SCORE_SCHEMA for k, _label in _STAKEHOLDERS},
+                        "required": [k for k, _label in _STAKEHOLDERS],
+                        "additionalProperties": False,
+                    },
+                    "analysis": {"type": "string"},
+                },
+                "required": ["issue", "scores", "analysis"],
+                "additionalProperties": False,
+            },
+        },
+        "stakeholders": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "dimension": {"type": "string"},
+                    "score": {"type": "number", "minimum": 0, "maximum": 100},
+                    "sentiment": {"type": "string", "enum": ["positive", "neutral", "negative"]},
+                    "note": {"type": "string"},
+                },
+                "required": ["dimension", "score", "sentiment", "note"],
+                "additionalProperties": False,
+            },
+        },
+        "competitor": {
+            "type": "object",
+            "properties": {
+                "sector_average": _SCORE_SCHEMA,
+                "commentary": {"type": "string"},
+                "ranked": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "score": _SCORE_SCHEMA,
+                            "description": {"type": "string"},
+                            "is_org": {"type": "boolean"},
+                        },
+                        "required": ["name", "score", "description", "is_org"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["sector_average", "commentary", "ranked"],
+            "additionalProperties": False,
+        },
+        "reputational_risks": {"type": "array", "items": _risk_opportunity_schema()},
+        "reputational_opportunities": {"type": "array", "items": _risk_opportunity_schema()},
+        "kpi_insights": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string"},
+                    "score": _SCORE_SCHEMA,
+                    "mentions": {"type": "integer", "minimum": 0},
+                    "media": {"type": "string", "enum": ["Social", "Online", "Print", "Broadcast"]},
+                    "text": {"type": "string"},
+                },
+                "required": ["category", "score", "mentions", "media", "text"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["esg", "stakeholders", "competitor", "reputational_risks",
+                 "reputational_opportunities", "kpi_insights"],
+    "additionalProperties": False,
+}
+
+
+# ── AI call (Anthropic Messages API, structured outputs) ──────────────────────
+
+def _call_ai(api_key, org, date_from, date_to, payload):
+    import anthropic  # lazy import so the app runs without the SDK installed
 
     # Bound the call well under gunicorn's --timeout so a slow response fails
     # cleanly (ReportAIError) instead of getting the worker killed mid-request.
-    client = groq.Groq(api_key=api_key, timeout=120.0, max_retries=1)
+    client = anthropic.Anthropic(api_key=api_key, timeout=120.0, max_retries=1)
 
     mentions_block = "\n".join(
         f"- [{m['media']}/{m['sentiment']}] ({m['source']}) {m['text']}" for m in payload['mentions']
@@ -253,64 +378,29 @@ MEDIA MENTIONS (sample, with media type and sentiment):
 COMPETITOR COVERAGE (for sectorial comparison):
 {comp_block}
 
-Produce a JSON object with EXACTLY these keys:
+The response schema is enforced separately (see REPORT_JSON_SCHEMA) — this is
+guidance on WHAT to write in each field, not the structure itself:
 
-{{
-  "esg": [
-    {{"issue": "Financial Inclusion & Access",
-      "scores": {{"government": <-100 to 100>, "regulators": <-100 to 100>, "customers": <-100 to 100>, "communities": <-100 to 100>}},
-      "analysis": "<2-3 sentence analysis of how the coverage relates to this issue>"}}
-  ],
-  "stakeholders": [
-    {{"dimension": "Customers", "score": <0-100>, "sentiment": "positive|neutral|negative", "note": "<one short sentence>"}},
-    {{"dimension": "Employees", "score": <0-100>, "sentiment": "...", "note": "..."}},
-    {{"dimension": "Investors", "score": <0-100>, "sentiment": "...", "note": "..."}},
-    {{"dimension": "Regulators", "score": <0-100>, "sentiment": "...", "note": "..."}},
-    {{"dimension": "Government & Politics", "score": <0-100>, "sentiment": "...", "note": "..."}},
-    {{"dimension": "Community", "score": <0-100>, "sentiment": "...", "note": "..."}},
-    {{"dimension": "Media", "score": <0-100>, "sentiment": "...", "note": "..."}}
-  ],
-  "competitor": {{
-    "sector_average": <-100 to 100>,
-    "commentary": "<2-3 sentences on how {org.name} compares to the sector>",
-    "ranked": [
-      {{"name": "{org.name}", "score": <-100 to 100>, "description": "<1-2 sentence assessment of this player's coverage>", "is_org": true}},
-      {{"name": "<competitor>", "score": <-100 to 100>, "description": "<1-2 sentence assessment>", "is_org": false}}
-    ]
-  }},
-  "reputational_risks": [
-    {{"title": "<2-4 word issue name, e.g. 'Service Disruption'>", "description": "<1-2 sentence explanation of the reputational risk this coverage poses>", "score": <1-10 severity>, "media": "Social|Online|Print|Broadcast", "source": "<the outlet/platform from the mention, e.g. Facebook>"}}
-  ],
-  "reputational_opportunities": [
-    {{"title": "<2-4 word opportunity name, e.g. 'Sports Event Sponsorship'>", "description": "<1-2 sentence explanation of the reputational opportunity this coverage presents>", "score": <1-10 strength>, "media": "Social|Online|Print|Broadcast", "source": "<the outlet/platform from the mention>"}}
-  ],
-  "kpi_insights": [
-    {{"category": "<2-4 word business theme, e.g. 'Compliance', 'Customer Experience', 'Innovation'>", "score": <-100 to 100>, "mentions": <number of mentions relating to this theme>, "media": "Social|Online|Print|Broadcast", "text": "<2-4 sentence detailed analysis of what the coverage actually said about this theme, naming specifics (initiatives, people, events) from the mentions>"}}
-  ]
-}}
+The "esg" array MUST contain one object for EACH of these issues, in this exact order: Financial Inclusion & Access; Fair Lending & Responsible Finance; Data Security & Customer Privacy; Business Ethics & Transparency; Customer Welfare & Product Responsibility; Employee Diversity & Wellbeing; Community Investment & Development; Environmental & Climate Impact. For each issue, score the sentiment from each stakeholder's perspective on a -100..100 scale (0 = not covered or neutral) based on the mentions, and write a short 2-3 sentence analysis. Stakeholder "score" is a 0–100 favourability index (50 = neutral); write one short sentence per "note". Include {org.name} AND each competitor above in "competitor.ranked", each with its own 1-2 sentence description and a -100..100 score (0 = neutral); "commentary" is 2-3 sentences on how {org.name} compares to the sector.
 
-The "esg" array MUST contain one object for EACH of these issues, in this exact order: Financial Inclusion & Access; Fair Lending & Responsible Finance; Data Security & Customer Privacy; Business Ethics & Transparency; Customer Welfare & Product Responsibility; Employee Diversity & Wellbeing; Community Investment & Development; Environmental & Climate Impact. For each issue, score the sentiment from each stakeholder's perspective on a -100..100 scale (0 = not covered or neutral) based on the mentions, and write a short analysis. Include {org.name} AND each competitor above in "ranked", each with its own description and a score. Stakeholder "score" is a 0–100 favourability index (50 = neutral). Competitor and ESG "score" values are a -100..100 sentiment index (0 = neutral).
+For "reputational_risks" and "reputational_opportunities": derive each item from the negative (risks) and positive (opportunities) mentions respectively. Give a short, abstracted issue title (NOT the raw headline, e.g. "Service Disruption" / "Sports Event Sponsorship"), a clear one to two sentence description, a 1-10 score (severity for risks, strength for opportunities), and set "media" to the mention's media type and "source" to its outlet/platform (e.g. Facebook). Return 2-4 of the most significant items per media type that has coverage; omit a media type entirely if it has no relevant coverage (an empty array is fine).
 
-For "reputational_risks" and "reputational_opportunities": derive each item from the negative (risks) and positive (opportunities) mentions respectively. Give a short, abstracted issue title (NOT the raw headline), a clear one to two sentence description, a 1-10 score (severity for risks, strength for opportunities), and set "media" to the mention's media type and "source" to its outlet/platform. Return 2-4 of the most significant items per media type that has coverage; omit a media type entirely if it has no relevant coverage.
+For "kpi_insights": identify the business/performance themes that the coverage actually speaks to (e.g. Compliance, Customer Experience, Innovation, Community Investment) — a short 2-4 word category name — and, for each, write a detailed 2-4 sentence narrative grounded in the specific mentions — name the initiatives, people, products or events involved and explain the implication. Set "score" to the theme's sentiment on a -100..100 scale (0 = neutral/balanced), "mentions" to how many mentions relate to the theme (its visibility), and "media" to the media type the insight is drawn from. Return 2-5 substantive insights per media type that has relevant coverage; omit a media type with no relevant coverage (an empty array is fine)."""
 
-For "kpi_insights": identify the business/performance themes that the coverage actually speaks to (e.g. Compliance, Customer Experience, Innovation, Community Investment) and, for each, write a detailed 2-4 sentence narrative grounded in the specific mentions — name the initiatives, people, products or events involved and explain the implication. Set "score" to the theme's sentiment on a -100..100 scale (0 = neutral/balanced), "mentions" to how many mentions relate to the theme (its visibility), and "media" to the media type the insight is drawn from. Return 2-5 substantive insights per media type that has relevant coverage; omit a media type with no relevant coverage. Do NOT include comments or any text outside the JSON. Return ONLY the JSON object."""
-
-    completion = client.chat.completions.create(
+    response = client.messages.create(
         model=MODEL,
-        # Reserved output budget. Kept under Groq's 12,000 TPM cap (llama-3.3-70b-versatile)
-        # together with the worst-case prompt (MAX_MENTIONS mentions + up to 8 competitors,
-        # ~4.5k tokens) — 8192 pushed a full-size org's request over the limit (413).
-        max_tokens=7000,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format={"type": "json_object"},
+        # Anthropic's rate limits are far more generous than the on-demand-tier
+        # Groq ceiling this used to be squeezed under (see the 2026-08-24 module
+        # docstring note) — no need to trim mentions or output room to fit.
+        max_tokens=8000,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_prompt}],
+        output_config={"format": {"type": "json_schema", "schema": REPORT_JSON_SCHEMA}},
     )
-    choice = completion.choices[0]
-    if choice.finish_reason == 'length':
+    if response.stop_reason == 'max_tokens':
         raise ReportAIError('The AI response was truncated. Try a shorter reporting period.')
-    return _parse_json(choice.message.content)
+    text = next(b.text for b in response.content if b.type == "text")
+    return _parse_json(text)
 
 
 def _parse_json(text):

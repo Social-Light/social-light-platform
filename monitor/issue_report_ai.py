@@ -1,6 +1,7 @@
 """Issue-focused ("saga") report generation.
 
-From every mention in a period, a single Groq call (llama-3.3-70b-versatile)
+From every mention in a period, a single Groq call (openai/gpt-oss-120b — see the
+2026-08-24 note in report_ai.py, whose MODEL constant this module imports)
 selects only those relevant to a named issue (the saga) and writes the
 issue-specific narrative:
 executive summary, "at a glance" facts, a case timeline, narrative/framing
@@ -34,7 +35,7 @@ from .report_ai import ReportAIError, _parse_json, _sent, MODEL
 
 logger = logging.getLogger(__name__)
 
-MAX_CANDIDATES = 100          # hard cap on rows sent to the model
+MAX_CANDIDATES = 100         # hard cap on rows sent to the model / token cost
 PER_TYPE = MAX_CANDIDATES // 4
 
 # Media types, in report order, with the model's outlet/platform column.
@@ -219,25 +220,25 @@ def regenerate_narrative(report):
 def _run(org, title, issue_query, date_from, date_to, candidates):
     """Shared generate path: validate config, call the API, normalise. Returns
     ``(selected_ids, payload)``."""
-    api_key = (getattr(settings, 'GROQ_API_KEY', '') or '').strip().strip('"').strip("'")
+    api_key = (getattr(settings, 'ANTHROPIC_API_KEY', '') or '').strip().strip('"').strip("'")
     if not api_key:
-        raise ReportAIError('AI is not configured — set GROQ_API_KEY.')
+        raise ReportAIError('AI is not configured — set ANTHROPIC_API_KEY.')
 
     try:
-        import groq
+        import anthropic
     except ImportError:
-        raise ReportAIError('The "groq" package is not installed (pip install groq).')
+        raise ReportAIError('The "anthropic" package is not installed (pip install anthropic).')
 
     try:
-        data = _call_groq(api_key, org, title, issue_query, date_from, date_to, candidates)
-    except groq.AuthenticationError:
-        raise ReportAIError('Groq authentication failed — the API key is invalid. '
-                            'Check GROQ_API_KEY.')
-    except groq.RateLimitError:
-        raise ReportAIError('Groq rate limit reached. Please try again shortly.')
-    except groq.APIStatusError as exc:
-        raise ReportAIError(f'Groq API error (HTTP {exc.status_code}). Please try again.')
-    except groq.APIConnectionError:
+        data = _call_ai(api_key, org, title, issue_query, date_from, date_to, candidates)
+    except anthropic.AuthenticationError:
+        raise ReportAIError('Anthropic authentication failed — the API key is invalid. '
+                            'Check ANTHROPIC_API_KEY.')
+    except anthropic.RateLimitError:
+        raise ReportAIError('Anthropic rate limit reached. Please try again shortly.')
+    except anthropic.APIStatusError as exc:
+        raise ReportAIError(f'Anthropic API error (HTTP {exc.status_code}). Please try again.')
+    except anthropic.APIConnectionError:
         raise ReportAIError('Could not reach the AI service in time (timeout or network). '
                             'Try again, or use a shorter reporting period.')
     except ReportAIError:
@@ -250,10 +251,100 @@ def _run(org, title, issue_query, date_from, date_to, candidates):
     return _normalise(data, valid_refs)
 
 
-def _call_groq(api_key, org, title, issue_query, date_from, date_to, candidates):
-    import groq  # lazy import so the app runs without the SDK installed
+# ── JSON schema for the structured-output call below ──────────────────────────
+# Kept loose (min/max item counts only, no ref-value enum) — _normalise(data,
+# valid_refs) below is still the defensive layer that drops any invented ref
+# or ungrounded timeline event, on the principle of never trusting a model's
+# shape or its refs blindly even under a schema.
 
-    client = groq.Groq(api_key=api_key, timeout=120.0, max_retries=1)
+ISSUE_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "selected": {"type": "array", "items": {"type": "string"}},
+        "exec_summary": {"type": "string"},
+        "at_a_glance": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "text": {"type": "string"},
+                    "source": {"type": "string"},
+                },
+                "required": ["label", "text", "source"],
+                "additionalProperties": False,
+            },
+        },
+        "timeline": {
+            "type": "array", "minItems": 4, "maxItems": 8,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string"},
+                    "text": {"type": "string"},
+                    "source": {"type": "string"},
+                    "tone": {"type": "string", "enum": ["positive", "neutral", "negative"]},
+                },
+                "required": ["date", "text", "source", "tone"],
+                "additionalProperties": False,
+            },
+        },
+        "framing": {
+            "type": "array", "minItems": 3, "maxItems": 5,
+            "items": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}, "text": {"type": "string"}},
+                "required": ["title", "text"],
+                "additionalProperties": False,
+            },
+        },
+        "risks": {
+            "type": "array", "minItems": 2, "maxItems": 5,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "note": {"type": "string"},
+                    "score": {"type": "number", "minimum": -100, "maximum": 0},
+                    "media": {"type": "string", "enum": ["Social", "Online", "Print", "Broadcast"]},
+                },
+                "required": ["title", "note", "score", "media"],
+                "additionalProperties": False,
+            },
+        },
+        "stakeholders": {
+            "type": "array", "minItems": 4, "maxItems": 7,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "dimension": {"type": "string"},
+                    "score": {"type": "number", "minimum": 0, "maximum": 100},
+                    "note": {"type": "string"},
+                },
+                "required": ["dimension", "score", "note"],
+                "additionalProperties": False,
+            },
+        },
+        "recommendations": {
+            "type": "array", "minItems": 3, "maxItems": 6,
+            "items": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}, "text": {"type": "string"}},
+                "required": ["title", "text"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["selected", "exec_summary", "at_a_glance", "timeline", "framing",
+                 "risks", "stakeholders", "recommendations"],
+    "additionalProperties": False,
+}
+
+
+def _call_ai(api_key, org, title, issue_query, date_from, date_to, candidates):
+    import anthropic  # lazy import so the app runs without the SDK installed
+
+    client = anthropic.Anthropic(api_key=api_key, timeout=120.0, max_retries=1)
 
     cand_block = "\n".join(
         f"- [{c['ref']}] ({c['source']}, {c['date']}, {c['sentiment']}) {c['text']}"
@@ -271,54 +362,35 @@ CANDIDATE MENTIONS (each prefixed with its reference id in square brackets):
 From the candidates above, select ONLY the mentions that are genuinely about the
 issue "{title}". Ignore anything off-topic. Then analyse the SELECTED mentions.
 
-Return a JSON object with EXACTLY these keys:
+The response schema is enforced separately (see ISSUE_JSON_SCHEMA) — this is
+guidance on WHAT to write in each field, not the structure itself:
 
-{{
-  "selected": ["<ref of each on-topic mention, e.g. online-12>"],
-  "exec_summary": "<3-5 sentence executive summary of the issue and its media footprint>",
-  "at_a_glance": [
-    {{"label": "<short label, e.g. Claim / Position / Latest turn>", "text": "<one sentence>", "source": "<a ref from selected, or empty>"}}
-  ],
-  "timeline": [
-    {{"date": "YYYY-MM-DD", "text": "<what happened, one sentence>", "source": "<a ref from selected>", "tone": "positive|neutral|negative"}}
-  ],
-  "framing": [
-    {{"title": "<2-4 word theme, e.g. 'The binary framing problem'>", "text": "<2-3 sentence analysis>"}}
-  ],
-  "risks": [
-    {{"title": "<2-4 word reputational risk>", "note": "<one sentence>", "score": <-100 to 0>, "media": "Social|Online|Print|Broadcast"}}
-  ],
-  "stakeholders": [
-    {{"dimension": "<e.g. Investors / Regulators / Government & Politics / Media>", "score": <0-100 favourability, 50=neutral>, "note": "<one sentence>"}}
-  ],
-  "recommendations": [
-    {{"title": "<short action title>", "text": "<1-2 sentence recommendation>"}}
-  ]
-}}
-
-Rules:
-- "selected" must contain ONLY reference ids that appear in the candidates above; never invent ids.
-- Every "timeline" event MUST cite a "source" ref drawn from your selected set; do not include events you cannot ground in a selected mention.
+- "selected" must contain ONLY reference ids that appear in the candidates above (e.g. "online-12"); never invent ids.
+- "exec_summary": 3-5 sentences on the issue and its media footprint.
+- "at_a_glance": short label/text pairs (e.g. Claim / Position / Latest turn), each "source" a ref from "selected", or empty.
+- Every "timeline" event MUST cite a "source" ref drawn from your selected set; do not include events you cannot ground in a selected mention. Give each a one-sentence "text".
+- "framing": a 2-4 word "title" per theme (e.g. "The binary framing problem") with a 2-3 sentence "text" analysis.
+- "risks": a 2-4 word "title" per reputational risk with a one-sentence "note".
+- "stakeholders": e.g. Investors / Regulators / Government & Politics / Media, each a one-sentence "note".
+- "recommendations": a short action "title" with a 1-2 sentence "text".
 - Base all figures and facts on the selected mentions only. Do NOT restate raw headlines as analysis — abstract and synthesise.
-- Return 4-8 timeline events, 3-5 framing themes, 2-5 risks, 4-7 stakeholders, 3-6 recommendations, where the coverage supports them.
 - Output ONLY the JSON object, no commentary."""
 
-    completion = client.chat.completions.create(
+    response = client.messages.create(
         model=MODEL,
-        # Reserved output budget. Kept under Groq's 12,000 TPM cap (llama-3.3-70b-versatile)
-        # together with the worst-case prompt (up to MAX_CANDIDATES=100 candidate mentions)
-        # — 8192 pushed a full-size request over the limit (413) on report_ai's sibling call.
-        max_tokens=7000,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format={"type": "json_object"},
+        # Anthropic's rate limits are far more generous than the on-demand-tier
+        # Groq ceiling this used to be squeezed under (see report_ai.py's
+        # 2026-08-24 module docstring note) — no need to trim candidates or
+        # output room to fit.
+        max_tokens=8000,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_prompt}],
+        output_config={"format": {"type": "json_schema", "schema": ISSUE_JSON_SCHEMA}},
     )
-    choice = completion.choices[0]
-    if choice.finish_reason == 'length':
+    if response.stop_reason == 'max_tokens':
         raise ReportAIError('The AI response was truncated. Try a shorter reporting period.')
-    return _parse_json(choice.message.content)
+    text = next(b.text for b in response.content if b.type == "text")
+    return _parse_json(text)
 
 
 # ── Normalisation (never trust the model's shape or its refs) ──────────────────
