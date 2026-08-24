@@ -1,414 +1,1089 @@
 {% load static %}<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Social Light — Media Intelligence Platform</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Social Light — You find out first.</title>
+  <meta name="description" content="Media monitoring and market intelligence across Southern Africa — print, broadcast, online and social — delivered while you can still act on it.">
   <link rel="icon" type="image/x-icon" href="{% static 'favicon/favicon.ico' %}?v=2">
   <link rel="icon" type="image/svg+xml" href="{% static 'favicon/favicon.svg' %}?v=2">
   <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon/favicon-96x96.png' %}?v=2">
   <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}?v=2">
   <link rel="manifest" href="{% static 'favicon/site.webmanifest' %}?v=2">
-  <meta name="theme-color" content="#ffffff">
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    :root{--navy:#3891C7;--navy-dk:#1d4878;--blue:#4294CE;--blue-lt:#5baee0;--blue-xl:#8dcaed;}
-    *,*::before,*::after{box-sizing:border-box;}
+    :root{
+      --navy:#062E72; --navy-deep:#041F4D; --navy-lift:#0B4893;
+      --ink:#0C1420; --body:#4A5568; --muted:#5B6B7D; --faint:#7B8794;
+      --line:#E3E8ED; --line-soft:#EEF2F5; --wash:#F6F8FA; --white:#FFFFFF;
+      --orange:#EA8C13; --gold:#F5B01B; --lime:#7BA32C; --green:#1E9160; --teal:#0A8B8E; --blue:#0A6C9E;
+      --amber-ink:#8F5F0A; --lime-ink:#55731B; --green-ink:#17754E;
+      --on-navy:#C4D6E6; --on-navy-mute:#9BB3CC; --on-navy-soft:#A9C6E2;
+      --spectrum:linear-gradient(90deg,#EA8C13,#F5B01B,#7BA32C,#1E9160,#0A8B8E,#0A6C9E);
+      --shell:1280px;
+    }
+    *{box-sizing:border-box;}
+    /* the header is sticky, so anchored sections need room to clear it */
     html{scroll-behavior:smooth;}
-    body{font-family:'Inter',system-ui,sans-serif;color:#0f172a;background:#fff;-webkit-font-smoothing:antialiased;margin:0;}
+    section[id]{scroll-margin-top:160px;}
+    body{margin:0;background:var(--white);color:var(--ink);font-family:'Montserrat',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+    a{color:var(--blue);text-decoration:none;}
+    a:hover{color:var(--navy);}
+    ::selection{background:#CDE7EE;}
+    img{max-width:100%;}
+    h1,h2,h3{font-family:'Poppins',sans-serif;margin:0;}
+    button{font-family:'Montserrat',sans-serif;}
 
-    /* Nav */
-    .site-nav{position:fixed;top:0;left:0;right:0;z-index:999;transition:background .3s,box-shadow .3s;}
-    .site-nav.scrolled{background:rgba(29,72,120,.97);backdrop-filter:blur(12px);box-shadow:0 1px 0 rgba(255,255,255,.06);}
-    .nav-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:18px 24px;}
-    .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
-    .nav-logo img{width:38px;height:38px;object-fit:contain;border-radius:8px;}
-    .nav-logo-name{font-size:14px;font-weight:800;color:#fff;letter-spacing:.07em;display:block;}
-    .nav-logo-sub{font-size:8px;color:rgba(255,255,255,.4);letter-spacing:.14em;text-transform:uppercase;display:block;margin-top:1px;}
-    .nav-signin{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;background:#4294CE;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;transition:background .15s,transform .15s;font-family:inherit;}
-    .nav-signin:hover{background:#306EB1;transform:translateY(-1px);color:#fff;}
-    .nav-actions{display:flex;align-items:center;gap:10px;}
-    .nav-dropdown-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s,transform .15s;font-family:inherit;}
-    .nav-dropdown-btn:hover{background:rgba(255,255,255,.14);transform:translateY(-1px);}
-    .service-dropdown-menu{min-width:280px;background:rgba(15,23,42,.98);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);border-radius:18px;box-shadow:0 18px 40px rgba(15,23,42,.25);padding:8px;}
-    .service-dropdown-item{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;margin:0 6px;transition:background .2s,transform .2s;color:#fff;}
-    .service-dropdown-item:hover,.service-dropdown-item:focus{background:rgba(255,255,255,.06);transform:translateY(-1px);text-decoration:none;color:#fff;}
-    .service-item-title{display:block;font-size:15px;font-weight:700;line-height:1.2;}
-    .service-item-desc{display:block;font-size:13px;color:rgba(255,255,255,.7);line-height:1.4;margin-top:4px;}
-    .service-dropdown-item svg{flex-shrink:0;color:#7dd3fc;}
-    .dropdown-item{padding:0;border:none;background:transparent;}
+    /* ── shared primitives ─────────────────────────────────────────────── */
+    .shell{max-width:var(--shell);margin:0 auto;padding:0 40px;}
+    .rule{width:96px;height:4px;border-radius:2px;background:var(--spectrum);margin-bottom:18px;}
+    .rule.wide{width:132px;margin-bottom:22px;}
+    .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:18px;}
+    .h1{font-weight:700;font-size:82px;line-height:.98;letter-spacing:-.03em;margin:0 0 24px;}
+    .h2{font-weight:700;font-size:36px;line-height:1.12;letter-spacing:-.015em;margin:0;}
+    .lede{margin:0;font-size:16px;line-height:1.7;color:var(--body);}
+    .section{padding:88px 0;}
+    .split{display:grid;gap:56px;}
+    .cta-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:40px;padding-top:26px;border-top:1px solid var(--line);}
+    .cta-note{font-size:13px;color:var(--muted);}
 
-    /* Hero */
-    .hero{position:relative;min-height:100vh;overflow:hidden;display:flex;align-items:center;background:var(--navy-dk);}
-    .hero-bg{position:absolute;inset:0;background:url('{% static "images/image5.jpg" %}') center center/cover no-repeat;opacity:.22;}
-    .hero-gradient{position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 60% 50%,rgba(66,148,206,.22) 0%,transparent 70%),linear-gradient(160deg,rgba(18,38,80,.98) 0%,rgba(48,110,177,.88) 55%,rgba(18,38,80,.97) 100%);}
-    .hero-content{position:relative;z-index:2;max-width:1160px;margin:0 auto;padding:120px 24px 80px;display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;}
-    @media(max-width:900px){.hero-content{grid-template-columns:1fr;gap:40px;text-align:center;}.hero-ctas,.hero-trust{justify-content:center!important;}}
-    .hero-eyebrow{display:inline-flex;align-items:center;gap:7px;background:rgba(66,148,206,.2);border:1px solid rgba(66,148,206,.4);border-radius:100px;padding:5px 14px;font-size:12px;font-weight:600;color:var(--blue-xl);letter-spacing:.06em;text-transform:uppercase;margin-bottom:22px;}
-    .hero-title{font-size:clamp(38px,5.5vw,64px);font-weight:900;color:#fff;line-height:1.05;letter-spacing:-.03em;margin-bottom:22px;}
-    .hero-title span{background:linear-gradient(90deg,#fff,var(--blue-xl));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-    .hero-sub{font-size:17px;color:rgba(255,255,255,.6);line-height:1.75;max-width:480px;margin-bottom:36px;}
-    .hero-ctas{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
-    .btn-hero-primary{display:inline-flex;align-items:center;gap:8px;padding:14px 28px;background:linear-gradient(135deg,#4294CE 0%,#306EB1 100%);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;font-family:inherit;text-decoration:none;cursor:pointer;box-shadow:0 4px 20px rgba(66,148,206,.45);transition:transform .2s,box-shadow .2s;}
-    .btn-hero-primary:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(48,110,177,.55);color:#fff;}
-    .btn-hero-outline{display:inline-flex;align-items:center;gap:8px;padding:13px 24px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.85);border:1.5px solid rgba(255,255,255,.2);border-radius:10px;font-size:15px;font-weight:600;font-family:inherit;text-decoration:none;transition:background .15s,border-color .15s;}
-    .btn-hero-outline:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.4);color:#fff;}
-    .hero-trust{display:flex;align-items:center;gap:12px;margin-top:28px;font-size:13px;color:rgba(255,255,255,.4);flex-wrap:wrap;}
-    .trust-avatars{display:flex;}
-    .trust-avatar{width:28px;height:28px;border-radius:50%;border:2px solid rgba(15,36,89,.8);background:linear-gradient(135deg,#1d4ed8,#7c3aed);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-left:-8px;}
-    .trust-avatar:first-child{margin-left:0;}
-    .hero-visual{position:relative;}
-    .hero-img-card{border-radius:16px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08);position:relative;}
-    .hero-img-card img{width:100%;display:block;opacity:.85;}
-    .hero-img-card::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 50%,rgba(7,15,38,.7) 100%);}
-    .hero-chips{position:absolute;bottom:20px;left:20px;right:20px;display:flex;gap:10px;flex-wrap:wrap;z-index:2;}
-    .hero-chip{background:rgba(255,255,255,.12);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px 14px;}
-    .hero-chip-val{font-size:18px;font-weight:800;color:#fff;display:block;line-height:1;}
-    .hero-chip-lbl{font-size:11px;color:rgba(255,255,255,.55);display:block;margin-top:2px;}
+    .btn{display:inline-block;font-size:14px;font-weight:600;border:0;border-radius:6px;padding:13px 22px;cursor:pointer;white-space:nowrap;text-align:center;}
+    .btn-navy{background:var(--navy);color:#fff;}
+    .btn-navy:hover{background:var(--blue);color:#fff;}
+    .btn-gold{background:var(--gold);color:var(--navy);}
+    .btn-gold:hover{background:var(--orange);color:#fff;}
+    .btn-green{background:var(--green);color:#fff;padding:14px 24px;border-radius:8px;}
+    .btn-green:hover{background:var(--navy);color:#fff;}
+    .btn-ghost{background:none;border:1px solid #D6DCE2;color:var(--ink);}
+    .btn-ghost:hover{border-color:var(--blue);color:var(--blue);}
+    .btn-lg{font-size:15px;padding:16px 28px;}
 
-    /* Stats strip */
-    .stats-strip{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-dk) 100%);padding:52px 0;}
-    .stat-block{text-align:center;padding:0 8px;}
-    .stat-block-val{font-size:40px;font-weight:900;color:#fff;letter-spacing:-.03em;display:block;line-height:1;}
-    .stat-block-lbl{font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;display:block;}
+    .tick{display:grid;grid-template-columns:15px 1fr;gap:10px;}
+    .tick .mark{color:var(--green-ink);}
 
-    /* Sections */
-    section{padding:96px 0;}
-    .section-inner{max-width:1160px;margin:0 auto;padding:0 24px;}
-    .section-tag{display:inline-block;padding:4px 14px;border-radius:100px;background:#dbeeff;color:#306EB1;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;}
-    .section-tag-dark{background:rgba(66,148,206,.2);color:#8dcaed;}
-    .section-title{font-size:clamp(28px,4vw,42px);font-weight:900;color:#0f172a;letter-spacing:-.02em;margin-bottom:14px;line-height:1.1;}
-    .section-title-light{color:#fff;}
-    .section-sub{font-size:16px;color:#64748b;line-height:1.75;max-width:580px;}
-    .section-sub-light{color:rgba(255,255,255,.55);}
+    /* reveal on scroll */
+    .rv{opacity:0;transform:translateY(20px);}
+    .rv-in{opacity:1;transform:none;transition:opacity 700ms cubic-bezier(.2,.7,.2,1),transform 700ms cubic-bezier(.2,.7,.2,1);}
 
-    /* Feature cards */
-    .features-section{background:#fff;}
-    .feat-card{border-radius:16px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,.07);transition:transform .2s,box-shadow .2s;height:100%;display:flex;flex-direction:column;}
-    .feat-card:hover{transform:translateY(-4px);box-shadow:0 12px 36px rgba(0,0,0,.12);}
-    .feat-img{position:relative;height:210px;overflow:hidden;}
-    .feat-img img{width:100%;height:100%;object-fit:cover;transition:transform .4s;}
-    .feat-card:hover .feat-img img{transform:scale(1.04);}
-    .feat-img-overlay{position:absolute;inset:0;background:linear-gradient(180deg,transparent 30%,rgba(7,15,38,.65) 100%);}
-    .feat-tag{position:absolute;top:14px;left:14px;background:rgba(255,255,255,.15);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.2);border-radius:100px;padding:4px 12px;font-size:11.5px;font-weight:600;color:#fff;}
-    .feat-body{padding:22px 24px 26px;flex:1;background:#fff;}
-    .feat-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;}
-    .feat-title{font-size:17px;font-weight:800;color:#0f172a;margin-bottom:8px;letter-spacing:-.01em;}
-    .feat-desc{font-size:13.5px;color:#64748b;line-height:1.65;}
-
-    /* How it works */
-    .hiw-section{background:linear-gradient(160deg,var(--navy-dk) 0%,var(--navy) 60%,var(--navy-dk) 100%);}
-    .hiw-step{display:flex;align-items:flex-start;gap:20px;padding:28px 0;border-bottom:1px solid rgba(255,255,255,.07);}
-    .hiw-step:last-child{border-bottom:none;padding-bottom:0;}
-    .hiw-num{width:48px;height:48px;border-radius:50%;flex-shrink:0;background:rgba(66,148,206,.25);border:1.5px solid rgba(66,148,206,.55);color:#8dcaed;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;}
-    .hiw-step-title{font-size:17px;font-weight:700;color:#fff;margin-bottom:6px;}
-    .hiw-step-desc{font-size:14px;color:rgba(255,255,255,.55);line-height:1.65;margin:0;}
-    .hiw-img{border-radius:16px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);}
-    .hiw-img img{width:100%;display:block;}
-
-    /* Landscape */
-    .landscape-section{background:var(--navy-dk);padding:80px 0;}
-    .media-pill{display:inline-flex;align-items:center;gap:7px;padding:7px 16px;border-radius:100px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);font-size:13px;font-weight:600;color:rgba(255,255,255,.75);text-decoration:none;}
-    .pill-dot{width:7px;height:7px;border-radius:50%;display:inline-block;}
-    .metric-tile{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:18px 16px;}
-    .metric-tile-val{font-size:24px;font-weight:900;color:#fff;display:block;}
-    .metric-tile-lbl{font-size:12px;color:rgba(255,255,255,.45);margin-top:3px;display:block;}
-
-    /* CTA */
-    .cta-section{position:relative;overflow:hidden;padding:100px 0;}
-    .cta-bg{position:absolute;inset:0;background:url('{% static "images/image4.jpg" %}') center center/cover no-repeat;}
-    .cta-overlay{position:absolute;inset:0;background:linear-gradient(160deg,rgba(18,38,80,.96) 0%,rgba(48,110,177,.92) 100%);}
-    .cta-inner{position:relative;z-index:2;text-align:center;}
-    .cta-title{font-size:clamp(28px,4vw,48px);font-weight:900;color:#fff;letter-spacing:-.03em;margin-bottom:16px;}
-    .cta-sub{font-size:17px;color:rgba(255,255,255,.6);margin-bottom:36px;max-width:520px;margin-left:auto;margin-right:auto;}
-
-    /* Footer */
-    footer{background:var(--navy-dk);border-top:1px solid rgba(255,255,255,.06);padding:40px 0;}
-    .footer-inner{max-width:1160px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;}
-    .footer-logo{display:flex;align-items:center;gap:10px;}
-    .footer-logo img{width:32px;height:32px;object-fit:contain;border-radius:6px;}
-    .footer-logo-name{font-size:13px;font-weight:800;color:#fff;letter-spacing:.07em;display:block;}
-    .footer-logo-sub{font-size:8px;color:rgba(255,255,255,.35);letter-spacing:.14em;text-transform:uppercase;display:block;}
-    .footer-copy{font-size:13px;color:rgba(255,255,255,.3);}
-
-    @media(max-width:768px){section{padding:64px 0;}.hero-content{padding:100px 20px 60px;}}
+    /* ── header ────────────────────────────────────────────────────────── */
+    .site-header{position:sticky;top:0;z-index:60;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);}
+    .header-bar{height:148px;display:flex;align-items:center;justify-content:space-between;gap:20px;}
+    .lockup{display:block;height:124px;width:auto;flex:0 0 auto;}
+    .nav{display:flex;align-items:center;gap:6px;}
+    .nav a,.nav button{font-size:14px;color:var(--body);background:none;border:0;padding:9px 12px;cursor:pointer;white-space:nowrap;}
+    .nav a:hover,.nav button:hover{color:var(--ink);}
+    .nav .signin{color:var(--ink);}
+    .nav .signin:hover{color:var(--blue);}
+    .nav .start{font-weight:600;color:#fff;background:var(--navy);padding:11px 18px;border-radius:6px;}
+    .nav .start:hover{background:var(--blue);color:#fff;}
+    .nav-toggle{display:none;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink);background:none;border:1px solid #D6DCE2;border-radius:6px;padding:10px 14px;cursor:pointer;align-items:center;gap:8px;}
+    .drawer{display:none;border-top:1px solid var(--line);background:#fff;padding:18px 22px 24px;flex-direction:column;gap:4px;}
+    .drawer.open{display:flex;}
+    /* direct children only, so the .btn CTAs inside .drawer-actions keep their own styling */
+    .drawer > a,.drawer > button{font-size:16px;color:var(--ink);background:none;border:0;border-bottom:1px solid #F0F3F6;padding:12px 0;text-align:left;cursor:pointer;}
+    .drawer-actions{display:flex;gap:10px;margin-top:14px;}
+    .drawer-actions .btn{flex:1;padding:14px 18px;}
+    .drawer-actions .btn-ghost{flex:0 0 auto;}
   </style>
 </head>
 <body>
 
-<!-- NAV -->
-<nav class="site-nav" id="siteNav">
-  <div class="nav-inner">
-    <a href="{% url 'monitor:home' %}" class="nav-logo">
-      <img src="{% static 'images/social_light_logo.png' %}" alt="Social Light"/>
-      <div>
-        <span class="nav-logo-name">SOCIAL LIGHT</span>
-        <span class="nav-logo-sub">Globally African</span>
-      </div>
+<header class="site-header">
+  <div class="shell header-bar">
+    <a href="{% url 'monitor:home' %}" style="display:flex;align-items:center;gap:14px;flex:0 0 auto;">
+      <img src="{% static 'images/design/logo-lockup.png' %}" alt="Social Light" class="lockup">
     </a>
-    <div class="nav-actions">
-      <div class="dropdown">
-        <button class="nav-dropdown-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-          Services
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end service-dropdown-menu">
-          <li>
-            <a class="dropdown-item service-dropdown-item" href="{{ article_extractor_url }}" target="_blank" rel="noopener">
-              <div>
-                <span class="service-item-title">Extractor</span>
-                <span class="service-item-desc">Extract content from web sources</span>
-              </div>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18l6-6-6-6"/></svg>
-            </a>
-          </li>
-          <li>
-            <a class="dropdown-item service-dropdown-item" href="#">
-              <div>
-                <span class="service-item-title">Crawler</span>
-                <span class="service-item-desc">Scan sites and collect pages</span>
-              </div>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18l6-6-6-6"/></svg>
-            </a>
-          </li>
-        </ul>
-      </div>
-      <!-- TEMPORARY: register link -->
-      <a href="https://docs.google.com/forms/d/e/1FAIpQLSf6HpLQeEEOC6OTa2vyfNLyCaaTtE47_1obmEp5L84iDF7Yuw/viewform?usp=header" target="_blank" rel="noopener" class="nav-signin">
-        Register Here
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-      </a>
-      <a href="{% url 'monitor:login' %}" class="nav-signin">
-        Sign In
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-      </a>
+
+    <nav class="nav" id="nav">
+      <a href="#services">Services</a>
+      <a href="#product">Product</a>
+      <a href="#coverage">Coverage</a>
+      {% if sectors %}<button type="button" data-page="sectors">Sector Intelligence</button>{% endif %}
+      {% if publications %}<button type="button" data-page="publications">Publications</button>{% endif %}
+      <button type="button" data-page="assessment">Free Assessment</button>
+      <a href="{% url 'monitor:pricing' %}">Pricing</a>
+      <a href="{% url 'monitor:login' %}" class="signin">Sign in</a>
+      <a href="{% url 'monitor:signup' %}" class="start">Start free trial</a>
+    </nav>
+
+    <button type="button" class="nav-toggle" id="navToggle">Menu</button>
+  </div>
+
+  <div class="drawer" id="drawer">
+    <a href="#services" data-close>Services</a>
+    <a href="#product" data-close>Product</a>
+    <a href="#coverage" data-close>Coverage</a>
+    {% if sectors %}<button type="button" data-page="sectors">Sector Intelligence</button>{% endif %}
+    {% if publications %}<button type="button" data-page="publications">Publications</button>{% endif %}
+    <button type="button" data-page="assessment">Free Assessment</button>
+    <a href="{% url 'monitor:pricing' %}">Pricing</a>
+    <div class="drawer-actions">
+      <a href="{% url 'monitor:signup' %}" class="btn btn-navy">Start free trial</a>
+      <a href="{% url 'monitor:login' %}" class="btn btn-ghost">Sign in</a>
     </div>
   </div>
-</nav>
+</header>
 
-<!-- HERO -->
-<section class="hero">
-  <div class="hero-bg"></div>
-  <div class="hero-gradient"></div>
-  <div class="hero-content">
-    <div>
-      <div class="hero-eyebrow">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Intelligence-Driven Communications
-      </div>
-      <h1 class="hero-title">While the world<br/>watches the world,<br/>we watch <span>Africa.</span></h1>
-      <p class="hero-sub">Intelligence-driven communications for a connected Africa. We go beyond monitoring — helping businesses, government, NGOs and development organisations understand their environment, own their narrative, and grow their presence across the continent.</p>
-      <div class="hero-ctas">
-        <a href="{% url 'monitor:login' %}" class="btn-hero-primary">
-          Get Started
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-        </a>
-        <!-- TEMPORARY: register link -->
-        <a href="https://docs.google.com/forms/d/e/1FAIpQLSf6HpLQeEEOC6OTa2vyfNLyCaaTtE47_1obmEp5L84iDF7Yuw/viewform?usp=header" target="_blank" rel="noopener" class="btn-hero-outline">Register Here</a>
-        <a href="#features" class="btn-hero-outline">See Features</a>
-      </div>
-      <div class="hero-trust">
-        <div class="trust-avatars">
-          <div class="trust-avatar">TM</div>
-          <div class="trust-avatar" style="background:linear-gradient(135deg,#7c3aed,#1d4ed8);">KN</div>
-          <div class="trust-avatar" style="background:linear-gradient(135deg,#be185d,#7c3aed);">AL</div>
-          <div class="trust-avatar" style="background:linear-gradient(135deg,#0284c7,#16a34a);">+</div>
+<style>
+  /* ── hero ────────────────────────────────────────────────────────────── */
+  .hero{background:var(--navy);color:#fff;position:relative;overflow:visible;}
+  .hero .shell{padding-top:96px;padding-bottom:88px;}
+  .hero-grid{display:grid;grid-template-columns:1.9fr 1fr;gap:64px;align-items:end;}
+  .hero .eyebrow{color:var(--gold);margin-bottom:24px;}
+  .hero p{margin:0 0 34px;font-size:18px;line-height:1.65;color:var(--on-navy);max-width:52ch;}
+  .hero-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+  .hero-actions .outline{font-size:15px;color:#fff;border:1px solid rgba(255,255,255,.3);padding:15px 26px;border-radius:6px;}
+  .hero-actions .outline:hover{border-color:#fff;color:#fff;}
+  .hero-art{min-width:0;margin:0 0 -132px;position:relative;z-index:3;}
+  .hero-art .frame{border-radius:12px;overflow:hidden;background:rgba(255,255,255,.06);box-shadow:-22px 30px 70px rgba(3,20,52,.38);}
+  .hero-art img{display:block;width:100%;height:auto;}
+
+  /* ── cost of late information ────────────────────────────────────────── */
+  .cost{background:#fff;border-bottom:1px solid var(--line);}
+  .cost .shell{padding-top:168px;padding-bottom:84px;}
+  .cost-head{max-width:60ch;margin-bottom:44px;}
+  .cost-head .eyebrow{color:var(--amber-ink);}
+  .cols3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+  .cost-card{border:1px solid var(--line);border-radius:10px;background:#fff;padding:28px 26px;}
+  .cost-card .tag{font-size:10px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:16px;}
+  .cost-card h3{font-size:21px;font-weight:600;line-height:1.25;margin:0 0 12px;}
+  .cost-card p{margin:0;font-size:14.5px;line-height:1.7;color:var(--body);}
+
+  /* ── services bento ──────────────────────────────────────────────────── */
+  .services{background:#fff;}
+  .services-head{display:grid;grid-template-columns:.9fr 1.1fr;gap:56px;align-items:end;margin-bottom:52px;}
+  .services-head .eyebrow{color:var(--amber-ink);}
+  .services-head .h2{font-size:38px;}
+  .services-head .lede{max-width:54ch;}
+  .bento{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:minmax(0,auto);gap:18px;}
+  .tile{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;display:flex;flex-direction:column;}
+  .tile .thumb{height:132px;overflow:hidden;}
+  .tile .thumb img{display:block;width:100%;height:100%;object-fit:cover;}
+  .tile .pad{padding:20px;}
+  .tile h3{font-size:16px;font-weight:600;margin:0 0 7px;font-family:'Montserrat',sans-serif;}
+  .tile p{margin:0;font-size:13.5px;line-height:1.6;color:var(--muted);}
+  .tile-hero{grid-column:span 2;grid-row:span 2;position:relative;border-radius:12px;overflow:hidden;border-top:4px solid var(--orange);min-height:420px;background:var(--ink);}
+  .tile-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  .tile-hero .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(6,46,114,0) 30%,rgba(6,46,114,.82) 72%,rgba(6,46,114,.95) 100%);}
+  .tile-hero .copy{position:absolute;left:0;right:0;bottom:0;padding:30px 30px 32px;color:#fff;}
+  .tile-hero h3{font-family:'Poppins',sans-serif;font-size:24px;font-weight:600;margin:0 0 10px;}
+  .tile-hero p{margin:0;font-size:15px;line-height:1.6;color:#DCE7F1;max-width:42ch;}
+  .tile-wide{grid-column:span 2;display:grid;height:232px;}
+  .tile-wide.img-left{grid-template-columns:.85fr 1.15fr;}
+  .tile-wide.img-right{grid-template-columns:1.15fr .85fr;}
+  .tile-wide .shot{position:relative;overflow:hidden;}
+  .tile-wide .shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  .tile-wide .pad{align-self:center;}
+  .tile-wide h3{font-size:17px;}
+  .tile-wide p{font-size:14px;}
+
+  /* ── product ─────────────────────────────────────────────────────────── */
+  .product{background:var(--wash);border-top:1px solid var(--line);position:relative;overflow:hidden;}
+  .product .shell{padding-top:96px;padding-bottom:96px;}
+  .product-grid{display:grid;grid-template-columns:.62fr 1.38fr;gap:64px;align-items:center;}
+  .product .eyebrow{color:var(--teal);}
+  .product .h2{font-size:34px;line-height:1.14;margin-bottom:20px;}
+  .product p.intro{margin:0 0 26px;font-size:15px;line-height:1.7;color:var(--body);max-width:46ch;}
+  .product .checks{display:flex;flex-direction:column;gap:12px;font-size:14px;color:#33475A;}
+  .dash{min-width:0;position:relative;}
+  .dash .frame{border-radius:14px;box-shadow:-26px 34px 80px rgba(6,46,114,.18);background:#fff;overflow:hidden;}
+  .dash img{display:block;width:100%;height:auto;}
+
+  /* ── how ─────────────────────────────────────────────────────────────── */
+  .how{background:#fff;border-top:1px solid var(--line);}
+  .how .shell{max-width:1120px;padding-top:64px;padding-bottom:72px;}
+  .how-grid{display:grid;grid-template-columns:.7fr 1.3fr;gap:48px;}
+  .how .eyebrow{color:var(--lime-ink);}
+  .how .h2{font-size:34px;line-height:1.14;margin-bottom:18px;}
+  .how p.intro{margin:0;font-size:15px;line-height:1.7;color:var(--body);max-width:42ch;}
+  .step{display:grid;grid-template-columns:52px 1fr;gap:18px;padding:26px 0;border-top:1px solid var(--line);}
+  .step:last-child{border-bottom:1px solid var(--line);}
+  .step .num{font-family:'Poppins',sans-serif;font-size:26px;font-weight:700;line-height:1;}
+  .step h3{font-size:16px;font-weight:600;margin:0 0 6px;font-family:'Montserrat',sans-serif;}
+  .step p{margin:0;font-size:14px;line-height:1.65;color:var(--muted);}
+</style>
+
+<style>
+  /* ── coverage ────────────────────────────────────────────────────────── */
+  .coverage{background:var(--navy);color:#fff;}
+  .coverage .shell{max-width:1360px;padding-top:104px;padding-bottom:104px;}
+  .coverage-grid{display:grid;grid-template-columns:.85fr 1.15fr;gap:56px;align-items:center;}
+  .coverage .eyebrow{color:var(--gold);}
+  .coverage p.intro{margin:0 0 26px;font-size:15px;line-height:1.7;color:var(--on-navy);max-width:46ch;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px;}
+  .chip{font-size:12px;color:#fff;padding:7px 13px;border-radius:999px;border:1px solid rgba(255,255,255,.5);}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(255,255,255,.16);}
+  .stat{background:var(--navy);padding:20px;}
+  .stat .n{font-family:'Poppins',sans-serif;font-size:24px;font-weight:700;}
+  .stat .l{font-size:12px;color:var(--on-navy-mute);margin-top:5px;}
+  .coverage-art{display:flex;flex-direction:column;gap:16px;min-width:0;}
+  .coverage-art .frame{border-radius:10px;overflow:hidden;background:rgba(255,255,255,.06);}
+  .coverage-art img{display:block;width:100%;height:auto;}
+  /* portrait sources would run the column far past the copy beside it */
+  .coverage-art .frame.crop{height:360px;}
+  .coverage-art .frame.crop img{height:100%;object-fit:cover;object-position:center 32%;}
+  .coverage .cta-row{border-top-color:rgba(255,255,255,.18);}
+  .coverage .cta-note{color:var(--on-navy-mute);}
+
+  /* ── clients ─────────────────────────────────────────────────────────── */
+  .clients{background:#fff;border-bottom:1px solid var(--line);}
+  .clients .shell{padding-top:72px;padding-bottom:72px;}
+  .clients .eyebrow{color:var(--muted);margin-bottom:26px;}
+  .cols4{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}
+  .client{height:62px;border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:8px;}
+  .client img{display:block;width:100%;height:100%;object-fit:contain;}
+  .client .wordmark{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--navy);text-align:center;line-height:1.4;}
+  /* a missing logo removes its own <img>, which brings the wordmark back */
+  .client:has(img) .wordmark{display:none;}
+
+  /* ── closing cta ─────────────────────────────────────────────────────── */
+  .closing{background:var(--navy);color:#fff;text-align:center;}
+  .closing .shell{max-width:1000px;padding-top:96px;padding-bottom:96px;}
+  .closing .rule{width:160px;margin:0 auto 26px;}
+  .closing .h2{font-size:40px;line-height:1.1;letter-spacing:-.02em;margin:0 auto 20px;}
+  .closing p{margin:0 auto 32px;font-size:15px;line-height:1.7;color:var(--on-navy);max-width:52ch;}
+  .closing .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+  .closing .outline{font-size:15px;color:#fff;background:none;border:1px solid rgba(255,255,255,.32);padding:14px 28px;border-radius:8px;}
+  .closing .outline:hover{border-color:#fff;color:#fff;}
+
+  /* ── sub pages ───────────────────────────────────────────────────────── */
+  .subpage{display:none;}
+  .subpage.on{display:block;}
+  .subbar{border-bottom:1px solid var(--line);background:#fff;}
+  .subbar .shell{padding-top:18px;padding-bottom:18px;display:flex;align-items:center;gap:14px;}
+  .subbar .back{font-size:13px;font-weight:600;color:var(--ink);background:none;border:1px solid var(--line);border-radius:6px;padding:9px 16px;cursor:pointer;}
+  .subbar .label{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);}
+  .subbar.on-navy{background:var(--navy);border-bottom-color:rgba(255,255,255,.28);}
+  .subbar.on-navy .back{color:#fff;border-color:rgba(255,255,255,.28);}
+  .subbar.on-navy .label{color:var(--on-navy-mute);}
+
+  .assessment{background:var(--wash);border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .assessment .shell{max-width:1120px;padding-top:78px;padding-bottom:78px;}
+  .assessment .eyebrow{color:var(--teal);}
+  .assessment .h2{font-size:32px;line-height:1.14;margin-bottom:16px;}
+  .assessment p.intro{margin:0 0 34px;font-size:15px;line-height:1.7;color:var(--body);}
+  .questions{display:flex;flex-direction:column;gap:2px;background:var(--line);border-radius:10px;overflow:hidden;}
+  .question{background:#fff;padding:22px 24px;display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;}
+  .question .q{font-size:15px;line-height:1.6;color:var(--ink);}
+  .question .picks{display:flex;gap:8px;flex:0 0 auto;}
+  .question .picks button{font-size:13px;font-weight:600;color:#33475A;background:#fff;border:1px solid #D6DCE2;border-radius:6px;padding:9px 18px;cursor:pointer;min-width:62px;}
+  .question .picks button.yes.on{background:var(--green);border-color:var(--green);color:#fff;}
+  .question .picks button.no.on{background:var(--blue);border-color:var(--blue);color:#fff;}
+  .verdict{margin-top:26px;display:grid;grid-template-columns:6px 1fr;gap:20px;align-items:stretch;}
+  .verdict .bar{border-radius:3px;background:linear-gradient(180deg,#EA8C13,#F5B01B,#7BA32C,#1E9160,#0A8B8E,#0A6C9E);}
+  .verdict .body{padding:4px 0;}
+  .verdict h3{font-size:19px;font-weight:600;line-height:1.35;margin:0 0 8px;}
+  .verdict p{margin:0 0 20px;font-size:14.5px;line-height:1.7;color:var(--body);max-width:60ch;}
+  .verdict .book{display:inline-block;font-size:14px;font-weight:600;color:#fff;background:var(--teal);padding:13px 22px;border-radius:6px;}
+  .verdict .book:hover{color:#fff;}
+</style>
+
+<style>
+  .sectors{background:var(--navy);color:#fff;}
+  .sectors .shell{padding-top:88px;padding-bottom:88px;}
+  .sectors-head{display:grid;grid-template-columns:.8fr 1.2fr;gap:52px;align-items:end;margin-bottom:38px;}
+  .sectors .eyebrow{color:var(--gold);}
+  .sectors .h2{font-size:34px;line-height:1.12;}
+  .sectors-head p{margin:0;font-size:15px;line-height:1.7;color:var(--on-navy);max-width:52ch;}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:30px;}
+  .tabs button{font-size:13px;font-weight:600;color:#fff;background:transparent;border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:10px 20px;cursor:pointer;}
+  .tabs button.on{background:var(--gold);border-color:var(--gold);color:var(--navy);}
+  .ticker-box{border:1px solid rgba(255,255,255,.18);border-radius:8px;overflow:hidden;margin-bottom:26px;background:rgba(255,255,255,.04);}
+  .ticker-box .cap{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.14);}
+  .ticker-box .dot{width:7px;height:7px;border-radius:50%;background:var(--lime);}
+  .ticker-box .cap span{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--on-navy-mute);}
+  .ticker-rail{overflow:hidden;}
+  .ticker{display:flex;gap:34px;padding:14px 16px;white-space:nowrap;width:max-content;animation:ticker 34s linear infinite;}
+  .ticker .item{display:flex;align-items:baseline;gap:10px;flex:0 0 auto;}
+  .ticker .name{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--on-navy);}
+  .ticker .px{font-family:"Poppins",sans-serif;font-size:15px;font-weight:600;color:#fff;}
+  .ticker .up{font-size:12.5px;color:#8FD19E;}
+  .ticker .down{font-size:12.5px;color:#F2A0A0;}
+  @keyframes ticker{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+  .sector-heading{font-family:"Poppins",sans-serif;font-size:20px;font-weight:600;margin:0 0 18px;}
+  .story{display:grid;grid-template-columns:46px 1fr auto;gap:20px;align-items:start;padding:20px 0;border-top:1px solid rgba(255,255,255,.16);}
+  .story .rank{font-family:"Poppins",sans-serif;font-size:20px;font-weight:700;line-height:1.2;}
+  .story .t{font-size:16px;font-weight:600;line-height:1.4;margin-bottom:6px;}
+  .story .s{font-size:14px;line-height:1.6;color:var(--on-navy-soft);max-width:72ch;}
+  .story .meta{text-align:right;font-size:12px;color:var(--on-navy-mute);white-space:nowrap;}
+  .sectors .cta-row{border-top-color:rgba(255,255,255,.18);}
+  .sectors .cta-note{color:var(--on-navy-mute);}
+
+  .publications{background:#fff;border-bottom:1px solid var(--line);}
+  .publications .shell{padding-top:84px;padding-bottom:84px;}
+  .pubs-head{display:grid;grid-template-columns:.9fr 1.1fr;gap:52px;align-items:end;margin-bottom:34px;}
+  .publications .eyebrow{color:var(--lime-ink);}
+  .publications .h2{font-size:34px;line-height:1.12;}
+  .pubs-head p{margin:0;font-size:15px;line-height:1.7;color:var(--body);max-width:52ch;}
+  .pub{border:1px solid var(--line);border-radius:10px;background:#fff;padding:22px;display:flex;flex-direction:column;gap:10px;}
+  .pub .kind{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+  .pub .title{font-family:"Poppins",sans-serif;font-size:17px;font-weight:600;line-height:1.35;}
+  .pub .blurb{font-size:14px;line-height:1.6;color:var(--muted);flex:1 1 auto;}
+  .pub .foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:12px;border-top:1px solid var(--line-soft);}
+  .pub .foot .date{font-size:12px;color:var(--faint);}
+  .pub .foot a{font-size:13px;font-weight:600;}
+
+  /* ── footer ──────────────────────────────────────────────────────────── */
+  .site-footer{background:var(--navy-deep);color:var(--on-navy);}
+  .site-footer .shell{padding-top:56px;padding-bottom:36px;}
+  .footer-top{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:40px;padding-bottom:32px;border-bottom:1px solid rgba(255,255,255,.14);}
+  .footer-top p{margin:0 0 18px;font-size:14px;line-height:1.7;max-width:34ch;}
+  .footer-top .rule{width:120px;height:3px;margin-bottom:0;}
+  .fcol{display:flex;flex-direction:column;gap:11px;font-size:14px;}
+  .fcol .head{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#7C9BC0;margin-bottom:4px;}
+  .fcol a{color:var(--on-navy);}
+  .fcol a:hover{color:#fff;}
+  .fcol .addr{color:#8FA9C6;font-size:13px;line-height:1.6;}
+  .fcol .hours{font-size:11px;color:#7C9BC0;}
+  .social{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:26px 0;}
+  .social .head{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#7C9BC0;}
+  .social .links{display:flex;flex-wrap:wrap;gap:10px;}
+  .social .links a{color:var(--on-navy);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:6px 13px;font-size:12px;}
+  .social .links a:hover{color:var(--navy);background:var(--gold);border-color:var(--gold);}
+  .footer-base{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-top:22px;border-top:1px solid rgba(255,255,255,.14);font-size:11px;color:#7C9BC0;}
+
+  /* ── responsive ──────────────────────────────────────────────────────── */
+  @media (prefers-reduced-motion: reduce){
+    .ticker{animation:none;}
+    .rv,.rv-in{opacity:1 !important;transform:none !important;transition:none !important;}
+  }
+  @media (max-width:1100px){
+    .cols4,.tiers{grid-template-columns:repeat(2,1fr);}
+    .cols3,.pubs-grid{grid-template-columns:repeat(2,1fr);}
+    .hero-grid,.services-head,.product-grid,.how-grid,.coverage-grid,.pricing-head,.compare-head,.faq-grid,.sectors-head,.pubs-head{grid-template-columns:minmax(0,1fr);}
+    .footer-top{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .bento{grid-template-columns:repeat(2,1fr);}
+    .bento > *{grid-column:span 2 !important;grid-row:span 1 !important;}
+    .hero-art{margin:0;}
+    .cost .shell{padding-top:60px;}
+    .dash .frame{border-radius:12px;}
+    .h1{font-size:52px;}
+    .h2,.services-head .h2,.pricing-head .h2,.closing .h2{font-size:30px;}
+    .nav{display:none;}
+    .nav-toggle{display:flex;}
+  }
+  @media (max-width:900px){
+    .table-wrap{display:none;}
+    .table-cards{display:flex;}
+    .shell{padding-left:22px;padding-right:22px;}
+    .h1{font-size:38px;}
+    .h2,.services-head .h2,.pricing-head .h2,.closing .h2{font-size:28px;}
+    .question{grid-template-columns:1fr;}
+    /* long CTA labels must wrap rather than widen their grid column */
+    .btn,.hero-actions .outline{white-space:normal;}
+  }
+  @media (max-width:620px){
+    .header-bar{height:84px;}
+    .lockup{height:64px;}
+    section[id]{scroll-margin-top:96px;}
+    .cols4,.cols3,.tiers,.pubs-grid,.footer-top{grid-template-columns:minmax(0,1fr);}
+    .tile-wide{grid-template-columns:1fr !important;height:auto;}
+    .tile-wide .shot{height:170px;}
+    .story{grid-template-columns:32px 1fr;}
+    .story .meta{grid-column:2;text-align:left;}
+  }
+</style>
+
+<main id="landing">
+
+  <section class="hero">
+    <div class="shell">
+      <div class="hero-grid">
+        <div>
+          <div class="rule wide" style="margin-bottom:26px;"></div>
+          <div class="eyebrow">Media monitoring &amp; market intelligence · Southern Africa</div>
+          <h1 class="h1">You find out first.</h1>
+          <p>Media monitoring and market intelligence across Southern Africa — print, broadcast, online and social — delivered while you can still act on it.</p>
+          <div class="hero-actions">
+            <a href="{% url 'monitor:signup' %}" class="btn btn-gold btn-lg">See what we're already picking up in your market →</a>
+            <a href="#services" class="outline">Get a sample brief →</a>
+          </div>
         </div>
-        Trusted by leading organisations across Africa
-      </div>
-    </div>
-
-    <div class="hero-visual">
-      <div class="hero-img-card">
-        <img src="{% static 'images/image1.jpg' %}" alt="Social media analytics"/>
-        <div class="hero-chips">
-          <div class="hero-chip"><span class="hero-chip-val">50K+</span><span class="hero-chip-lbl">Sources monitored</span></div>
-          <div class="hero-chip"><span class="hero-chip-val">360°</span><span class="hero-chip-lbl">Brand coverage</span></div>
-          <div class="hero-chip"><span class="hero-chip-val">24/7</span><span class="hero-chip-lbl">Monitoring</span></div>
+        <div class="hero-art">
+          <div class="frame">
+            <img src="{% static 'images/design/hero-image.jpg' %}" alt="Social Light platform overview">
+          </div>
         </div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- STATS STRIP -->
-<div class="stats-strip">
-  <div class="section-inner">
-    <div class="row g-4 justify-content-center">
-      <div class="col-6 col-md-3"><div class="stat-block"><span class="stat-block-val">50K+</span><span class="stat-block-lbl">Media sources</span></div></div>
-      <div class="col-6 col-md-3"><div class="stat-block"><span class="stat-block-val">4</span><span class="stat-block-lbl">Channels tracked</span></div></div>
-      <div class="col-6 col-md-3"><div class="stat-block"><span class="stat-block-val">360°</span><span class="stat-block-lbl">Coverage view</span></div></div>
-      <div class="col-6 col-md-3"><div class="stat-block"><span class="stat-block-val">24/7</span><span class="stat-block-lbl">Continuous monitoring</span></div></div>
+  <section class="cost">
+    <div class="shell">
+      <div class="cost-head">
+        <div class="rule"></div>
+        <div class="eyebrow">What late information costs</div>
+        <h2 class="h2">The story doesn't wait for your reporting cycle</h2>
+      </div>
+      <div class="cols3">
+        <div class="cost-card" style="border-top:4px solid var(--orange);">
+          <div class="tag" style="color:var(--orange);">Banking</div>
+          <h3>A regulatory finding</h3>
+          <p>Financial Intelligence Act exposure doesn't announce itself. By the time it reaches you as a formal query, the window to have handled it internally has closed.</p>
+        </div>
+        <div class="cost-card" style="border-top:4px solid var(--green);">
+          <div class="tag" style="color:var(--green);">Mining</div>
+          <h3>A shutdown</h3>
+          <p>Social licence erodes in community conversations weeks before it reaches a headline. The conversation you didn't hear becomes the blockade you can't negotiate.</p>
+        </div>
+        <div class="cost-card" style="border-top:4px solid var(--blue);">
+          <div class="tag" style="color:var(--blue);">Institutions</div>
+          <h3>A narrative you have to correct</h3>
+          <p>Policy narratives are set in the first 48 hours. After that you're not shaping the story, you're arguing with it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+<style>
+  /* ── pillar / proof / credibility blocks ─────────────────────────────── */
+  .pillar-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:40px;}
+  .pillar-stats .stat{background:#fff;padding:24px 26px;}
+  .pillar-stats .n{font-family:"Poppins",sans-serif;font-size:30px;font-weight:700;letter-spacing:-.02em;color:var(--ink);}
+  .pillar-stats .l{font-size:13px;color:var(--muted);margin-top:6px;}
+
+  .timing{background:var(--wash);border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .timing .shell{max-width:1120px;padding-top:88px;padding-bottom:88px;}
+  .timing .eyebrow{color:var(--orange);}
+  .timing .h2{font-size:38px;line-height:1.12;margin-bottom:22px;max-width:20ch;}
+  .timing-grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start;}
+  /* while the lead-time stat is still pending there is no second column to fill */
+  .timing-grid:has(.lead-stat[hidden]){grid-template-columns:minmax(0,1fr);}
+  .timing-grid:has(.lead-stat[hidden]) > div:first-child{max-width:64ch;}
+  .timing p.lead-copy{margin:0 0 18px;font-size:16px;line-height:1.75;color:var(--body);}
+  .timing .points{display:flex;flex-direction:column;gap:14px;margin-top:26px;font-size:15px;color:#33475A;}
+  /* Prominent slot for the lead-time metric. Remove the `hidden` attribute on
+     .lead-stat the moment the number exists — nothing else needs to change. */
+  .lead-stat{border:1px solid var(--line);border-left:4px solid var(--orange);border-radius:10px;background:#fff;padding:28px 26px;}
+  .lead-stat .n{font-family:"Poppins",sans-serif;font-size:44px;font-weight:700;letter-spacing:-.02em;line-height:1;}
+  .lead-stat .l{font-size:14px;line-height:1.6;color:var(--muted);margin-top:10px;}
+
+  .proof{background:#fff;border-bottom:1px solid var(--line);}
+  .proof .shell{padding-top:84px;padding-bottom:84px;}
+  .proof .eyebrow{color:var(--blue);}
+  .proof .h2{font-size:34px;line-height:1.12;}
+  .proof-head{display:grid;grid-template-columns:.9fr 1.1fr;gap:52px;align-items:end;margin-bottom:36px;}
+  .proof-head p{margin:0;font-size:15px;line-height:1.7;color:var(--body);max-width:52ch;}
+  .client-cell{display:flex;flex-direction:column;gap:9px;}
+  .client-cell .sector{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);text-align:center;}
+  .proof-slots{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:32px;}
+  /* the bare `hidden` attribute loses to display:grid, so restate it */
+  .proof-slots[hidden]{display:none;}
+  .proof-slot{border:1px solid var(--line);border-radius:10px;padding:24px;background:var(--wash);}
+  .proof-slot .n{font-family:"Poppins",sans-serif;font-size:30px;font-weight:700;letter-spacing:-.02em;}
+  .proof-slot .l{font-size:13px;line-height:1.6;color:var(--muted);margin-top:8px;}
+
+  .credibility{background:var(--wash);border-bottom:1px solid var(--line);}
+  .credibility .shell{max-width:1120px;padding-top:64px;padding-bottom:64px;}
+  .credibility .eyebrow{color:var(--lime-ink);}
+  .credibility .h2{font-size:28px;line-height:1.18;margin-bottom:16px;}
+  .cred-grid{display:grid;grid-template-columns:1fr 1fr;gap:52px;align-items:start;}
+  .credibility p{margin:0 0 14px;font-size:15px;line-height:1.75;color:var(--body);}
+  .marks{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;}
+  .mark-chip{font-size:12px;color:var(--ink);border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 15px;}
+
+  @media (max-width:1100px){
+    .pillar-stats,.proof-slots{grid-template-columns:minmax(0,1fr);}
+    .timing-grid,.proof-head,.cred-grid{grid-template-columns:minmax(0,1fr);}
+    .timing .h2{font-size:30px;}
+  }
+</style>
+
+  <section class="services section" id="services">
+    <div class="shell">
+      <div class="services-head">
+        <div>
+          <div class="rule"></div>
+          <div class="eyebrow">Coverage</div>
+          <h2 class="h2">Nothing gets past you.</h2>
+        </div>
+        <p class="lede">1 300+ print titles and 158+ broadcast stations across SADC, alongside online and social — including the sources most international platforms do not index at all. Community radio, regional weeklies and the WhatsApp-fed Facebook groups where a story starts moving long before it reaches a national desk.</p>
+      </div>
+
+      <div class="bento">
+        <div class="tile-hero">
+          <img src="{% static 'images/design/svc-1-web.jpg' %}" alt="">
+          <div class="scrim"></div>
+          <div class="copy">
+            <h3>Every mention, back to its source post</h3>
+            <p>Conversation tracked across Facebook, X, Instagram and LinkedIn — and the community groups that carry a story first — with each item traced to the post it came from.</p>
+          </div>
+        </div>
+
+        <div class="tile tile-wide img-right" style="border-top:4px solid var(--gold);">
+          <div class="pad">
+            <h3>158+ stations, clipped at segment level</h3>
+            <p>Television and radio captured and transcribed, with airtime recorded per mention — including the community radio no international platform carries.</p>
+          </div>
+          <div class="shot"><img src="{% static 'images/design/svc-2-web.jpg' %}" alt=""></div>
+        </div>
+
+        <div class="tile tile-wide img-right" style="border-top:4px solid var(--green);">
+          <div class="pad">
+            <h3>1 300+ titles, regional weeklies included</h3>
+            <p>Organisation and competitor mentions across national and regional press, read in the language they were published in.</p>
+          </div>
+          <div class="shot"><img src="{% static 'images/design/svc-5-web.jpg' %}" alt=""></div>
+        </div>
+      </div>
+
+      <div class="pillar-stats">
+        <div class="stat"><div class="n">1 300+</div><div class="l">Print titles monitored</div></div>
+        <div class="stat"><div class="n">158+</div><div class="l">Broadcast stations captured</div></div>
+        <div class="stat"><div class="n">SADC</div><div class="l">Markets covered in-region</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="timing" id="timing">
+    <div class="shell">
+      <div class="rule"></div>
+      <div class="eyebrow">Timing</div>
+      <h2 class="h2">You hear it while it's still small.</h2>
+
+      <div class="timing-grid">
+        <div>
+          <p class="lead-copy">An alert reaches you at the moment a story publishes — not in a digest the next morning, by which point the conversation has had a night to travel and the first responses have already been written by other people.</p>
+          <p class="lead-copy">That gap is the whole risk. It is where a manageable item becomes a formal query, where a community grievance becomes a blockade, and where a correction stops being a correction and starts being an argument.</p>
+          <div class="points">
+            <div class="tick"><span class="mark">✓</span><span>Alerting at publication, across every channel in your scope</span></div>
+            <div class="tick"><span class="mark">✓</span><span>Routed to the people who can act on it, not to a shared inbox</span></div>
+            <div class="tick"><span class="mark">✓</span><span>The first hours are yours to use rather than to explain</span></div>
+          </div>
+        </div>
+
+        {# TODO: lead-time metric pending — average time between a SocialLight alert #}
+        {#       and mainstream national coverage. Drop the number and unit in below #}
+        {#       and delete the `hidden` attribute. Do not fill this with a proxy or #}
+        {#       borrowed figure; this is the number that makes the H1 measurable.   #}
+        <div class="lead-stat" hidden>
+          <div class="n">—</div>
+          <div class="l">Average lead time between our alert and mainstream national coverage</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="product" id="product">
+    <div class="shell">
+      <div class="product-grid">
+        <div>
+          <div class="rule"></div>
+          <div class="eyebrow">Analysis</div>
+          <h2 class="h2">You know what it means, not just that it happened.</h2>
+          <p class="intro">Our analysts review flagged and high-impact items so local language and context are read correctly before anything reaches a stakeholder. What lands on your desk is a brief with a recommended action — not a feed to interpret under pressure.</p>
+          <div class="checks">
+            <div class="tick"><span class="mark">✓</span><span>Each finding states the evidence behind it and the method used</span></div>
+            <div class="tick"><span class="mark">✓</span><span>Every mention linked to its original source</span></div>
+            <div class="tick"><span class="mark">✓</span><span>Sentiment, share of voice, advertising value equivalent and competitor movement sit underneath as supporting evidence</span></div>
+          </div>
+        </div>
+        <div class="dash">
+          <div class="frame">
+            <img src="{% static 'images/design/dashboard.png' %}" alt="Social Light dashboard">
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="coverage" id="coverage">
+    <div class="shell">
+      <div class="coverage-grid">
+        <div>
+          <div class="rule wide"></div>
+          <div class="eyebrow">In-market</div>
+          <h2 class="h2">You're read by people who live in your market.</h2>
+          <p class="intro">Botswana-headquartered, operating across SADC, with a presence in Johannesburg. Our analysts are in the markets they cover rather than modelling them from abroad — and that context is the difference between a mention and a risk signal.</p>
+          <div class="chips">
+            <span class="chip" style="border-color:rgba(234,140,19,.6);">Print media</span>
+            <span class="chip" style="border-color:rgba(245,176,27,.6);">Broadcast radio</span>
+            <span class="chip" style="border-color:rgba(123,163,44,.6);">Television</span>
+            <span class="chip" style="border-color:rgba(10,139,142,.7);">Online news</span>
+            <span class="chip" style="border-color:rgba(10,108,158,.7);">Social media</span>
+          </div>
+        </div>
+        <div class="coverage-art">
+          <div class="frame" style="background:#fff;"><img src="{% static 'images/design/social-analytics.jpg' %}" alt="Social analytics overview dashboard"></div>
+          <div class="frame crop"><img src="{% static 'images/design/analytics.jpg' %}" alt="Analyst floor with live monitoring wall"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="proof" id="proof">
+    <div class="shell">
+      <div class="proof-head">
+        <div>
+          <div class="rule"></div>
+          <div class="eyebrow">Proof</div>
+          <h2 class="h2">Who we do it for</h2>
+        </div>
+        <p>Banks, miners and public institutions across the region rely on this feed to know what is being said about them while there is still something to be done about it.</p>
+      </div>
+
+      {# the wordmark is a fallback: it only shows if the logo file is missing #}
+      <div class="cols4">
+        <div class="client-cell">
+          <div class="client">
+            <img src="{% static 'images/design/client-first-capital-bank.png' %}" alt="First Capital Bank" onerror="this.remove()">
+            <span class="wordmark">First Capital<br>Bank</span>
+          </div>
+          <span class="sector">Banking</span>
+        </div>
+        <div class="client-cell">
+          <div class="client">
+            <img src="{% static 'images/design/client-debswana.png' %}" alt="Debswana" onerror="this.remove()">
+            <span class="wordmark">Debswana</span>
+          </div>
+          <span class="sector">Mining and resources</span>
+        </div>
+        <div class="client-cell">
+          <div class="client">
+            <img src="{% static 'images/design/client-fnb.png' %}" alt="First National Bank" onerror="this.remove()">
+            <span class="wordmark">First National<br>Bank</span>
+          </div>
+          <span class="sector">Banking</span>
+        </div>
+        <div class="client-cell">
+          <div class="client">
+            <img src="{% static 'images/design/client-bank-of-botswana.png' %}" alt="Bank of Botswana" onerror="this.remove()">
+            <span class="wordmark">Bank of<br>Botswana</span>
+          </div>
+          <span class="sector">Central bank</span>
+        </div>
+      </div>
+
+      {# TODO: three proof numbers pending. Delete the `hidden` attribute on      #}
+      {#       .proof-slots once they exist. Do not substitute proxy or borrowed  #}
+      {#       figures for any of them.                                           #}
+      {#       1. Average lead time between our alert and mainstream coverage.    #}
+      {#       2. Coverage differential against a named international platform    #}
+      {#          over a sample month.                                            #}
+      {#       3. One client-attributed outcome, quoted and approved.             #}
+      <div class="proof-slots" hidden>
+        <div class="proof-slot"><div class="n">—</div><div class="l">Average lead time ahead of mainstream national coverage</div></div>
+        <div class="proof-slot"><div class="n">—</div><div class="l">Additional items surfaced against a named international platform, sample month</div></div>
+        <div class="proof-slot"><div class="n">—</div><div class="l">Client-attributed outcome</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="credibility" id="about">
+    <div class="shell">
+      <div class="cred-grid">
+        <div>
+          <div class="rule"></div>
+          <div class="eyebrow">Why us</div>
+          <h2 class="h2">Built by people who needed this to exist.</h2>
+        </div>
+        <div>
+          {# TODO: founding story pending — two or three sentences on why the      #}
+          {#       company was started, from the brief. Keep the guide framing:    #}
+          {#       this is why we can be trusted with the work, never a headline.  #}
+          <p>Social Light was built in Botswana by a team that could not buy this coverage anywhere — the regional and vernacular sources that decide a story here simply were not in anyone's index.</p>
+          {# TODO: confirm the exact award years and citations before this ships.  #}
+          <p>The work has since been recognised beyond the region.</p>
+          <div class="marks">
+            <span class="mark-chip">Forbes 30 Under 30</span>
+            <span class="mark-chip">Africa PR Week</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="closing" id="contact">
+    <div class="shell">
+      <div class="rule"></div>
+      <h2 class="h2">You find out first.</h2>
+      <p>Tell us your markets and the names you need watched. We will show you what this week already contained.</p>
+      <div class="actions">
+        <a href="{% url 'monitor:signup' %}" class="btn btn-gold btn-lg">See what we're already picking up in your market</a>
+        <a href="mailto:admin@sociallightbw.com?subject=Sample%20brief" class="outline">Get a sample brief</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="subpage" id="page-assessment">
+  <div class="subbar">
+    <div class="shell">
+      <button type="button" class="back" data-page="landing">← Back to home</button>
+      <span class="label">Free assessment</span>
     </div>
   </div>
+  <section class="assessment">
+    <div class="shell">
+      <div style="max-width:62ch;">
+        <div class="rule"></div>
+        <div class="eyebrow">Free assessment</div>
+        <h2 class="h2">Not sure you need media monitoring yet?</h2>
+        <p class="intro">Four questions, no sign-up. Answer honestly and we will tell you whether monitoring would change anything for your organisation.</p>
+      </div>
+
+      <div class="questions" id="questions"></div>
+
+      <div class="verdict">
+        <div class="bar"></div>
+        <div class="body">
+          <h3 id="verdictTitle">Answer the four questions above</h3>
+          <p id="verdictBody">Nothing is sent anywhere. The result appears here as soon as you have answered.</p>
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <a href="mailto:admin@sociallightbw.com?subject=Free%20assessment%20call" class="book">Book a free assessment call</a>
+            <span class="cta-note">45 minutes with an analyst. No trial required.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 </div>
 
-<!-- FEATURES -->
-<section class="features-section" id="features">
-  <div class="section-inner">
-    <div class="text-center mb-5">
-      <span class="section-tag">Intelligence Beyond Monitoring</span>
-      <h2 class="section-title">Knowing what is said is powerful.<br/>Knowing how to respond is transformative.</h2>
-      <p class="section-sub mx-auto">Our flagship Media Monitoring as a Service turns thousands of daily mentions across Botswana and the SADC region into timely, accurate, decision-ready intelligence.</p>
-    </div>
-    <div class="row g-4">
-      <div class="col-md-4">
-        <div class="feat-card">
-          <div class="feat-img"><img src="{% static 'images/image1.jpg' %}" alt="Social"/><div class="feat-img-overlay"></div><span class="feat-tag">Social Media</span></div>
-          <div class="feat-body">
-            <div class="feat-icon" style="background:#eff6ff;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2"><path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/></svg></div>
-            <h3 class="feat-title">Social Media Monitoring</h3>
-            <p class="feat-desc">Track brand mentions, hashtags, and conversations across Facebook, X, Instagram, LinkedIn and more in real time.</p>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="feat-card">
-          <div class="feat-img"><img src="{% static 'images/image4.jpg' %}" alt="Broadcast"/><div class="feat-img-overlay"></div><span class="feat-tag">Broadcast</span></div>
-          <div class="feat-body">
-            <div class="feat-icon" style="background:#f3e8ff;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
-            <h3 class="feat-title">Broadcast Coverage</h3>
-            <p class="feat-desc">Capture TV and radio mentions with full coverage metrics including duration, reach, and AVE calculations.</p>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="feat-card">
-          <div class="feat-img"><img src="{% static 'images/image3.jpg' %}" alt="Analytics"/><div class="feat-img-overlay"></div><span class="feat-tag">Analytics</span></div>
-          <div class="feat-body">
-            <div class="feat-icon" style="background:#f0fdf4;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-            <h3 class="feat-title">Sentiment Analysis</h3>
-            <p class="feat-desc">Understand the tone of your coverage instantly. Positive, neutral, and negative trends surfaced with visual dashboards.</p>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="feat-card">
-          <div class="feat-img"><img src="{% static 'images/image2.jpg' %}" alt="Online"/><div class="feat-img-overlay"></div><span class="feat-tag">Online Media</span></div>
-          <div class="feat-body">
-            <div class="feat-icon" style="background:#fef9c3;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a16207" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
-            <h3 class="feat-title">Online News Tracking</h3>
-            <p class="feat-desc">Monitor digital publications and news websites for brand and competitor mentions with source-level detail.</p>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="feat-card">
-          <div class="feat-img"><img src="{% static 'images/image5.jpg' %}" alt="Competitors"/><div class="feat-img-overlay"></div><span class="feat-tag">Competitors</span></div>
-          <div class="feat-body">
-            <div class="feat-icon" style="background:#fee2e2;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-            <h3 class="feat-title">Competitor Analytics</h3>
-            <p class="feat-desc">Track competitors side-by-side. Compare share of voice, sentiment, and coverage volume across all channels.</p>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="feat-card">
-          <div class="feat-img"><img src="{% static 'images/reports.jpg' %}" alt="Reports"/><div class="feat-img-overlay"></div><span class="feat-tag">Reports</span></div>
-          <div class="feat-body">
-            <div class="feat-icon" style="background:#e0e7ff;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3730a3" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
-            <h3 class="feat-title">Intelligence Reports</h3>
-            <p class="feat-desc">Generate presentation-ready PDF and PowerPoint reports with one click, ready to share with stakeholders.</p>
-          </div>
-        </div>
-      </div>
+{% if sectors %}
+<div class="subpage" id="page-sectors">
+  <div class="subbar on-navy">
+    <div class="shell">
+      <button type="button" class="back" data-page="landing">← Back to home</button>
+      <span class="label">Sector intelligence</span>
     </div>
   </div>
-</section>
+  <section class="sectors">
+    <div class="shell">
+      <div class="sectors-head">
+        <div>
+          <div class="rule wide"></div>
+          <div class="eyebrow">Sector intelligence</div>
+          <h2 class="h2">Top news by sector, updated weekly</h2>
+        </div>
+        <p>The stories moving each sector, ranked by reach and sentiment impact, drawn from the same verified feed that powers your dashboard. Included on every tier.</p>
+      </div>
 
-<!-- HOW IT WORKS -->
-<section class="hiw-section">
-  <div class="section-inner">
-    <div class="row align-items-center g-5">
-      <div class="col-lg-5">
-        <span class="section-tag section-tag-dark">From Insight to Action</span>
-        <h2 class="section-title section-title-light">Decision-ready intelligence,<br/>not just data</h2>
-        <p class="section-sub section-sub-light">We turn thousands of daily media mentions into the confidence to respond to shifting narratives, get ahead of a crisis, and make evidence-based decisions.</p>
-        <div class="mt-5">
-          <div class="hiw-step">
-            <div class="hiw-num">1</div>
-            <div><div class="hiw-step-title">Understand &amp; Anticipate</div><p class="hiw-step-desc">Read public sentiment and stakeholder perception, and identify emerging trends before they become headlines.</p></div>
-          </div>
-          <div class="hiw-step">
-            <div class="hiw-num">2</div>
-            <div><div class="hiw-step-title">Benchmark &amp; Protect</div><p class="hiw-step-desc">Track competitors, benchmark your position, and manage reputational risk with speed and precision.</p></div>
-          </div>
-          <div class="hiw-step">
-            <div class="hiw-num">3</div>
-            <div><div class="hiw-step-title">Report &amp; Decide</div><p class="hiw-step-desc">Evaluate campaign performance with measurable clarity in branded PDF and PowerPoint reports, generated with a single click.</p></div>
+      <div class="tabs" id="sectorTabs">
+        {% for s in sectors %}
+        <button type="button" data-sector="{{ s.slug }}"{% if forloop.first %} class="on"{% endif %}>{{ s.name }}</button>
+        {% endfor %}
+      </div>
+
+      {% if commodity_quotes %}
+      <div class="ticker-box" id="tickerBox">
+        <div class="cap"><span class="dot"></span><span>Commodities · indicative</span></div>
+        <div class="ticker-rail">
+          {# the list is rendered twice so the -50% keyframe loops seamlessly #}
+          <div class="ticker">
+            {% for pass in "12" %}{% for q in commodity_quotes %}
+            <div class="item">
+              <span class="name">{{ q.name }}</span>
+              <span class="px">{{ q.price_display }}</span>
+              <span class="{% if q.is_up %}up{% else %}down{% endif %}">{{ q.change_display }}</span>
+            </div>
+            {% endfor %}{% endfor %}
           </div>
         </div>
       </div>
-      <div class="col-lg-7">
-        <div class="hiw-img"><img src="{% static 'images/image2.jpg' %}" alt="Media professional at work"/></div>
+      {% endif %}
+
+      {% for s in sectors %}
+      <div class="sector-panel" data-sector-panel="{{ s.slug }}" data-ticker="{{ s.shows_ticker|yesno:"1,0" }}"{% if not forloop.first %} hidden{% endif %}>
+        <div class="sector-heading">{{ s.display_heading }}</div>
+        <div style="display:flex;flex-direction:column;">
+          {% for story in s.published_stories %}
+          <div class="story">
+            <div class="rank" style="color:{% cycle '#EA8C13' '#F5B01B' '#7BA32C' '#1E9160' '#0A8B8E' '#0A6C9E' as rankcolour %};">{{ forloop.counter|stringformat:"02d" }}</div>
+            <div>
+              <div class="t">{% if story.url %}<a href="{{ story.url }}" target="_blank" rel="noopener" style="color:inherit;">{{ story.title }}</a>{% else %}{{ story.title }}{% endif %}</div>
+              {% if story.summary %}<div class="s">{{ story.summary }}</div>{% endif %}
+            </div>
+            <div class="meta">{{ story.source_label }}<br>{{ story.published_on|date:"j M Y" }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% resetcycle rankcolour %}
+      {% endfor %}
+
+      <div class="cta-row">
+        <a href="{% url 'monitor:signup' %}" class="btn btn-gold">Start free {{ trial_days }}-day trial</a>
+        <span class="cta-note">Sector intelligence is included on every tier.</span>
       </div>
     </div>
-  </div>
-</section>
+  </section>
+</div>
+{% endif %}
 
-<!-- MEDIA LANDSCAPE -->
-<section class="landscape-section">
-  <div class="section-inner">
-    <div class="row align-items-center g-5">
-      <div class="col-lg-5">
-        <span class="section-tag section-tag-dark">The Ground We Own</span>
-        <h2 class="section-title section-title-light">Globally African.<br/>Locally unmatched.</h2>
-        <p class="section-sub section-sub-light mb-4">Global platforms treat Africa as a footnote. We treat it as home. Social Light was built here, for here — covering the publications, broadcasters, forums and social channels that global tools overlook, with the local context that turns raw mentions into real understanding.</p>
-        <div class="d-flex flex-wrap gap-2 mb-4">
-          <span class="media-pill"><span class="pill-dot" style="background:#a855f7;"></span>Broadcast Radio</span>
-          <span class="media-pill"><span class="pill-dot" style="background:#3b82f6;"></span>Television</span>
-          <span class="media-pill"><span class="pill-dot" style="background:#10b981;"></span>Online News</span>
-          <span class="media-pill"><span class="pill-dot" style="background:#f59e0b;"></span>Print Media</span>
-          <span class="media-pill"><span class="pill-dot" style="background:#ef4444;"></span>Social Media</span>
-          <span class="media-pill"><span class="pill-dot" style="background:#64748b;"></span>AVE Calculation</span>
-        </div>
-        <div class="row g-3">
-          <div class="col-6"><div class="metric-tile"><span class="metric-tile-val">360°</span><span class="metric-tile-lbl">Full coverage view</span></div></div>
-          <div class="col-6"><div class="metric-tile"><span class="metric-tile-val">Real-time</span><span class="metric-tile-lbl">Live updates</span></div></div>
-          <div class="col-6"><div class="metric-tile"><span class="metric-tile-val">PDF &amp; PPT</span><span class="metric-tile-lbl">One-click exports</span></div></div>
-          <div class="col-6"><div class="metric-tile"><span class="metric-tile-val">Multi-org</span><span class="metric-tile-lbl">Manage many clients</span></div></div>
-        </div>
-      </div>
-      <div class="col-lg-7">
-        <div class="row g-3">
-          <div class="col-6"><img src="{% static 'images/image3.jpg' %}" alt="Analytics" style="width:100%;border-radius:12px;object-fit:cover;height:240px;display:block;"/></div>
-          <div class="col-6"><img src="{% static 'images/image5.jpg' %}" alt="Media landscape" style="width:100%;border-radius:12px;object-fit:cover;height:240px;display:block;"/></div>
-        </div>
-      </div>
+{% if publications %}
+<div class="subpage" id="page-publications">
+  <div class="subbar">
+    <div class="shell">
+      <button type="button" class="back" data-page="landing">← Back to home</button>
+      <span class="label">Publications &amp; news</span>
     </div>
   </div>
-</section>
+  <section class="publications">
+    <div class="shell">
+      <div class="pubs-head">
+        <div>
+          <div class="rule"></div>
+          <div class="eyebrow">Publications &amp; news</div>
+          <h2 class="h2">What we publish</h2>
+        </div>
+        <p>Our own digests, market notes and sector reports, drawn from the regional feed and published on a fixed cycle.</p>
+      </div>
 
-<!-- CTA -->
-<section class="cta-section">
-  <div class="cta-bg"></div>
-  <div class="cta-overlay"></div>
-  <div class="section-inner cta-inner">
-    <h2 class="cta-title">Understand your environment.<br/>Shape your narrative. Grow with intention.</h2>
-    <p class="cta-sub">We don't just monitor conversations or post content — we help you grow with intention. Join organisations across Africa that trust Social Light.</p>
-    <a href="{% url 'monitor:login' %}" class="btn-hero-primary" style="font-size:16px;padding:15px 32px;">
-      Sign In to Dashboard
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-    </a>
-  </div>
-</section>
+      <div class="cols3 pubs-grid">
+        {% for p in publications %}
+        <div class="pub" style="border-top:4px solid {% cycle '#EA8C13' '#F5B01B' '#7BA32C' '#1E9160' '#0A8B8E' '#0A6C9E' %};">
+          <div class="kind">{{ p.kind }}</div>
+          <div class="title">{{ p.title }}</div>
+          {% if p.blurb %}<div class="blurb">{{ p.blurb }}</div>{% endif %}
+          <div class="foot">
+            <span class="date">{{ p.published_on|date:"j M Y" }}</span>
+            {% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">Read →</a>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
 
-<!-- FOOTER -->
-<footer>
-  <div class="footer-inner">
-    <div class="footer-logo">
-      <img src="{% static 'images/social_light_logo.png' %}" alt="Social Light"/>
-      <div><span class="footer-logo-name">SOCIAL LIGHT</span><span class="footer-logo-sub">Globally African</span></div>
+      <div class="cta-row">
+        <a href="{% url 'monitor:signup' %}" class="btn btn-navy">Start free {{ trial_days }}-day trial</a>
+        <span class="cta-note">Digests land in your inbox on the same cycle as your reports.</span>
+      </div>
     </div>
-    <div class="footer-copy">&copy; {% now "Y" %} Social Light. All rights reserved.</div>
+  </section>
+</div>
+{% endif %}
+
+<footer class="site-footer">
+  <div class="shell">
+    <div class="footer-top">
+      <div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+          <img src="{% static 'images/design/logo-lockup.png' %}" alt="Social Light" class="lockup">
+        </div>
+        <p>Media monitoring and intelligence for institutional clients across the SADC region. Gaborone, Botswana.</p>
+        <div class="rule"></div>
+      </div>
+      <div class="fcol">
+        <div class="head">Services</div>
+        <a href="#services">What we monitor</a>
+        <a href="#product">The dashboard</a>
+        <a href="#coverage">Regional coverage</a>
+        <a href="{% url 'monitor:pricing' %}">Pricing</a>
+      </div>
+      <div class="fcol">
+        <div class="head">Contact</div>
+        <a href="mailto:admin@sociallightbw.com">admin@sociallightbw.com</a>
+        <span class="addr">Plot 59065<br>Gaborone, Botswana</span>
+        <span class="hours">Support 08:00–17:00 CAT</span>
+      </div>
+      <div class="fcol">
+        <div class="head">Company</div>
+        <a href="#privacy">Privacy notice</a>
+        <a href="#terms">Terms of service</a>
+        <a href="#popia">Data protection</a>
+      </div>
+    </div>
+
+    <div class="social">
+      <span class="head">Follow</span>
+      <div class="links">
+        <a href="#linkedin">LinkedIn</a>
+        <a href="#x">X</a>
+        <a href="#facebook">Facebook</a>
+        <a href="#instagram">Instagram</a>
+        <a href="#youtube">YouTube</a>
+        <a href="#tiktok">TikTok</a>
+        <a href="#whatsapp">WhatsApp</a>
+      </div>
+    </div>
+
+    <div class="footer-base">
+      <span>&copy; {% now "Y" %} Social Light (Pty) Ltd. All rights reserved.</span>
+    </div>
   </div>
 </footer>
 
 <script>
-  const nav = document.getElementById('siteNav');
-  window.addEventListener('scroll', () => nav.classList.toggle('scrolled', window.scrollY > 40));
+(function () {
+  var $  = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  /* ── mobile drawer ─────────────────────────────────────────────────── */
+  var drawer = $('#drawer');
+  var toggle = $('#navToggle');
+  toggle.addEventListener('click', function () {
+    var open = drawer.classList.toggle('open');
+    toggle.textContent = open ? 'Close' : 'Menu';
+  });
+  $$('[data-close]', drawer).forEach(function (a) {
+    a.addEventListener('click', function () {
+      drawer.classList.remove('open');
+      toggle.textContent = 'Menu';
+    });
+  });
+
+  /* ── page switching (landing / sectors / publications / assessment) ── */
+  var pages = { landing: $('#landing') };
+  ['assessment', 'sectors', 'publications'].forEach(function (k) {
+    pages[k] = $('#page-' + k);
+  });
+  function showPage(name) {
+    Object.keys(pages).forEach(function (k) {
+      if (k === 'landing') {
+        pages[k].style.display = k === name ? '' : 'none';
+      } else {
+        pages[k].classList.toggle('on', k === name);
+      }
+    });
+    drawer.classList.remove('open');
+    toggle.textContent = 'Menu';
+    window.scrollTo(0, 0);
+  }
+  $$('[data-page]').forEach(function (b) {
+    b.addEventListener('click', function () { showPage(b.getAttribute('data-page')); });
+  });
+
+})();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+(function () {
+  var $  = function (s, r) { return (r || document).querySelector(s); };
+  var el = function (tag, cls, html) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  };
+
+  /* ── free assessment ───────────────────────────────────────────────── */
+  var questions = [
+    'Do you know what is being said about your organisation in the press this week?',
+    'Have you ever been blindsided by a story you did not see coming?',
+    'Can you show a board how coverage moved after your last campaign?',
+    'Do you track what is said about you on radio and television?'
+  ];
+  var answers = {};
+  var qHost = $('#questions');
+
+  questions.forEach(function (text, i) {
+    var row = el('div', 'question');
+    row.appendChild(el('div', 'q', text));
+    var picks = el('div', 'picks');
+    ['yes', 'no'].forEach(function (v) {
+      var b = el('button', v, v === 'yes' ? 'Yes' : 'No');
+      b.type = 'button';
+      b.addEventListener('click', function () {
+        answers[i] = v;
+        Array.prototype.forEach.call(picks.children, function (c) { c.classList.remove('on'); });
+        b.classList.add('on');
+        verdict();
+      });
+      picks.appendChild(b);
+    });
+    row.appendChild(picks);
+    qHost.appendChild(row);
+  });
+
+  function verdict() {
+    var answered = Object.keys(answers).length;
+    var gaps = Object.keys(answers).filter(function (k) { return answers[k] === 'no'; }).length;
+    var title = 'Answer the four questions above';
+    var body = 'Nothing is sent anywhere. The result appears here as soon as you have answered.';
+
+    if (answered === questions.length) {
+      if (gaps === 0) {
+        title = 'You already have good visibility';
+        body = 'You are tracking coverage and can evidence it. An assessment call would focus on breadth — the broadcast and print sources most tools miss — rather than starting from scratch.';
+      } else if (gaps <= 2) {
+        title = 'There are gaps worth closing';
+        body = 'You have partial visibility. An analyst can show you which of the channels you are missing carry the most weight for your organisation, and what a first reporting cycle would look like.';
+      } else {
+        title = 'You are working without visibility';
+        body = 'Most of what is said about your organisation is currently reaching you late or not at all. An assessment call is the fastest way to see what this week already contained.';
+      }
+    } else if (answered > 0) {
+      title = answered + ' of ' + questions.length + ' answered';
+    }
+    $('#verdictTitle').textContent = title;
+    $('#verdictBody').textContent = body;
+  }
+
+  /* ── sector intelligence tabs ──────────────────────────────────────── */
+  /* Panels and the ticker are rendered server-side from the database; this only
+     swaps which panel is visible and whether the ticker shows for that sector. */
+  var tabs = document.querySelectorAll('#sectorTabs button');
+  var panels = document.querySelectorAll('[data-sector-panel]');
+  var tickerBox = document.getElementById('tickerBox');
+
+  function showSector(slug) {
+    Array.prototype.forEach.call(tabs, function (t) {
+      t.classList.toggle('on', t.getAttribute('data-sector') === slug);
+    });
+    var wantsTicker = false;
+    Array.prototype.forEach.call(panels, function (panel) {
+      var active = panel.getAttribute('data-sector-panel') === slug;
+      if (active) {
+        panel.removeAttribute('hidden');
+        wantsTicker = panel.getAttribute('data-ticker') === '1';
+      } else {
+        panel.setAttribute('hidden', '');
+      }
+    });
+    if (tickerBox) tickerBox.style.display = wantsTicker ? '' : 'none';
+  }
+
+  Array.prototype.forEach.call(tabs, function (t) {
+    t.addEventListener('click', function () { showSector(t.getAttribute('data-sector')); });
+  });
+  if (tabs.length) showSector(tabs[0].getAttribute('data-sector'));
+
+  /* ── reveal on scroll ──────────────────────────────────────────────── */
+  var targets = [];
+  setTimeout(function () {
+    Array.prototype.forEach.call(document.querySelectorAll('section'), function (sec) {
+      var inner = sec.firstElementChild;
+      if (!inner) return;
+      Array.prototype.forEach.call(inner.children, function (block) {
+        var kids = Array.prototype.slice.call(block.children);
+        var display = getComputedStyle(block).display;
+        var isGroup = kids.length > 2 && /grid|flex/.test(display);
+        (isGroup ? kids : [block]).forEach(function (node) {
+          if (node.dataset.rv) return;
+          node.dataset.rv = '1';
+          node.classList.add('rv');
+          targets.push(node);
+        });
+      });
+    });
+    targets.forEach(function (node, i) { node.style.transitionDelay = ((i % 4) * 70) + 'ms'; });
+
+    function tick() {
+      var vh = window.innerHeight || 900;
+      targets = targets.filter(function (node) {
+        if (node.getBoundingClientRect().top < vh * 0.92) {
+          node.classList.add('rv-in');
+          return false;
+        }
+        return true;
+      });
+      if (!targets.length) {
+        window.removeEventListener('scroll', tick);
+        window.removeEventListener('resize', tick);
+      }
+    }
+    tick();
+    window.addEventListener('scroll', tick, { passive: true });
+    window.addEventListener('resize', tick, { passive: true });
+    setTimeout(function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.rv'), function (n) { n.classList.add('rv-in'); });
+    }, 4000);
+  }, 120);
+})();
+</script>
+
 </body>
 </html>
