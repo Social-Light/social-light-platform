@@ -168,6 +168,10 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(minute='*/15'),             # every 15 min, picks up new records
         'kwargs': {'frequency': 'immediate'},
     },
+    'update-sector-intelligence': {
+        'task': 'monitor.update_sector_intelligence',
+        'schedule': crontab(hour=5, minute=12),          # once daily, before business hours
+    },
 }
 
 # deployment doesn't log a failing task. Clips route to orgs by keyword match.

@@ -820,7 +820,11 @@ class Sector(models.Model):
 
 
 class SectorStory(models.Model):
-    """One ranked story under a sector. Written or approved by an editor."""
+    """One ranked story under a sector. Either written/approved by an editor, or
+    (is_ai_generated=True) written by the daily sector-intelligence job from a
+    live web search — see monitor/sector_ai.py. The daily job only ever touches
+    its own is_ai_generated=True rows for a sector; an editor's own stories are
+    never auto-deleted or overwritten by it."""
     sector = models.ForeignKey(Sector, on_delete=models.CASCADE, related_name='stories')
     title = models.CharField(max_length=300)
     summary = models.TextField(blank=True)
@@ -832,6 +836,8 @@ class SectorStory(models.Model):
     display_order = models.PositiveIntegerField(
         default=0, help_text='Rank within the sector. Lower numbers appear first.')
     is_published = models.BooleanField(default=True)
+    is_ai_generated = models.BooleanField(
+        default=False, help_text='Written by the daily sector-intelligence job, not an editor.')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -849,11 +855,18 @@ class CommodityQuote(models.Model):
     price_display is free text so a quote can be a price, an index level or a
     range without the model guessing at units. change_percent drives the arrow
     and its colour; leave it at zero for a flat reading.
+
+    Either editor-maintained, or (is_ai_generated=True) refreshed daily by
+    monitor/sector_ai.py from a live web search — see SectorStory's docstring
+    for the same is_ai_generated convention: the daily job only ever touches
+    its own rows.
     """
     name = models.CharField(max_length=80)
     price_display = models.CharField(max_length=40, help_text='Shown as written, e.g. "$2,412.30".')
     change_percent = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     is_published = models.BooleanField(default=True)
+    is_ai_generated = models.BooleanField(
+        default=False, help_text='Refreshed daily by the sector-intelligence job, not an editor.')
     display_order = models.PositiveIntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
 

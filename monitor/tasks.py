@@ -33,3 +33,18 @@ def import_mediahost_clips(days=1, media_type=None, org=None):
         kwargs['org'] = org
     call_command('import_mediahost_clips', **kwargs)
     return f'import_mediahost_clips ran for days={days}'
+
+
+@shared_task(name='monitor.update_sector_intelligence')
+def update_sector_intelligence():
+    """
+    Refresh the landing page's public sector stories and commodity quotes via
+    a live AI web search (see monitor/sector_ai.py). Only touches
+    is_ai_generated=True rows — an editor's own hand-written content is never
+    overwritten.
+
+    Scheduled once daily by Celery Beat (see CELERY_BEAT_SCHEDULE), but can
+    also be triggered ad-hoc: update_sector_intelligence.delay().
+    """
+    call_command('update_sector_intelligence')
+    return 'update_sector_intelligence ran'
