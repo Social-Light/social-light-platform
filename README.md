@@ -22,6 +22,42 @@ and API endpoint belongs to one tenant.
   reputational risks/opportunities, and KPI insights, rendered as a slide deck.
 - **Scheduled alert digests** (daily / immediate) delivered by email.
 - Competitor tracking and comparison.
+- **Self-service 14-day free trial** with a paywall on expiry (see
+  [Free trial & packages](#free-trial--packages)).
+
+## Free trial & packages
+
+Anyone can start a trial from the landing page — `/signup/` creates an
+`Organization` plus its first user (role `org_admin`) and stamps
+`trial_started_at` / `trial_ends_at` on the organisation.
+
+- **The clock is read, not scheduled.** `Organization.effective_plan_status`
+  computes `expired` the moment `trial_ends_at` passes, so access is cut off on
+  time without a Celery job having to run. `trial_days_left` rounds up, so a
+  trial with hours left still reads "1 day left".
+- **The gate is `monitor/middleware.py`.** `OrganizationAccessMiddleware`
+  redirects every `/app/` page request from an expired organisation to
+  `/app/billing/`, and answers `/api/` calls with `402` plus the billing URL.
+  The same middleware scopes non-admin users to their own organisation, which is
+  what makes public signup safe. Platform admins and superusers bypass both.
+- **Paying is off-platform.** On the paywall the user picks a package, which
+  writes a `SubscriptionRequest`, emails `SALES_NOTIFICATION_EMAILS` and moves
+  the organisation to `pending` (still no access). A platform admin restores
+  access from the Django admin — *Subscription requests → Approve*, or by
+  setting the organisation's package and plan status by hand.
+- **Prices live in the database.** The published list — **Spark $49**,
+  **Momentum $299** (featured), **Scale $1,299** and **Enterprise** (quoted, the
+  only tier including broadcast and print monitoring) — is written by migration
+  `0012`. Edit it under *Monitor → Packages*, never in the templates: a package
+  carries its own bullets, exclusions, callout box, accent colour and button
+  label, so a new tier needs no template change. Migration `0010`'s placeholder
+  tiers are retired by `0012` (deactivated rather than deleted if anything ever
+  referenced them).
+- **Existing organisations are unaffected** — `plan_status` defaults to
+  `active`, so every client that predates self-signup keeps unrestricted access.
+
+Relevant settings: `TRIAL_PERIOD_DAYS` (default 14) and
+`SALES_NOTIFICATION_EMAILS`.
 
 ## Architecture
 

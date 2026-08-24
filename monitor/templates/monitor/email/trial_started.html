@@ -1,0 +1,24 @@
+{% extends 'monitor/email/base_email.html' %}
+
+{% block title %}Your Social Light trial has started{% endblock %}
+{% block subtitle %}Your {{ trial_days }}-Day Free Trial{% endblock %}
+
+{% block content %}
+<p>Hi {{ full_name }},</p>
+
+<p><strong>{{ org_name }}</strong> is now set up on Social Light with full access for the next {{ trial_days }} days.</p>
+
+<div class="btn-wrap">
+    <a href="{{ protocol }}://{{ domain }}{% url 'monitor:login' %}" class="button button--blue">Go to your dashboard</a>
+</div>
+
+<p>Your trial runs until <strong>{{ trial_ends_at|date:"j F Y" }}</strong>. Everything is included — social, online, print and broadcast monitoring, competitor tracking, alerts and reports.</p>
+
+<div class="notice">
+    When the {{ trial_days }} days are up you'll be asked to choose a package before you can carry on. Nothing is charged automatically, and your data stays exactly where it is in the meantime.
+</div>
+
+<p>Want your keywords and competitors set up for you? Reply to this email and our team will do it before your first full day.</p>
+
+<p>— The Social Light Team</p>
+{% endblock %}

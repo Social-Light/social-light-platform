@@ -97,6 +97,7 @@ celerybeat.pid
 
 # Environments
 .env
+socialmonitor/settings_local.py
 .venv
 env/
 venv/

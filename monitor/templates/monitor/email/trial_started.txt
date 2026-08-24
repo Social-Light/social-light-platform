@@ -1,0 +1,18 @@
+Hi {{ full_name }},
+
+{{ org_name }} is now set up on Social Light with full access for the next {{ trial_days }} days.
+
+Sign in here: {{ protocol }}://{{ domain }}{% url 'monitor:login' %}
+
+Your trial runs until {{ trial_ends_at|date:"j F Y" }}. Everything is included —
+social, online, print and broadcast monitoring, competitor tracking, alerts and
+reports.
+
+When the {{ trial_days }} days are up you'll be asked to choose a package before
+you can carry on. Nothing is charged automatically, and your data stays exactly
+where it is in the meantime.
+
+Want your keywords and competitors set up for you? Reply to this email and our
+team will do it before your first full day.
+
+— The Social Light Team

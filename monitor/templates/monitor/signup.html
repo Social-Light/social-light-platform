@@ -1,0 +1,202 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Start your free {{ trial_days }}-day trial — Social Light</title>
+  <link rel="icon" type="image/x-icon" href="{% static 'favicon/favicon.ico' %}?v=2">
+  <link rel="icon" type="image/svg+xml" href="{% static 'favicon/favicon.svg' %}?v=2">
+  <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon/favicon-96x96.png' %}?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}?v=2">
+  <link rel="manifest" href="{% static 'favicon/site.webmanifest' %}?v=2">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;}
+    html,body{height:100%;margin:0;padding:0;}
+    body{display:flex;min-height:100vh;font-family:'Inter',system-ui,sans-serif;color:#0f172a;background:#fff;-webkit-font-smoothing:antialiased;}
+
+    /* ── Left: the form ── */
+    .su-left{flex:1;display:flex;justify-content:center;padding:44px 48px;overflow-y:auto;}
+    .su-form-wrap{width:100%;max-width:430px;}
+
+    .su-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:44px;}
+    .su-logo{display:flex;align-items:center;gap:11px;text-decoration:none;}
+    .su-logo img{width:40px;height:40px;object-fit:contain;border-radius:8px;}
+    .su-logo-name{font-size:15px;font-weight:800;color:#0f172a;letter-spacing:.06em;line-height:1;}
+    .su-logo-name .lt{color:#3891C7;}
+    .su-close{color:#94a3b8;font-size:22px;line-height:1;text-decoration:none;padding:4px 8px;border-radius:6px;}
+    .su-close:hover{color:#0f172a;background:#f1f5f9;}
+
+    .su-heading{font-size:30px;font-weight:900;letter-spacing:-.03em;line-height:1.15;margin:0 0 10px;}
+    .su-sub{font-size:14px;color:#64748b;line-height:1.65;margin-bottom:30px;}
+
+    .su-group{margin-bottom:18px;}
+    .su-label{display:block;font-size:11px;font-weight:600;color:#64748b;letter-spacing:.09em;text-transform:uppercase;margin-bottom:7px;}
+    .su-input{width:100%;padding:12px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14.5px;font-family:inherit;color:#0f172a;background:#fff;outline:none;transition:border-color .18s,box-shadow .18s;}
+    .su-input:focus{border-color:#3891C7;box-shadow:0 0 0 3px rgba(56,145,199,.12);}
+    .su-input::placeholder{color:#94a3b8;}
+    .su-input.is-invalid{border-color:#dc2626;}
+    .su-hint{display:block;font-size:12px;color:#94a3b8;margin-top:6px;}
+    .su-field-error{display:block;font-size:12.5px;color:#dc2626;margin-top:6px;}
+    input[type="password"]::-ms-reveal,input[type="password"]::-ms-clear{display:none;}
+
+    .su-pw-wrap{position:relative;}
+    .su-pw-wrap .su-input{padding-right:44px;}
+    .su-pw-toggle{position:absolute;right:12px;top:22px;background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;display:flex;align-items:center;}
+    .su-pw-toggle:hover{color:#64748b;}
+
+    .su-alert{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:11px 14px;font-size:13px;display:flex;align-items:flex-start;gap:8px;margin-bottom:22px;}
+
+    .btn-create{width:100%;padding:14px;margin-top:8px;background:#12305f;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;transition:transform .15s,box-shadow .15s,background .15s;box-shadow:0 4px 16px rgba(18,48,95,.28);}
+    .btn-create:hover{background:#0d2547;transform:translateY(-1px);box-shadow:0 6px 22px rgba(18,48,95,.34);}
+    .btn-create:active{transform:translateY(0);}
+
+    .su-signin{text-align:center;margin-top:24px;font-size:13.5px;color:#64748b;}
+    .su-signin a{color:#3891C7;font-weight:600;text-decoration:none;}
+    .su-signin a:hover{text-decoration:underline;}
+    .su-terms{text-align:center;font-size:11.5px;color:#94a3b8;line-height:1.6;margin-top:18px;}
+
+    /* ── Right: the trial panel ── */
+    .su-right{width:46%;max-width:560px;flex-shrink:0;position:relative;overflow:hidden;background:linear-gradient(165deg,#12305f 0%,#1d4878 55%,#0d2547 100%);color:#fff;padding:52px 52px;display:flex;flex-direction:column;}
+    .su-right::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#f59e0b 0%,#22c55e 55%,#3891C7 100%);}
+    .su-right::after{content:'';position:absolute;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(66,148,206,.20) 0%,transparent 70%);bottom:-90px;right:-110px;pointer-events:none;}
+    .su-right>*{position:relative;z-index:1;}
+
+    .su-eyebrow{font-size:11.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#fbbf24;margin-bottom:30px;}
+    .su-benefits{list-style:none;margin:0 0 auto;padding:0;display:flex;flex-direction:column;gap:22px;}
+    .su-benefit{display:flex;align-items:flex-start;gap:14px;font-size:15.5px;line-height:1.5;color:rgba(255,255,255,.94);}
+    .su-benefit i{color:#4ade80;font-size:15px;margin-top:3px;flex-shrink:0;}
+
+    .su-divider{height:1px;background:rgba(255,255,255,.14);margin:36px 0 26px;}
+    .su-stats{display:flex;gap:48px;}
+    .su-stat-val{display:block;font-size:30px;font-weight:900;letter-spacing:-.02em;line-height:1;}
+    .su-stat-lbl{display:block;font-size:13px;color:rgba(255,255,255,.55);margin-top:7px;}
+
+    @media(max-width:980px){
+      body{flex-direction:column;}
+      .su-right{width:100%;max-width:none;order:-1;padding:34px 28px;}
+      .su-benefits{gap:14px;}
+      .su-left{padding:34px 24px 48px;}
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Form ── -->
+<div class="su-left">
+  <div class="su-form-wrap">
+    <div class="su-topbar">
+      <a href="{% url 'monitor:home' %}" class="su-logo">
+        <img src="{% static 'images/social_light_logo.png' %}" alt="Social Light"/>
+        <span class="su-logo-name">SOCIAL<span class="lt">LIGHT</span></span>
+      </a>
+      <a href="{% url 'monitor:home' %}" class="su-close" aria-label="Close">&times;</a>
+    </div>
+
+    <h1 class="su-heading">Start your free {{ trial_days }}-day trial</h1>
+    <p class="su-sub">Full access for {{ trial_days }} days. Billing starts when the trial ends — no card required to begin.</p>
+
+    {% if errors %}
+    <div class="su-alert">
+      <i class="bi bi-exclamation-circle-fill" style="font-size:15px;flex-shrink:0;margin-top:1px;"></i>
+      <span>Please fix the highlighted fields below.</span>
+    </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'monitor:signup' %}" novalidate>
+      {% csrf_token %}
+
+      <div class="su-group">
+        <label class="su-label" for="id_contact_name">Contact name</label>
+        <input type="text" id="id_contact_name" name="contact_name"
+               class="su-input {% if errors.contact_name %}is-invalid{% endif %}"
+               placeholder="Naledi Mokgadi" value="{{ values.contact_name|default:'' }}"
+               required autofocus autocomplete="name"/>
+        {% if errors.contact_name %}<span class="su-field-error">{{ errors.contact_name }}</span>{% endif %}
+      </div>
+
+      <div class="su-group">
+        <label class="su-label" for="id_email">Work email</label>
+        <input type="email" id="id_email" name="email"
+               class="su-input {% if errors.email %}is-invalid{% endif %}"
+               placeholder="you@organisation.co.bw" value="{{ values.email|default:'' }}"
+               required autocomplete="email"/>
+        {% if errors.email %}<span class="su-field-error">{{ errors.email }}</span>{% endif %}
+      </div>
+
+      <div class="su-group">
+        <label class="su-label" for="id_org_name">Organisation name</label>
+        <input type="text" id="id_org_name" name="org_name"
+               class="su-input {% if errors.org_name %}is-invalid{% endif %}"
+               placeholder="Ministry, agency or company" value="{{ values.org_name|default:'' }}"
+               required autocomplete="organization"/>
+        {% if errors.org_name %}<span class="su-field-error">{{ errors.org_name }}</span>{% endif %}
+      </div>
+
+      <div class="su-group">
+        <label class="su-label" for="id_password">Password</label>
+        <div class="su-pw-wrap">
+          <input type="password" id="id_password" name="password"
+                 class="su-input {% if errors.password %}is-invalid{% endif %}"
+                 placeholder="••••••••••" required autocomplete="new-password"/>
+          <button type="button" class="su-pw-toggle" onclick="togglePw()" aria-label="Show or hide password">
+            <i class="bi bi-eye" id="pwIcon" style="font-size:16px;"></i>
+          </button>
+        </div>
+        {% if errors.password %}
+          <span class="su-field-error">{{ errors.password }}</span>
+        {% else %}
+          <span class="su-hint">Minimum {{ min_password_length }} characters, one number.</span>
+        {% endif %}
+      </div>
+
+      <button type="submit" class="btn-create">Create account</button>
+    </form>
+
+    <p class="su-signin">Already have an account? <a href="{% url 'monitor:login' %}">Sign in</a></p>
+    <p class="su-terms">By creating an account you agree to be contacted about your trial.<br/>No payment is taken until you choose a package.</p>
+  </div>
+</div>
+
+<!-- ── Trial panel ── -->
+<div class="su-right">
+  <div class="su-eyebrow">Free trial · {{ trial_days }} days</div>
+
+  <ul class="su-benefits">
+    <li class="su-benefit"><i class="bi bi-check-lg"></i><span>Full multimedia scope across every channel in your tier</span></li>
+    <li class="su-benefit"><i class="bi bi-check-lg"></i><span>Your keywords and competitors configured before day one</span></li>
+    <li class="su-benefit"><i class="bi bi-check-lg"></i><span>Billing begins when the {{ trial_days }} days end — pick your tier then</span></li>
+    <li class="su-benefit"><i class="bi bi-check-lg"></i><span>One public price list, the same for every client</span></li>
+  </ul>
+
+  <p style="margin:26px 0 0;font-size:13.5px;color:rgba(255,255,255,.6);">
+    <a href="{% url 'monitor:pricing' %}" style="color:#8dcaed;font-weight:600;text-decoration:none;">See the full price list →</a>
+  </p>
+
+  <div class="su-divider"></div>
+  <div class="su-stats">
+    <div>
+      <span class="su-stat-val">1 300+</span>
+      <span class="su-stat-lbl">Print titles</span>
+    </div>
+    <div>
+      <span class="su-stat-val">158+</span>
+      <span class="su-stat-lbl">Broadcast stations</span>
+    </div>
+  </div>
+</div>
+
+<script>
+function togglePw(){
+  var inp=document.getElementById('id_password');
+  var icon=document.getElementById('pwIcon');
+  if(inp.type==='password'){inp.type='text';icon.className='bi bi-eye-slash';}
+  else{inp.type='password';icon.className='bi bi-eye';}
+}
+</script>
+
+</body>
+</html>
