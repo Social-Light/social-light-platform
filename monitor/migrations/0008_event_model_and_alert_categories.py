@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('contenttypes', '0002_remove_content_type_name'),
-        ('monitor', '0007_pending_backlog_pre_event_feature'),
+        ('monitor', '0018_printarticle_cover_image'),
     ]
 
     operations = [

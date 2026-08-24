@@ -303,7 +303,7 @@ class PriceListTests(TestCase):
     def test_landing_page_links_to_the_trial_signup(self):
         response = self.client.get(reverse('monitor:home'))
         self.assertContains(response, reverse('monitor:signup'))
-        self.assertContains(response, 'Try Our Free Trial')
+        self.assertContains(response, 'Start free trial')
 
 
 class SeededPriceListTests(TestCase):
