@@ -16,9 +16,11 @@ services:
       - .env
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - POSTGRES_HOST=db
     depends_on:
       - db
       - redis
+    shm_size: "1gb"
     ports:
       - "8000:8000"
 
@@ -36,6 +38,7 @@ services:
       - .env
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - POSTGRES_HOST=db
     depends_on:
       - db
       - redis
@@ -54,6 +57,7 @@ services:
       - .env
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - POSTGRES_HOST=db
     depends_on:
       - db
       - redis
@@ -104,7 +108,7 @@ services:
   # Article Extractor
   # --------------------
   extractor:
-    build: /opt/sociallight/article-extractor
+    build: ../article-extractor
     container_name: sociallight_extractor
     restart: always
     command: gunicorn article_extractor.wsgi:application --bind 0.0.0.0:8001
@@ -114,11 +118,25 @@ services:
     working_dir: /app
     env_file:
       - .env
+    environment:
+      - POSTGRES_HOST=db
     depends_on:
       - db
       - redis
     expose:
       - "8001"
+
+  # --------------------
+  # SearXNG (self-hosted metasearch — discovery/services/search_api.py's
+  # "searxng" provider). Internal-only: not published to the host, reachable
+  # from other services on the compose network at http://searxng:8080.
+  # --------------------
+  searxng:
+    image: searxng/searxng:latest
+    container_name: sociallight_searxng
+    restart: always
+    volumes:
+      - ./searxng:/etc/searxng
 
   # --------------------
   # Media Monitor Web
@@ -138,6 +156,7 @@ services:
     depends_on:
       - db
       - redis
+      - searxng
     expose:
       - "8002"
 
@@ -157,6 +176,7 @@ services:
       - crawler_web
       - db
       - redis
+      - searxng
 
   # --------------------
   # Media Monitor Beat
@@ -174,6 +194,7 @@ services:
       - crawler_web
       - db
       - redis
+      - searxng
 
 # --------------------
 # Volumes

@@ -11,22 +11,31 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.db.models import Count, Sum, Q
+from django.db.models import Count, Prefetch, Sum, Q
 from django.utils import timezone
 
 from .models import (
     Organization, User, Keyword, Competitor, CompetitorArticle,
     OnlineArticle, PrintArticle, SocialMediaPost, BroadcastMention, Alert, MediaSource,
-    GeneratedReport, IssueReport, Campaign,
+    GeneratedReport, IssueReport, Campaign, Event, SectorStory,
     SENTIMENT_CHOICES, COVERAGE_CHOICES, PLATFORM_CHOICES, INDUSTRY_CHOICES, ROLE_CHOICES,
-    SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES,
+    SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES, EVENT_CATEGORY_CHOICES,
 )
 from .relevancy import compute_relevancy, filter_relevant
 from .print_metrics import estimate_print_reach as _print_reach
 from .alert_email import build_and_send, start_of_today
 from .org_email import send_org_disabled_email, send_org_enabled_email
+
+
+def _absolute_url(path):
+    """Prefix a path with settings.SITE_URL — used when building links inside
+    Event records, which are read outside of a request (by the alert digest)."""
+    base = getattr(settings, 'SITE_URL', 'https://sociallight.africa').rstrip('/')
+    return f"{base}{path}"
+
 
 COMPETITOR_SUGGESTIONS = {
     'Banking & Financial Services': [
@@ -97,7 +106,26 @@ def paginate_media(request, qs, page_size=MEDIA_PAGE_SIZE):
 def home(request):
     if request.user.is_authenticated:
         return redirect('monitor:organizations')
-    return render(request, 'monitor/landing.html')
+    from .models import CommodityQuote, Publication, Sector, trial_period_days
+
+    # Sectors with no published stories are dropped rather than rendered as an
+    # empty tab. Stories are prefetched filtered so the template never has to.
+    published_stories = Prefetch(
+        'stories',
+        queryset=SectorStory.objects.filter(is_published=True),
+        to_attr='published_stories',
+    )
+    sectors = [
+        s for s in Sector.objects.filter(is_published=True).prefetch_related(published_stories)
+        if s.published_stories
+    ]
+
+    return render(request, 'monitor/landing.html', {
+        'trial_days': trial_period_days(),
+        'sectors': sectors,
+        'commodity_quotes': CommodityQuote.objects.filter(is_published=True),
+        'publications': Publication.objects.filter(is_published=True),
+    })
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -134,9 +162,25 @@ def logout_view(request):
 
 # ── Organizations ─────────────────────────────────────────────────────────────
 
+def visible_organizations(user):
+    """Organisations a user is allowed to see. Platform admins see every client;
+    everyone else sees only their own — public self-signup means an account no
+    longer implies any relationship with the other organisations on the
+    platform."""
+    if user.is_superuser or getattr(user, 'role', '') == 'platform_admin':
+        return Organization.objects.all().order_by('name')
+    if user.organization_id:
+        return Organization.objects.filter(id=user.organization_id)
+    return Organization.objects.none()
+
+
 @login_required
 def organizations(request):
-    orgs = Organization.objects.all().order_by('name')
+    orgs = visible_organizations(request.user)
+    # A user tied to exactly one organisation has nothing to choose between —
+    # send them straight into it.
+    if request.user.role != 'platform_admin' and orgs.count() == 1:
+        return redirect('monitor:dashboard', org_id=orgs.first().id)
     return render(request, 'monitor/organizations.html', {
         'orgs': orgs,
         'industry_choices': INDUSTRY_CHOICES,
@@ -146,6 +190,8 @@ def organizations(request):
 
 @login_required
 def manage_organizations(request):
+    if request.user.role != 'platform_admin' and not request.user.is_superuser:
+        return redirect('monitor:organizations')
     orgs = Organization.objects.all().order_by('name')
     return render(request, 'monitor/manage_organizations.html', {
         'orgs': orgs,
@@ -2217,6 +2263,12 @@ def report_save(request, org_id):
         date_from=date_from,
         date_to=date_to,
     )
+    Event.objects.create(
+        organization=org, category='report', event_type='report_generated',
+        title=f'New report ready: {report.title}',
+        summary=f'{report_type} report generated' + (f' for {date_from}–{date_to}.' if date_from and date_to else '.'),
+        url=_absolute_url(reverse('monitor:reports', args=[org.id])),
+    )
     return JsonResponse({'id': str(report.id)})
 
 
@@ -2872,6 +2924,21 @@ def _clean_recipients(raw):
     return ', '.join(out)
 
 
+def _clean_categories(data, multipart):
+    """Pull the checked Event categories out of the alert form/payload.
+    Multipart (checkbox) submissions repeat the 'categories' key once per checked
+    box, so QueryDict.getlist is needed instead of .get. Unknown values are
+    dropped; an empty result means "no restriction" (see Alert.categories)."""
+    valid = {c for c, _ in EVENT_CATEGORY_CHOICES}
+    if multipart and hasattr(data, 'getlist'):
+        raw = data.getlist('categories')
+    else:
+        raw = data.get('categories') or []
+        if isinstance(raw, str):
+            raw = [raw]
+    return [c for c in raw if c in valid]
+
+
 @login_required
 @require_http_methods(['POST'])
 def alert_create(request, org_id):
@@ -2889,6 +2956,7 @@ def alert_create(request, org_id):
         email_subject=(data.get('email_subject', '') or '').strip(),
         start_date=data.get('start_date') or None,
         delivery_time=data.get('delivery_time') or None,
+        categories=_clean_categories(data, multipart),
     )
     if multipart and 'banner_image' in request.FILES:
         alert.banner_image = request.FILES['banner_image']
@@ -2909,6 +2977,12 @@ def alert_update(request, org_id, alert_id):
     if 'recipients' in data:
         alert.recipients = _clean_recipients(data['recipients'])
         alert.email = alert.recipients.split(',')[0].strip() if alert.recipients else ''
+    # 'categories_touched' always accompanies the categories checkboxes so an
+    # all-unchecked submission (which sends no 'categories' key at all) is still
+    # distinguishable from a caller that omitted the field entirely and should
+    # leave the alert's existing categories untouched.
+    if 'categories_touched' in data:
+        alert.categories = _clean_categories(data, multipart)
     if 'start_date' in data:
         alert.start_date = data['start_date'] or None
     if 'delivery_time' in data:

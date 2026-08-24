@@ -519,7 +519,10 @@ def ingest_clips(date_from, date_to, media_type=None, dry_run=False,
         org_keywords[org.id] = list(org.keywords.all())
         org_competitors[org.id] = list(org.competitors.all())
         for ctype, model in model_for.items():
-            existing = model.objects.filter(
+            # all_objects (not objects): archived rows must still count as
+            # "already captured", or re-ingesting the same clip after it was
+            # archived would silently recreate it as a fresh, unarchived row.
+            existing = model.all_objects.filter(
                 organization=org, date_published__range=(win_from, win_to)
             ).values_list('url', 'headline', 'date_published')
             seen[(org.id, ctype)] = {_dedup_key(u, h, d) for u, h, d in existing}

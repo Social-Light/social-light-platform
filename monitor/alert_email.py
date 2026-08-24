@@ -4,7 +4,7 @@ Shared logic for building and sending the media-digest alert email.
 Used by both the scheduled management command (send_daily_alerts) and the
 "Send test now" button in the UI, so the two paths stay identical.
 """
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from email.mime.image import MIMEImage
 
 from django.conf import settings
@@ -28,19 +28,52 @@ def _pub_ordinal(obj):
     return d.toordinal() if d else 0
 
 
-def gather(org, since):
+
+# How far back a mention's own publish date may be and still count as "new" for
+# a digest, keyed by Alert.frequency. A backfill or late import can create a
+# row today (created_at = now) for something published months ago — without
+# this, `since` (a created_at watermark) alone would let it through as if it
+# just happened. Values are generous grace windows around each cadence, not a
+# strict window equal to it, so a slightly-delayed same-cycle item still shows.
+MAX_PUBLISH_AGE_DAYS = {
+    'immediate': 3,
+    'daily':     3,
+    'weekly':    10,
+    'monthly':   35,
+}
+DEFAULT_MAX_PUBLISH_AGE_DAYS = 3
+
+
+def gather(org, since, alert=None, max_publish_age_days=None):
     """
     Return (online, print, social, broadcast) lists of records that came through
     since `since` (a datetime watermark, by created_at), each sorted with the
     org's country first and then newest publication date first.
+
+    When `alert` is given and its categories exclude 'mention' (see
+    Alert.wants_category), all four lists come back empty — the alert has been
+    configured to skip raw media mentions entirely (e.g. reports/system only).
+
+    max_publish_age_days: if given, also requires date_published to fall within
+    that many days of today — independent of created_at. Without this, a row
+    backfilled today for something published months ago passes the created_at
+    watermark and reads as "new" in the digest. Pass None to skip this guard
+    (e.g. for tooling that intentionally wants everything since the watermark).
     """
+    if alert is not None and not alert.wants_category('mention'):
+        return [], [], [], []
+
     oc = org.country or ''
+    earliest_pub = (
+        timezone.localdate() - timedelta(days=max_publish_age_days)
+        if max_publish_age_days is not None else None
+    )
 
     def collect(manager):
-        items = list(
-            filter_relevant(manager.all())
-            .filter(created_at__gte=since).order_by('-date_published', '-created_at')[:50]
-        )
+        qs = filter_relevant(manager.all()).filter(created_at__gte=since)
+        if earliest_pub is not None:
+            qs = qs.filter(date_published__gte=earliest_pub)
+        items = list(qs.order_by('-date_published', '-created_at')[:50])
         return sorted(items, key=lambda a: (_country_sort_key(a, oc), -_pub_ordinal(a)))
 
     return (
@@ -49,6 +82,18 @@ def gather(org, since):
         collect(org.social_posts),
         collect(org.broadcast_mentions),
     )
+
+
+def gather_events(org, since, categories=None):
+    """Return Event rows for `org` created since `since`, newest first, capped like
+    the mention collections above. `categories` (an iterable of Event.category
+    values) restricts which categories come back; falsy/None means all of them —
+    mirrors Alert.wants_category's "empty means everything" convention."""
+    from .models import Event
+    qs = Event.objects.filter(organization=org, created_at__gte=since).order_by('-created_at')
+    if categories:
+        qs = qs.filter(category__in=categories)
+    return list(qs[:50])
 
 
 def start_of_today():
@@ -104,8 +149,12 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True, rec
     if since is None:
         since = alert.last_sent_at or start_of_today()
 
-    online, print_arts, social, broadcast = gather(org, since)
-    total = len(online) + len(print_arts) + len(social) + len(broadcast)
+    max_age = MAX_PUBLISH_AGE_DAYS.get(alert.frequency, DEFAULT_MAX_PUBLISH_AGE_DAYS)
+    online, print_arts, social, broadcast = gather(org, since, alert, max_publish_age_days=max_age)
+    events = gather_events(org, since, alert.categories)
+    reports = [e for e in events if e.category == 'report']
+    system_events = [e for e in events if e.category == 'system']
+    total = len(online) + len(print_arts) + len(social) + len(broadcast) + len(reports) + len(system_events)
 
     if not force and alert.frequency == 'immediate' and total == 0:
         return {'sent': False, 'reason': 'no new records', 'total': 0, 'recipients': recipients}
@@ -138,10 +187,14 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True, rec
         'print_articles':     print_arts,
         'social_posts':       social,
         'broadcast_mentions': broadcast,
+        'reports':            reports,
+        'system_events':      system_events,
         'online_count':       len(online),
         'print_count':        len(print_arts),
         'social_count':       len(social),
         'broadcast_count':    len(broadcast),
+        'reports_count':      len(reports),
+        'system_count':       len(system_events),
     }
 
     html_body = render_to_string('monitor/email/daily_digest.html', context)

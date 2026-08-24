@@ -1,13 +1,13 @@
 """AI-generated report analysis: ESG, Stakeholder, Sectorial Competitor, and
 Reputational Risks / Opportunities.
 
-A single Anthropic call per (organisation, period) produces the structured data
-for report sections that the raw models can't supply on their own. The result is
-persisted in the ReportAnalysis model and reused for the life of that record —
-there is no time-based expiry. It is regenerated only when new mentions have been
-added to the period (see ``_has_new_data`` / ``analysis_is_stale``) or when the
-user forces a regenerate. This survives restarts and keeps normal page views off
-the API.
+A single Groq call (llama-3.3-70b-versatile) per (organisation, period)
+produces the structured data for report sections that the raw models can't
+supply on their own. The result is persisted in the ReportAnalysis model and
+reused for the life of that record — there is no time-based expiry. It is
+regenerated only when new mentions have been added to the period (see
+``_has_new_data`` / ``analysis_is_stale``) or when the user forces a regenerate.
+This survives restarts and keeps normal page views off the API.
 
 Generation is on demand (the report's "Generate AI Analysis" button); page loads
 call ``get_cached_analysis`` only. If the SDK/API key is missing or a generation
@@ -19,12 +19,13 @@ import logging
 import re
 
 from django.conf import settings
+from django.urls import reverse
 
 from .relevancy import filter_relevant
 
 logger = logging.getLogger(__name__)
 
-MODEL = getattr(settings, 'REPORT_AI_MODEL', 'claude-sonnet-4-6')
+MODEL = getattr(settings, 'REPORT_AI_MODEL', 'llama-3.3-70b-versatile')
 MAX_MENTIONS = 60  # cap the prompt size / token cost
 
 # ESG Analysis is a matrix: SASB-style issues (rows) × stakeholders (columns),
@@ -74,6 +75,20 @@ def _store(org, date_from, date_to, payload):
     )
 
 
+def _log_analysis_event(org, date_from, date_to):
+    """Record an Event so alert digests notify recipients that a fresh AI analysis
+    is available for this period. Only called for a genuinely new/regenerated
+    result — not for the empty-coverage sentinel or a reused cached analysis."""
+    from .models import Event
+    base = (getattr(settings, 'SITE_URL', 'https://sociallight.africa') or '').rstrip('/')
+    Event.objects.create(
+        organization=org, category='report', event_type='analysis_generated',
+        title=f'AI analysis ready: {org.name} ({date_from}–{date_to})',
+        summary='ESG, stakeholder and sectorial competitor analysis has been generated for this period.',
+        url=f"{base}{reverse('monitor:report_full', args=[org.id])}?date_from={date_from}&date_to={date_to}",
+    )
+
+
 def get_cached_analysis(org, date_from, date_to):
     """Return the stored analysis dict for this period, or None if none exists.
     Persists for the life of the record (no time-based expiry). Never calls the
@@ -112,7 +127,7 @@ def analysis_is_stale(org, date_from, date_to):
 
 
 def generate_analysis(org, date_from, date_to, force=False):
-    """Generate (and persist) the analysis via the Anthropic API. Returns the dict,
+    """Generate (and persist) the analysis via the Groq API. Returns the dict,
     or None when there's no coverage. Raises ReportAIError on config/API errors.
 
     Unless ``force`` is set, an existing analysis is reused indefinitely and only
@@ -123,9 +138,9 @@ def generate_analysis(org, date_from, date_to, force=False):
             return rec.payload or None  # reuse stored result (empty-dict → no coverage)
 
     # Trim stray whitespace/quotes that often sneak in from .env files.
-    api_key = (getattr(settings, 'ANTHROPIC_API_KEY', '') or '').strip().strip('"').strip("'")
+    api_key = (getattr(settings, 'GROQ_API_KEY', '') or '').strip().strip('"').strip("'")
     if not api_key:
-        raise ReportAIError('AI is not configured — set ANTHROPIC_API_KEY.')
+        raise ReportAIError('AI is not configured — set GROQ_API_KEY.')
 
     payload = _gather(org, date_from, date_to)
     if not payload['mentions']:
@@ -133,20 +148,20 @@ def generate_analysis(org, date_from, date_to, force=False):
         return None
 
     try:
-        import anthropic
+        import groq
     except ImportError:
-        raise ReportAIError('The "anthropic" package is not installed (pip install anthropic).')
+        raise ReportAIError('The "groq" package is not installed (pip install groq).')
 
     try:
-        result = _normalise(_call_anthropic(api_key, org, date_from, date_to, payload))
-    except anthropic.AuthenticationError:
-        raise ReportAIError('Anthropic authentication failed — the API key is invalid. '
-                            'Check ANTHROPIC_API_KEY.')
-    except anthropic.RateLimitError:
-        raise ReportAIError('Anthropic rate limit reached. Please try again shortly.')
-    except anthropic.APIStatusError as exc:
-        raise ReportAIError(f'Anthropic API error (HTTP {exc.status_code}). Please try again.')
-    except anthropic.APIConnectionError:
+        result = _normalise(_call_groq(api_key, org, date_from, date_to, payload))
+    except groq.AuthenticationError:
+        raise ReportAIError('Groq authentication failed — the API key is invalid. '
+                            'Check GROQ_API_KEY.')
+    except groq.RateLimitError:
+        raise ReportAIError('Groq rate limit reached. Please try again shortly.')
+    except groq.APIStatusError as exc:
+        raise ReportAIError(f'Groq API error (HTTP {exc.status_code}). Please try again.')
+    except groq.APIConnectionError:
         raise ReportAIError('Could not reach the AI service in time (timeout or network). '
                             'Try again, or use a shorter reporting period.')
     except ReportAIError:
@@ -156,6 +171,7 @@ def generate_analysis(org, date_from, date_to, force=False):
         raise ReportAIError('Analysis failed to generate. Check the server logs for details.')
 
     _store(org, date_from, date_to, result)
+    _log_analysis_event(org, date_from, date_to)
     return result
 
 
@@ -211,14 +227,14 @@ def _gather(org, date_from, date_to):
     return {'mentions': mentions[:MAX_MENTIONS], 'competitors': competitors}
 
 
-# ── Anthropic call ────────────────────────────────────────────────────────────
+# ── Groq call ─────────────────────────────────────────────────────────────────
 
-def _call_anthropic(api_key, org, date_from, date_to, payload):
-    import anthropic  # lazy import so the app runs without the SDK installed
+def _call_groq(api_key, org, date_from, date_to, payload):
+    import groq  # lazy import so the app runs without the SDK installed
 
     # Bound the call well under gunicorn's --timeout so a slow response fails
     # cleanly (ReportAIError) instead of getting the worker killed mid-request.
-    client = anthropic.Anthropic(api_key=api_key, timeout=120.0, max_retries=1)
+    client = groq.Groq(api_key=api_key, timeout=120.0, max_retries=1)
 
     mentions_block = "\n".join(
         f"- [{m['media']}/{m['sentiment']}] ({m['source']}) {m['text']}" for m in payload['mentions']
@@ -279,16 +295,22 @@ For "reputational_risks" and "reputational_opportunities": derive each item from
 
 For "kpi_insights": identify the business/performance themes that the coverage actually speaks to (e.g. Compliance, Customer Experience, Innovation, Community Investment) and, for each, write a detailed 2-4 sentence narrative grounded in the specific mentions — name the initiatives, people, products or events involved and explain the implication. Set "score" to the theme's sentiment on a -100..100 scale (0 = neutral/balanced), "mentions" to how many mentions relate to the theme (its visibility), and "media" to the media type the insight is drawn from. Return 2-5 substantive insights per media type that has relevant coverage; omit a media type with no relevant coverage. Do NOT include comments or any text outside the JSON. Return ONLY the JSON object."""
 
-    msg = client.messages.create(
+    completion = client.chat.completions.create(
         model=MODEL,
-        max_tokens=8192,  # headroom for ESG + competitor + risks/opps + detailed KPI insights
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
+        # Reserved output budget. Kept under Groq's 12,000 TPM cap (llama-3.3-70b-versatile)
+        # together with the worst-case prompt (MAX_MENTIONS mentions + up to 8 competitors,
+        # ~4.5k tokens) — 8192 pushed a full-size org's request over the limit (413).
+        max_tokens=7000,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        response_format={"type": "json_object"},
     )
-    if getattr(msg, 'stop_reason', None) == 'max_tokens':
+    choice = completion.choices[0]
+    if choice.finish_reason == 'length':
         raise ReportAIError('The AI response was truncated. Try a shorter reporting period.')
-    text = "".join(block.text for block in msg.content if getattr(block, 'type', '') == 'text')
-    return _parse_json(text)
+    return _parse_json(choice.message.content)
 
 
 def _parse_json(text):

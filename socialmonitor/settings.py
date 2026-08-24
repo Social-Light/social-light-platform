@@ -39,6 +39,10 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # Scopes non-admin users to their own organisation and enforces the
+    # free-trial paywall. Must sit after AuthenticationMiddleware (needs
+    # request.user).
+    'monitor.middleware.OrganizationAccessMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -104,7 +108,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN', '')
 
-DEFAULT_FROM_EMAIL  = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <noreply@sociallight.africa>')
+DEFAULT_FROM_EMAIL  = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <support@sociallightbw.com>')
 EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
 
 ANYMAIL = {
@@ -126,6 +130,14 @@ MEDIAHOST_TIMEOUT = int(os.getenv('MEDIAHOST_TIMEOUT', '120'))  # per-request re
 
 
 SITE_URL = os.getenv('SITE_URL', 'https://sociallight.africa')
+
+# ── Free trial & billing ─────────────────────────────────────────────────────
+# Length of the self-service free trial started from the public signup page.
+TRIAL_PERIOD_DAYS = int(os.getenv('TRIAL_PERIOD_DAYS', '14'))
+# Where package requests raised from the paywall are emailed. Comma-separated.
+SALES_NOTIFICATION_EMAILS = [
+    e.strip() for e in os.getenv('SALES_NOTIFICATION_EMAILS', 'sales@sociallight.africa').split(',') if e.strip()
+]
 
 # Base URL the headless-Chromium PDF renderer uses to reach the app for reports
 # that must load live (charts + static assets), e.g. Competitor Analysis. Set to

@@ -20,7 +20,10 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from monitor.models import Alert
-from monitor.alert_email import build_and_send, gather, start_of_today, daily_alert_due
+from monitor.alert_email import (
+    build_and_send, gather, start_of_today, daily_alert_due,
+    MAX_PUBLISH_AGE_DAYS, DEFAULT_MAX_PUBLISH_AGE_DAYS,
+)
 
 
 class Command(BaseCommand):
@@ -77,7 +80,8 @@ class Command(BaseCommand):
             since = start_of_today() if test else (alert.last_sent_at or start_of_today())
 
             if dry_run:
-                online, print_arts, social, broadcast = gather(org, since)
+                max_age = MAX_PUBLISH_AGE_DAYS.get(alert.frequency, DEFAULT_MAX_PUBLISH_AGE_DAYS)
+                online, print_arts, social, broadcast = gather(org, since, max_publish_age_days=max_age)
                 total = len(online) + len(print_arts) + len(social) + len(broadcast)
                 if not test and alert.frequency == 'immediate' and total == 0:
                     continue

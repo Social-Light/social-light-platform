@@ -127,6 +127,7 @@
           data-start="{{ a.start_date|date:'Y-m-d' }}"
           data-time="{{ a.delivery_time|time:'H:i' }}"
           data-banner="{% if a.banner_image %}{{ a.banner_image.url }}{% endif %}"
+          data-categories="{{ a.categories|join:',' }}"
           data-active="{{ a.is_active|yesno:'1,0' }}">
         <td>
           <div class="alert-name-cell">
@@ -241,6 +242,22 @@
         <div class="form-group">
           <label class="form-label">Delivery Time</label>
           <select id="alertTime" class="form-select"></select>
+        </div>
+      </div>
+
+      <!-- Categories -->
+      <div class="modal-section">
+        <h3 class="modal-section-title">Notify Me About</h3>
+        <div class="form-group" style="display:flex;flex-wrap:wrap;gap:18px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:#334155;cursor:pointer;">
+            <input type="checkbox" id="catMention" value="mention" checked /> New media mentions
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:#334155;cursor:pointer;">
+            <input type="checkbox" id="catReport" value="report" checked /> New reports & analyses
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:#334155;cursor:pointer;">
+            <input type="checkbox" id="catSystem" value="system" checked /> System updates
+          </label>
         </div>
       </div>
 
@@ -368,11 +385,26 @@ function resetAlertForm() {
   document.getElementById('alertFreq').value = 'daily';
   document.getElementById('alertTime').value = '08:00';
   document.getElementById('recipInput').value = '';
+  document.getElementById('catMention').checked = true;
+  document.getElementById('catReport').checked = true;
+  document.getElementById('catSystem').checked = true;
   _recipients = [];
   _bannerFile = null;
   _removeBanner = false;
   setBannerPreview('');
   renderRecipients();
+}
+
+// An alert with no `categories` set (created before this feature existed, or
+// created since with every box left checked) is stored as [] meaning "every
+// category" (see Alert.wants_category) — so an empty/missing value here means
+// "all checked", not "none checked".
+function setCategoryCheckboxes(raw) {
+  const cats = (raw || '').split(',').map(s => s.trim()).filter(Boolean);
+  const all = cats.length === 0;
+  document.getElementById('catMention').checked = all || cats.includes('mention');
+  document.getElementById('catReport').checked = all || cats.includes('report');
+  document.getElementById('catSystem').checked = all || cats.includes('system');
 }
 
 function openCreateAlert() {
@@ -394,6 +426,7 @@ function editAlert(btn) {
   if (row.dataset.time) document.getElementById('alertTime').value = row.dataset.time;
   _recipients = (row.dataset.recipients || '').split(',').map(s => s.trim()).filter(Boolean);
   renderRecipients();
+  setCategoryCheckboxes(row.dataset.categories);
   if (row.dataset.banner) setBannerPreview(row.dataset.banner);
   document.getElementById('alertModalTitle').textContent = 'Edit Alert';
   document.getElementById('alertModalSubtitle').textContent = 'Update your alert settings';
@@ -409,6 +442,12 @@ function saveAlert() {
   if (!subject) return alert('Email subject is required');
   if (!_recipients.length) return alert('Add at least one recipient');
 
+  const categories = ['catMention', 'catReport', 'catSystem']
+    .map(id => document.getElementById(id))
+    .filter(el => el.checked)
+    .map(el => el.value);
+  if (!categories.length) return alert('Select at least one thing to notify about');
+
   const id = document.getElementById('alertId').value;
   const fd = new FormData();
   fd.append('name', name);
@@ -417,6 +456,8 @@ function saveAlert() {
   fd.append('frequency', document.getElementById('alertFreq').value);
   fd.append('start_date', document.getElementById('alertStartDate').value || '');
   fd.append('delivery_time', document.getElementById('alertTime').value || '');
+  fd.append('categories_touched', '1');
+  categories.forEach(c => fd.append('categories', c));
   if (_bannerFile) fd.append('banner_image', _bannerFile);
   if (_removeBanner) fd.append('remove_banner', '1');
 

@@ -225,6 +225,11 @@
       <button type="submit" class="btn-signin">Sign In</button>
     </form>
 
+    <p style="text-align:center;margin:22px 0 0;font-size:13.5px;color:#64748b;">
+      Don't have an account?
+      <a href="{% url 'monitor:signup' %}" style="color:#3891C7;font-weight:600;text-decoration:none;">Start a free trial</a>
+    </p>
+
     <a href="{% url 'monitor:home' %}" class="af-back"><i class="bi bi-arrow-left"></i> Back to home</a>
   </div>
 </div>

@@ -1,7 +1,8 @@
 """Issue-focused ("saga") report generation.
 
-From every mention in a period, a single Anthropic call selects only those
-relevant to a named issue (the saga) and writes the issue-specific narrative:
+From every mention in a period, a single Groq call (llama-3.3-70b-versatile)
+selects only those relevant to a named issue (the saga) and writes the
+issue-specific narrative:
 executive summary, "at a glance" facts, a case timeline, narrative/framing
 analysis, reputational risks, stakeholder impact and recommendations. Modelled
 on the special-edition deck (P8 Billion Fund Dispute).
@@ -26,6 +27,7 @@ import re
 
 from django.conf import settings
 from django.db.models import Q
+from django.urls import reverse
 
 from .relevancy import filter_relevant
 from .report_ai import ReportAIError, _parse_json, _sent, MODEL
@@ -175,7 +177,22 @@ def generate_issue_report(org, title, issue_query, date_from, date_to, created_b
         payload=payload,
         created_by=created_by,
     )
+    _log_report_event(report)
     return report
+
+
+def _log_report_event(report):
+    """Record an Event so alert digests notify recipients about a newly created
+    issue/campaign report. Not called on regenerate_narrative — only a brand-new
+    report counts as something worth a fresh notification."""
+    from .models import Event
+    base = (getattr(settings, 'SITE_URL', 'https://sociallight.africa') or '').rstrip('/')
+    Event.objects.create(
+        organization=report.organization, category='report', event_type='issue_report_created',
+        title=f'New {report.type_label} report: {report.title}',
+        summary=report.issue_query[:200],
+        url=f"{base}{reverse('monitor:report_issue', args=[report.organization.id, report.id])}",
+    )
 
 
 def regenerate_narrative(report):
@@ -202,25 +219,25 @@ def regenerate_narrative(report):
 def _run(org, title, issue_query, date_from, date_to, candidates):
     """Shared generate path: validate config, call the API, normalise. Returns
     ``(selected_ids, payload)``."""
-    api_key = (getattr(settings, 'ANTHROPIC_API_KEY', '') or '').strip().strip('"').strip("'")
+    api_key = (getattr(settings, 'GROQ_API_KEY', '') or '').strip().strip('"').strip("'")
     if not api_key:
-        raise ReportAIError('AI is not configured — set ANTHROPIC_API_KEY.')
+        raise ReportAIError('AI is not configured — set GROQ_API_KEY.')
 
     try:
-        import anthropic
+        import groq
     except ImportError:
-        raise ReportAIError('The "anthropic" package is not installed (pip install anthropic).')
+        raise ReportAIError('The "groq" package is not installed (pip install groq).')
 
     try:
-        data = _call_anthropic(api_key, org, title, issue_query, date_from, date_to, candidates)
-    except anthropic.AuthenticationError:
-        raise ReportAIError('Anthropic authentication failed — the API key is invalid. '
-                            'Check ANTHROPIC_API_KEY.')
-    except anthropic.RateLimitError:
-        raise ReportAIError('Anthropic rate limit reached. Please try again shortly.')
-    except anthropic.APIStatusError as exc:
-        raise ReportAIError(f'Anthropic API error (HTTP {exc.status_code}). Please try again.')
-    except anthropic.APIConnectionError:
+        data = _call_groq(api_key, org, title, issue_query, date_from, date_to, candidates)
+    except groq.AuthenticationError:
+        raise ReportAIError('Groq authentication failed — the API key is invalid. '
+                            'Check GROQ_API_KEY.')
+    except groq.RateLimitError:
+        raise ReportAIError('Groq rate limit reached. Please try again shortly.')
+    except groq.APIStatusError as exc:
+        raise ReportAIError(f'Groq API error (HTTP {exc.status_code}). Please try again.')
+    except groq.APIConnectionError:
         raise ReportAIError('Could not reach the AI service in time (timeout or network). '
                             'Try again, or use a shorter reporting period.')
     except ReportAIError:
@@ -233,10 +250,10 @@ def _run(org, title, issue_query, date_from, date_to, candidates):
     return _normalise(data, valid_refs)
 
 
-def _call_anthropic(api_key, org, title, issue_query, date_from, date_to, candidates):
-    import anthropic  # lazy import so the app runs without the SDK installed
+def _call_groq(api_key, org, title, issue_query, date_from, date_to, candidates):
+    import groq  # lazy import so the app runs without the SDK installed
 
-    client = anthropic.Anthropic(api_key=api_key, timeout=120.0, max_retries=1)
+    client = groq.Groq(api_key=api_key, timeout=120.0, max_retries=1)
 
     cand_block = "\n".join(
         f"- [{c['ref']}] ({c['source']}, {c['date']}, {c['sentiment']}) {c['text']}"
@@ -286,16 +303,22 @@ Rules:
 - Return 4-8 timeline events, 3-5 framing themes, 2-5 risks, 4-7 stakeholders, 3-6 recommendations, where the coverage supports them.
 - Output ONLY the JSON object, no commentary."""
 
-    msg = client.messages.create(
+    completion = client.chat.completions.create(
         model=MODEL,
-        max_tokens=8192,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
+        # Reserved output budget. Kept under Groq's 12,000 TPM cap (llama-3.3-70b-versatile)
+        # together with the worst-case prompt (up to MAX_CANDIDATES=100 candidate mentions)
+        # — 8192 pushed a full-size request over the limit (413) on report_ai's sibling call.
+        max_tokens=7000,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        response_format={"type": "json_object"},
     )
-    if getattr(msg, 'stop_reason', None) == 'max_tokens':
+    choice = completion.choices[0]
+    if choice.finish_reason == 'length':
         raise ReportAIError('The AI response was truncated. Try a shorter reporting period.')
-    text = "".join(block.text for block in msg.content if getattr(block, 'type', '') == 'text')
-    return _parse_json(text)
+    return _parse_json(choice.message.content)
 
 
 # ── Normalisation (never trust the model's shape or its refs) ──────────────────
