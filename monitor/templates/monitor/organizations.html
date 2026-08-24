@@ -11,17 +11,18 @@
   <link rel="manifest" href="{% static 'favicon/site.webmanifest' %}?v=2">
   <meta name="theme-color" content="#ffffff">
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link rel="stylesheet" href="{% static 'monitor/css/main.css' %}" />
   <style>
     html, body { height: 100%; margin: 0; padding: 0; }
-    body { display: flex; min-height: 100vh; font-family: 'Inter', sans-serif; background: #fff; }
+    body { display: flex; min-height: 100vh; font-family: 'Montserrat', sans-serif; background: #fff; }
+    h1, h2, h3, .org-card-title, .left-welcome { font-family: 'Poppins', sans-serif; }
 
     /* ── Left panel ─────────────────────────────────── */
     .orgs-left {
       width: 45%;
-      background: linear-gradient(160deg, #1d4878 0%, #3891C7 50%, #306EB1 100%);
+      background: linear-gradient(160deg, #062E72 0%, #0B4893 50%, #041F4D 100%);
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -75,7 +76,7 @@
       font-weight: 900; color: #fff;
       line-height: 1.1; letter-spacing: -0.02em; margin-bottom: 18px;
     }
-    .left-welcome span { color: #8dcaed; }
+    .left-welcome span { background: linear-gradient(90deg,#EA8C13,#F5B01B,#7BA32C,#1E9160,#0A8B8E,#0A6C9E); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     .left-sub {
       font-size: 16px; color: rgba(255,255,255,0.65);
       line-height: 1.7; max-width: 360px;
@@ -133,7 +134,7 @@
       margin-bottom: 24px;
     }
     .org-card-header {
-      background: linear-gradient(135deg, #3891C7, #306EB1);
+      background: linear-gradient(135deg, #0B4893, #041F4D);
       padding: 28px 28px 24px;
     }
     .org-card-logo {
@@ -151,21 +152,21 @@
     .org-select-input {
       width: 100%; padding: 12px 40px 12px 14px;
       border: 1.5px solid #e2e8f0; border-radius: 10px;
-      font-size: 14px; font-family: 'Inter', sans-serif; color: #0f172a;
+      font-size: 14px; font-family: 'Montserrat', sans-serif; color: #0f172a;
       background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 12px center / 18px;
       appearance: none; outline: none;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
-    .org-select-input:focus { border-color: #3891C7; box-shadow: 0 0 0 3px rgba(56,145,199,0.12); }
+    .org-select-input:focus { border-color: #0B4893; box-shadow: 0 0 0 3px rgba(11,72,147,0.12); }
     .btn-continue {
       width: 100%; margin-top: 16px; padding: 13px;
-      background: linear-gradient(135deg, #4294CE, #306EB1);
+      background: linear-gradient(135deg, #0B4893, #041F4D);
       color: #fff; border: none; border-radius: 10px;
-      font-size: 15px; font-weight: 700; font-family: 'Inter', sans-serif;
-      cursor: pointer; box-shadow: 0 4px 16px rgba(56,145,199,0.3);
+      font-size: 15px; font-weight: 700; font-family: 'Montserrat', sans-serif;
+      cursor: pointer; box-shadow: 0 4px 16px rgba(11,72,147,0.3);
       transition: transform 0.15s, box-shadow 0.15s;
     }
-    .btn-continue:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(56,145,199,0.4); }
+    .btn-continue:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(11,72,147,0.4); }
 
     .empty-orgs { text-align: center; padding: 32px; color: #94a3b8; font-size: 13px; }
 
@@ -262,7 +263,7 @@
     </div>
 
     {% if user.role == 'platform_admin' %}
-    <a href="{% url 'monitor:manage_organizations' %}" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:8px;padding:11px;border:1.5px dashed rgba(56,145,199,0.3);border-radius:10px;font-size:13px;font-weight:600;color:#3891C7;text-decoration:none;transition:all 0.2s;" onmouseover="this.style.background='#e8f4fd';this.style.borderColor='#3891C7';" onmouseout="this.style.background='';this.style.borderColor='rgba(56,145,199,0.3)';">
+    <a href="{% url 'monitor:manage_organizations' %}" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:8px;padding:11px;border:1.5px dashed rgba(11,72,147,0.3);border-radius:10px;font-size:13px;font-weight:600;color:#0B4893;text-decoration:none;transition:all 0.2s;" onmouseover="this.style.background='#eaf1fa';this.style.borderColor='#0B4893';" onmouseout="this.style.background='';this.style.borderColor='rgba(11,72,147,0.3)';">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       Manage Organizations
     </a>
