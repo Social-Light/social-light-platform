@@ -28,6 +28,7 @@ from .relevancy import compute_relevancy, filter_relevant
 from .print_metrics import estimate_print_reach as _print_reach
 from .alert_email import build_and_send, start_of_today
 from .org_email import send_org_disabled_email, send_org_enabled_email
+from .search_ai import resolve_filters
 
 
 def _absolute_url(path):
@@ -580,12 +581,13 @@ def media_online(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     qs = filter_relevant(org.online_articles.all())
 
-    q = request.GET.get('q', '')
+    q_raw = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
     country = request.GET.get('country', '')
     coverage = request.GET.get('coverage', '')
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
+    q, sentiment, date_from, date_to = resolve_filters(q_raw, sentiment, date_from, date_to)
 
     if q:
         qs = qs.filter(Q(headline__icontains=q) | Q(source__icontains=q))
@@ -611,7 +613,7 @@ def media_online(request, org_id):
         'current_count': current_count,
         'has_more': has_more,
         'next_page_url': next_page_url,
-        'q': q,
+        'q': q_raw,
         'sentiment_choices': SENTIMENT_CHOICES,
         'coverage_choices': COVERAGE_CHOICES,
         'countries': countries,
@@ -684,12 +686,13 @@ def media_print(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     qs = filter_relevant(org.print_articles.all())
 
-    q = request.GET.get('q', '')
+    q_raw = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
     country = request.GET.get('country', '')
     section = request.GET.get('section', '')
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
+    q, sentiment, date_from, date_to = resolve_filters(q_raw, sentiment, date_from, date_to)
 
     if q:
         qs = qs.filter(Q(headline__icontains=q) | Q(source__icontains=q) | Q(author__icontains=q))
@@ -716,7 +719,7 @@ def media_print(request, org_id):
         'current_count': current_count,
         'has_more': has_more,
         'next_page_url': next_page_url,
-        'q': q,
+        'q': q_raw,
         'sentiment_choices': SENTIMENT_CHOICES,
         'countries': countries,
         'sections': sections,
@@ -1150,12 +1153,13 @@ def media_social(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     qs = filter_relevant(org.social_posts.all())
 
-    q = request.GET.get('q', '')
+    q_raw = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
     country = request.GET.get('country', '')
     platform = request.GET.get('platform', '')
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
+    q, sentiment, date_from, date_to = resolve_filters(q_raw, sentiment, date_from, date_to)
 
     if q:
         qs = qs.filter(Q(headline__icontains=q) | Q(page_name__icontains=q))
@@ -1181,7 +1185,7 @@ def media_social(request, org_id):
         'current_count': current_count,
         'has_more': has_more,
         'next_page_url': next_page_url,
-        'q': q,
+        'q': q_raw,
         'sentiment_choices': SENTIMENT_CHOICES,
         'platform_choices': PLATFORM_CHOICES,
         'countries': countries,
@@ -1260,12 +1264,13 @@ def media_broadcast(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     qs = filter_relevant(org.broadcast_mentions.all())
 
-    q = request.GET.get('q', '')
+    q_raw = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
     country = request.GET.get('country', '')
     btype = request.GET.get('btype', '')
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
+    q, sentiment, date_from, date_to = resolve_filters(q_raw, sentiment, date_from, date_to)
 
     if q:
         qs = qs.filter(Q(headline__icontains=q) | Q(source__icontains=q))
@@ -1291,7 +1296,7 @@ def media_broadcast(request, org_id):
         'current_count': current_count,
         'has_more': has_more,
         'next_page_url': next_page_url,
-        'q': q,
+        'q': q_raw,
         'sentiment_choices': SENTIMENT_CHOICES,
         'countries': countries,
         'selected_sentiment': sentiment,
@@ -1370,8 +1375,9 @@ def competitors_view(request, org_id):
     today = date.today()
     month_start = today.replace(day=1)
 
-    q_search = request.GET.get('q', '')
+    q_search_raw = request.GET.get('q', '')
     sentiment_filter = request.GET.get('sentiment', '')
+    q_search, sentiment_filter, _df, _dt = resolve_filters(q_search_raw, sentiment_filter, '', '')
 
     def terms_q(comp):
         """Match if ANY of the competitor's terms (name + aliases) appears in
@@ -1499,7 +1505,7 @@ def competitors_view(request, org_id):
         'broadcast_count': len(deduped_bc),
         'print_count': len(deduped_print),
         'social_count': len(deduped_social),
-        'q': q_search,
+        'q': q_search_raw,
         'selected_sentiment': sentiment_filter,
         'sentiment_choices': SENTIMENT_CHOICES,
     })
