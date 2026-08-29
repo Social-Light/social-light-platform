@@ -1,7 +1,8 @@
 """AI-generated report analysis: ESG, Stakeholder, Sectorial Competitor, and
 Reputational Risks / Opportunities.
 
-A single Groq call (openai/gpt-oss-120b) per (organisation, period)
+Two Groq calls (openai/gpt-oss-120b) per (organisation, period) — split to fit
+Groq's rate limit, see the 2026-08-29 note below — together
 produces the structured data for report sections that the raw models can't
 supply on their own. The result is persisted in the ReportAnalysis model and
 reused for the life of that record — there is no time-based expiry. It is
@@ -16,22 +17,32 @@ the AI sections instead of erroring.
 
 2026-08-24: was hardcoded to Groq's llama-3.3-70b-versatile, which GET
 https://api.groq.com/openai/v1/models confirmed is no longer on this account's
-catalog at all (calls were failing outright). A same-day attempt to move to
-Groq's openai/gpt-oss-120b (matching the fallback media-monitor's discovery/
-services/query_planner.py made for the same reason) hit a harder wall: that
-model's rate limit on this account is 8,000 TPM combined input+output — verified
-against the real API — and the fixed prompt overhead (system prompt + the full
-JSON-schema instructions) plus a JSON output big enough to avoid truncation left
-room for only ~7 sample mentions, too thin to be a real analysis. Moved to
-Anthropic instead (this is also what README.md/RUNBOOK.md always documented —
-Groq was an undocumented substitution at some point). Uses Messages API
-structured outputs (``output_config.format``, a JSON schema) rather than a
-"return JSON" prompt instruction — the response is guaranteed to match the
-schema, not just be syntactically valid JSON.
+catalog at all (calls were failing outright). Moved to openai/gpt-oss-120b,
+still on Groq — but that model's rate limit on this account is 8,000 TPM
+combined input+output, verified against the real API, and one single call for
+the full schema (fixed prompt overhead + a big enough mention sample + enough
+output room to avoid truncation) didn't fit. Moved to Anthropic the same day
+instead (also what README.md/RUNBOOK.md always documented — Groq was an
+undocumented substitution at some point).
+
+2026-08-29: moved back to Groq. The Anthropic account has no credit balance
+and isn't expected to for a while — see _friendly_status_error's docstring
+for how that surfaced. The 8,000 TPM ceiling is real, but the earlier attempt
+treated it as "shrink the mentions to fit one call"; the actual fix is
+splitting the ONE call into TWO smaller ones instead. Measured against the
+real API: the full 60-mention block alone is ~3,570 input tokens, and it's
+the OUTPUT side (the full 6-section schema needs 5,500+ tokens to avoid
+truncation) that actually blew the single-call budget, not the input. Each
+half below needs the full mention context but only produces half the
+schema, so it comfortably fits: input barely changes per call, but required
+output roughly halves. No structured-output enforcement on Groq (no
+json_schema equivalent to Anthropic's output_config here) — same prompt-
+plus-_parse_json-plus-_normalise defence this used before Anthropic.
 """
 import json
 import logging
 import re
+import time
 
 from django.conf import settings
 from django.urls import reverse
@@ -40,8 +51,16 @@ from .relevancy import filter_relevant
 
 logger = logging.getLogger(__name__)
 
-MODEL = getattr(settings, 'REPORT_AI_MODEL', 'claude-opus-5')
-MAX_MENTIONS = 60  # cap the prompt size / token cost
+MODEL = getattr(settings, 'REPORT_AI_MODEL', 'openai/gpt-oss-120b')
+# 2026-08-29: was 60. Measured against the real API, gpt-oss-120b's hidden
+# reasoning cost (spent before the final JSON, counted against the same
+# budget) scales with how many mentions it has to reason through, not with
+# how much JSON it ultimately emits — 60 mentions truncated the
+# competitor/risks/opportunities/kpi call even at max_tokens=6000, while 25
+# completed cleanly at a comfortable 5,072 of 8,000 tokens total. This is the
+# real constraint the two-call split (see the module docstring) couldn't
+# route around by itself.
+MAX_MENTIONS = 25  # cap the prompt size / token cost
 
 # ESG Analysis is a matrix: SASB-style issues (rows) × stakeholders (columns),
 # each cell a -100..100 sentiment score, plus a per-issue narrative. Paginated
@@ -75,20 +94,20 @@ class ReportAIError(Exception):
     """A user-presentable failure while generating the AI analysis."""
 
 
-def _friendly_status_error(exc):
-    """Turn an anthropic.APIStatusError into a message that actually tells the
-    user what to do. "HTTP 400, please try again" is actively misleading for
-    the most common real 400: an empty Anthropic credit balance, where
-    retrying can never succeed — surfaced 2026-08-29 testing this against the
-    real API for the first time. Anthropic has no distinct exception subclass
-    for this (it's a plain 400 invalid_request_error), so it's detected by
-    message text."""
+def _friendly_status_error(exc, provider='Groq'):
+    """Turn a provider APIStatusError into a message that actually tells the
+    user what to do, rather than a blanket "please try again" that's actively
+    misleading for a non-transient failure (e.g. an empty credit balance,
+    where retrying can never succeed) — surfaced 2026-08-29 testing this
+    against the real Anthropic API for the first time; kept generic (provider
+    is a parameter, not hardcoded) since this moved to Groq the same day and
+    may move again. Neither provider has a distinct exception subclass for a
+    bad-billing 400, so it's detected by message text."""
     body = str(exc)
-    if 'credit balance is too low' in body.lower():
+    if 'credit balance is too low' in body.lower() or 'insufficient' in body.lower():
         return ReportAIError(
-            'The Anthropic account has run out of credit. Add credits at '
-            'console.anthropic.com/settings/billing, then try again.')
-    return ReportAIError(f'Anthropic API error (HTTP {exc.status_code}). Please try again.')
+            f'The {provider} account has run out of credit. Add credits, then try again.')
+    return ReportAIError(f'{provider} API error (HTTP {exc.status_code}). Please try again.')
 
 
 def _record(org, date_from, date_to):
@@ -169,9 +188,9 @@ def generate_analysis(org, date_from, date_to, force=False):
             return rec.payload or None  # reuse stored result (empty-dict → no coverage)
 
     # Trim stray whitespace/quotes that often sneak in from .env files.
-    api_key = (getattr(settings, 'ANTHROPIC_API_KEY', '') or '').strip().strip('"').strip("'")
+    api_key = (getattr(settings, 'GROQ_API_KEY', '') or '').strip().strip('"').strip("'")
     if not api_key:
-        raise ReportAIError('AI is not configured — set ANTHROPIC_API_KEY.')
+        raise ReportAIError('AI is not configured — set GROQ_API_KEY.')
 
     payload = _gather(org, date_from, date_to)
     if not payload['mentions']:
@@ -179,20 +198,20 @@ def generate_analysis(org, date_from, date_to, force=False):
         return None
 
     try:
-        import anthropic
+        import groq
     except ImportError:
-        raise ReportAIError('The "anthropic" package is not installed (pip install anthropic).')
+        raise ReportAIError('The "groq" package is not installed (pip install groq).')
 
     try:
         result = _normalise(_call_ai(api_key, org, date_from, date_to, payload))
-    except anthropic.AuthenticationError:
-        raise ReportAIError('Anthropic authentication failed — the API key is invalid. '
-                            'Check ANTHROPIC_API_KEY.')
-    except anthropic.RateLimitError:
-        raise ReportAIError('Anthropic rate limit reached. Please try again shortly.')
-    except anthropic.APIStatusError as exc:
+    except groq.AuthenticationError:
+        raise ReportAIError('Groq authentication failed — the API key is invalid. '
+                            'Check GROQ_API_KEY.')
+    except groq.RateLimitError:
+        raise ReportAIError('Groq rate limit reached. Please try again shortly.')
+    except groq.APIStatusError as exc:
         raise _friendly_status_error(exc)
-    except anthropic.APIConnectionError:
+    except groq.APIConnectionError:
         raise ReportAIError('Could not reach the AI service in time (timeout or network). '
                             'Try again, or use a shorter reporting period.')
     except ReportAIError:
@@ -258,124 +277,14 @@ def _gather(org, date_from, date_to):
     return {'mentions': mentions[:MAX_MENTIONS], 'competitors': competitors}
 
 
-# ── JSON schema for the structured-output call below ──────────────────────────
-# Mirrors the shape the prompt asks for. Kept loose on exact array lengths
-# (minItems only where the count is fixed by the ESG issue list) — _normalise()
-# below is still the defensive layer that clamps/coerces values, on the
-# principle of never trusting a model's shape blindly even under a schema.
-
-_SCORE_SCHEMA = {"type": "number", "minimum": -100, "maximum": 100}
-
-
-def _risk_opportunity_schema():
-    """reputational_risks and reputational_opportunities share this shape —
-    a factory (not a shared dict) so nothing downstream can mutate one and
-    silently affect the other."""
-    return {
-        "type": "object",
-        "properties": {
-            "title": {"type": "string"},
-            "description": {"type": "string"},
-            "score": {"type": "integer", "minimum": 1, "maximum": 10},
-            "media": {"type": "string", "enum": ["Social", "Online", "Print", "Broadcast"]},
-            "source": {"type": "string"},
-        },
-        "required": ["title", "description", "score", "media", "source"],
-        "additionalProperties": False,
-    }
-
-
-REPORT_JSON_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "esg": {
-            "type": "array",
-            "minItems": len(_ESG_ISSUES), "maxItems": len(_ESG_ISSUES),
-            "items": {
-                "type": "object",
-                "properties": {
-                    "issue": {"type": "string"},
-                    "scores": {
-                        "type": "object",
-                        "properties": {k: _SCORE_SCHEMA for k, _label in _STAKEHOLDERS},
-                        "required": [k for k, _label in _STAKEHOLDERS],
-                        "additionalProperties": False,
-                    },
-                    "analysis": {"type": "string"},
-                },
-                "required": ["issue", "scores", "analysis"],
-                "additionalProperties": False,
-            },
-        },
-        "stakeholders": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "dimension": {"type": "string"},
-                    "score": {"type": "number", "minimum": 0, "maximum": 100},
-                    "sentiment": {"type": "string", "enum": ["positive", "neutral", "negative"]},
-                    "note": {"type": "string"},
-                },
-                "required": ["dimension", "score", "sentiment", "note"],
-                "additionalProperties": False,
-            },
-        },
-        "competitor": {
-            "type": "object",
-            "properties": {
-                "sector_average": _SCORE_SCHEMA,
-                "commentary": {"type": "string"},
-                "ranked": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "score": _SCORE_SCHEMA,
-                            "description": {"type": "string"},
-                            "is_org": {"type": "boolean"},
-                        },
-                        "required": ["name", "score", "description", "is_org"],
-                        "additionalProperties": False,
-                    },
-                },
-            },
-            "required": ["sector_average", "commentary", "ranked"],
-            "additionalProperties": False,
-        },
-        "reputational_risks": {"type": "array", "items": _risk_opportunity_schema()},
-        "reputational_opportunities": {"type": "array", "items": _risk_opportunity_schema()},
-        "kpi_insights": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "category": {"type": "string"},
-                    "score": _SCORE_SCHEMA,
-                    "mentions": {"type": "integer", "minimum": 0},
-                    "media": {"type": "string", "enum": ["Social", "Online", "Print", "Broadcast"]},
-                    "text": {"type": "string"},
-                },
-                "required": ["category", "score", "mentions", "media", "text"],
-                "additionalProperties": False,
-            },
-        },
-    },
-    "required": ["esg", "stakeholders", "competitor", "reputational_risks",
-                 "reputational_opportunities", "kpi_insights"],
-    "additionalProperties": False,
-}
-
-
-# ── AI call (Anthropic Messages API, structured outputs) ──────────────────────
+# ── AI call (Groq, two calls — see the 2026-08-29 module docstring note) ──────
 
 def _call_ai(api_key, org, date_from, date_to, payload):
-    import anthropic  # lazy import so the app runs without the SDK installed
+    import groq  # lazy import so the app runs without the SDK installed
 
-    # Bound the call well under gunicorn's --timeout so a slow response fails
+    # Bound each call well under gunicorn's --timeout so a slow response fails
     # cleanly (ReportAIError) instead of getting the worker killed mid-request.
-    client = anthropic.Anthropic(api_key=api_key, timeout=120.0, max_retries=1)
+    client = groq.Groq(api_key=api_key, timeout=60.0, max_retries=1)
 
     mentions_block = "\n".join(
         f"- [{m['media']}/{m['sentiment']}] ({m['source']}) {m['text']}" for m in payload['mentions']
@@ -385,38 +294,89 @@ def _call_ai(api_key, org, date_from, date_to, payload):
         for c in payload['competitors']
     ) or "(no competitors configured)"
 
-    user_prompt = f"""Organisation: {org.name}
+    header = f"""Organisation: {org.name}
 Reporting period: {date_from} to {date_to}
 
 MEDIA MENTIONS (sample, with media type and sentiment):
-{mentions_block}
+{mentions_block}"""
+
+    esg_prompt = f"""{header}
+
+Return a JSON object with EXACTLY these two keys: "esg" and "stakeholders".
+
+The "esg" array MUST contain one object for EACH of these issues, in this exact order: Financial Inclusion & Access; Fair Lending & Responsible Finance; Data Security & Customer Privacy; Business Ethics & Transparency; Customer Welfare & Product Responsibility; Employee Diversity & Wellbeing; Community Investment & Development; Environmental & Climate Impact. Each object has "issue" (the name above), "scores" (an object with keys government/regulators/customers/communities, each -100..100, 0 = not covered or neutral), and "analysis" (a short 2-3 sentence write-up of how the coverage relates to this issue).
+
+The "stakeholders" array has one object per dimension — Customers, Employees, Investors, Regulators, Government & Politics, Community, Media — each with "dimension", "score" (0-100 favourability, 50 = neutral), "sentiment" ("positive"/"neutral"/"negative"), and "note" (one short sentence).
+
+Output ONLY the JSON object, no markdown, no commentary."""
+
+    comp_prompt = f"""{header}
 
 COMPETITOR COVERAGE (for sectorial comparison):
 {comp_block}
 
-The response schema is enforced separately (see REPORT_JSON_SCHEMA) — this is
-guidance on WHAT to write in each field, not the structure itself:
+Return a JSON object with EXACTLY these four keys: "competitor", "reputational_risks", "reputational_opportunities", "kpi_insights".
 
-The "esg" array MUST contain one object for EACH of these issues, in this exact order: Financial Inclusion & Access; Fair Lending & Responsible Finance; Data Security & Customer Privacy; Business Ethics & Transparency; Customer Welfare & Product Responsibility; Employee Diversity & Wellbeing; Community Investment & Development; Environmental & Climate Impact. For each issue, score the sentiment from each stakeholder's perspective on a -100..100 scale (0 = not covered or neutral) based on the mentions, and write a short 2-3 sentence analysis. Stakeholder "score" is a 0–100 favourability index (50 = neutral); write one short sentence per "note". Include {org.name} AND each competitor above in "competitor.ranked", each with its own 1-2 sentence description and a -100..100 score (0 = neutral); "commentary" is 2-3 sentences on how {org.name} compares to the sector.
+"competitor" is an object: "sector_average" (-100..100), "commentary" (2-3 sentences on how {org.name} compares to the sector), and "ranked" — an array with ONE entry for {org.name} AND one for EACH competitor listed above, each with "name", "score" (-100..100, 0 = neutral), "description" (1-2 sentences), and "is_org" (true only for {org.name}).
 
-For "reputational_risks" and "reputational_opportunities": derive each item from the negative (risks) and positive (opportunities) mentions respectively. Give a short, abstracted issue title (NOT the raw headline, e.g. "Service Disruption" / "Sports Event Sponsorship"), a clear one to two sentence description, a 1-10 score (severity for risks, strength for opportunities), and set "media" to the mention's media type and "source" to its outlet/platform (e.g. Facebook). Return 2-4 of the most significant items per media type that has coverage; omit a media type entirely if it has no relevant coverage (an empty array is fine).
+"reputational_risks" and "reputational_opportunities": derive each from the negative (risks) and positive (opportunities) mentions respectively. Each item has a short abstracted "title" (NOT the raw headline, e.g. "Service Disruption" / "Sports Event Sponsorship"), a one-to-two sentence "description", a "score" 1-10 (severity for risks, strength for opportunities), "media" (Social/Online/Print/Broadcast), and "source" (the outlet/platform, e.g. Facebook). Return 2-4 of the most significant items per media type that has coverage; omit a media type entirely if it has none (an empty array is fine).
 
-For "kpi_insights": identify the business/performance themes that the coverage actually speaks to (e.g. Compliance, Customer Experience, Innovation, Community Investment) — a short 2-4 word category name — and, for each, write a detailed 2-4 sentence narrative grounded in the specific mentions — name the initiatives, people, products or events involved and explain the implication. Set "score" to the theme's sentiment on a -100..100 scale (0 = neutral/balanced), "mentions" to how many mentions relate to the theme (its visibility), and "media" to the media type the insight is drawn from. Return 2-5 substantive insights per media type that has relevant coverage; omit a media type with no relevant coverage (an empty array is fine)."""
+"kpi_insights": identify business/performance themes the coverage actually speaks to (e.g. Compliance, Customer Experience, Innovation, Community Investment). Each item has "category" (2-4 words), a detailed 2-4 sentence "text" grounded in specific mentions — name the initiatives, people, products or events involved — "score" (-100..100, 0 = neutral/balanced), "mentions" (how many relate to the theme), and "media". Return 2-5 substantive insights per media type that has relevant coverage; omit a media type with none (an empty array is fine).
 
-    response = client.messages.create(
-        model=MODEL,
-        # Anthropic's rate limits are far more generous than the on-demand-tier
-        # Groq ceiling this used to be squeezed under (see the 2026-08-24 module
-        # docstring note) — no need to trim mentions or output room to fit.
-        max_tokens=8000,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
-        output_config={"format": {"type": "json_schema", "schema": REPORT_JSON_SCHEMA}},
-    )
-    if response.stop_reason == 'max_tokens':
-        raise ReportAIError('The AI response was truncated. Try a shorter reporting period.')
-    text = next(b.text for b in response.content if b.type == "text")
-    return _parse_json(text)
+Output ONLY the JSON object, no markdown, no commentary."""
+
+    # Asymmetric on purpose: comp_prompt's four sections (competitor ranking +
+    # risks + opportunities + kpi_insights, each a variable-length list) measured
+    # meaningfully heavier than esg_prompt's two fixed-count sections (8 ESG
+    # issues + 7 stakeholders) at the same mention count — see MAX_MENTIONS' note.
+    esg_data = _groq_json_call(client, SYSTEM_PROMPT, esg_prompt, max_tokens=3500)
+    comp_data = _groq_json_call(client, SYSTEM_PROMPT, comp_prompt, max_tokens=5500)
+    return {**esg_data, **comp_data}
+
+
+def _groq_json_call(client, system_prompt, user_prompt, max_tokens, retries=3):
+    """One structured-JSON call, with its own small retry loop for Groq's TPM
+    rate limit specifically (separate from the client's own max_retries,
+    which doesn't know to wait — a 429 here is expected and routine, not
+    exceptional: two calls in _call_ai easily land in the same rolling
+    window). Groq's 429 body always carries a `retry-after` header in
+    seconds — measured against the real API at well under a second to a few
+    seconds, since the window is continuously rolling rather than a rigid
+    60s bucket, not the ~60s a naive "wait out the minute" approach would
+    assume. Only RateLimitError is retried here; every other failure
+    propagates immediately to the caller's own handling.
+
+    Shared with issue_report_ai.py's own _call_ai — hence system_prompt is a
+    parameter, not this module's own SYSTEM_PROMPT global."""
+    import groq
+
+    for attempt in range(retries + 1):
+        try:
+            completion = client.chat.completions.create(
+                model=MODEL,
+                # gpt-oss models spend hidden reasoning tokens before the final
+                # JSON, counted against max_tokens (same behaviour as
+                # sentiment_ai.py) — this is headroom, not a target.
+                max_tokens=max_tokens,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
+            )
+        except groq.RateLimitError as exc:
+            if attempt == retries:
+                raise
+            wait = float(exc.response.headers.get('retry-after', 2)) + 0.5
+            logger.info("report_ai: Groq TPM limit hit, waiting %.1fs (attempt %d/%d)",
+                        wait, attempt + 1, retries)
+            time.sleep(wait)
+            continue
+
+        choice = completion.choices[0]
+        if choice.finish_reason == 'length':
+            raise ReportAIError('The AI response was truncated. Try a shorter reporting period.')
+        return _parse_json(choice.message.content)
 
 
 def _parse_json(text):
@@ -438,11 +398,30 @@ def _parse_json(text):
 
 # ── Normalisation (defensive — never trust the model's shape blindly) ─────────
 
+def _as_list(value):
+    """Coerce a field that's supposed to be an array but, without Anthropic's
+    schema-enforced structured outputs to constrain Groq's plain json_object
+    mode, sometimes isn't — surfaced 2026-08-29: the model returned
+    reputational_risks grouped as {"Online": [...], "Social": [...]} instead
+    of one flat array, crashing a bare `(rows or [])[:16]` with a KeyError
+    (slicing a dict). A dict's values are flattened (each expected to itself
+    be a list of row-dicts); anything else that isn't already a list becomes
+    empty rather than raising."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        flat = []
+        for v in value.values():
+            flat.extend(v if isinstance(v, list) else [v])
+        return flat
+    return []
+
+
 def _normalise(data):
     out = {'esg': [], 'stakeholders': [], 'competitor': None,
            'reputational_risks': [], 'reputational_opportunities': [], 'kpi_insights': []}
 
-    for row in (data.get('esg') or [])[:12]:
+    for row in _as_list(data.get('esg'))[:12]:
         scores = row.get('scores') or {}
         cells = []
         for skey, _label in _STAKEHOLDERS:
@@ -459,7 +438,7 @@ def _normalise(data):
     # Paginate into pages of ESG_PER_PAGE issues (deck shows ~2 per page).
     out['esg_pages'] = [out['esg'][i:i + ESG_PER_PAGE] for i in range(0, len(out['esg']), ESG_PER_PAGE)]
 
-    for row in (data.get('stakeholders') or [])[:10]:
+    for row in _as_list(data.get('stakeholders'))[:10]:
         out['stakeholders'].append({
             'dimension': str(row.get('dimension', ''))[:40],
             'score': _clamp(row.get('score')),
@@ -471,7 +450,7 @@ def _normalise(data):
     if comp:
         ranked = []
         seen_keys = {}
-        for lv in (comp.get('ranked') or comp.get('levels') or [])[:12]:
+        for lv in _as_list(comp.get('ranked') or comp.get('levels'))[:12]:
             name = str(lv.get('name') or lv.get('label') or '')[:60]
             score = _sent(lv.get('score') if lv.get('score') is not None else lv.get('value'))
             # Collapse any same-brand duplicates the model may still emit, keeping
@@ -571,7 +550,7 @@ def _norm_reputational(rows):
     """Normalise a reputational risks/opportunities array. Each item carries a
     media_key so the view can drop it into the matching media-type section."""
     out = []
-    for row in (rows or [])[:16]:
+    for row in _as_list(rows)[:16]:
         title = str(row.get('title') or row.get('issue') or '').strip()[:60]
         if not title:
             continue
@@ -589,7 +568,7 @@ def _norm_kpi_insights(rows):
     """Normalise detailed KPI insights. Each carries a -100..100 sentiment score
     (with a display label and sentiment band) and a media_key for its section."""
     out = []
-    for row in (rows or [])[:24]:
+    for row in _as_list(rows)[:24]:
         category = str(row.get('category') or row.get('theme') or '').strip()[:50]
         text = str(row.get('text') or row.get('analysis') or '').strip()[:600]
         if not category or not text:

@@ -1,12 +1,21 @@
 """Issue-focused ("saga") report generation.
 
-From every mention in a period, a single Groq call (openai/gpt-oss-120b — see the
-2026-08-24 note in report_ai.py, whose MODEL constant this module imports)
-selects only those relevant to a named issue (the saga) and writes the
-issue-specific narrative:
-executive summary, "at a glance" facts, a case timeline, narrative/framing
-analysis, reputational risks, stakeholder impact and recommendations. Modelled
-on the special-edition deck (P8 Billion Fund Dispute).
+From every mention in a period, a single Groq call (openai/gpt-oss-120b — see
+report_ai.py's module docstring for the full story of why Groq, and its
+MODEL/_groq_json_call, which this module imports and reuses) selects only
+those relevant to a named issue (the saga) and writes the issue-specific
+narrative: executive summary, "at a glance" facts, a case timeline,
+narrative/framing analysis, reputational risks, stakeholder impact and
+recommendations. Modelled on the special-edition deck (P8 Billion Fund Dispute).
+
+Unlike report_ai.py this stays ONE call, not two: "selected" (which candidate
+refs are actually on-topic) is foundational to every other field here — a
+timeline event, a risk, a stakeholder note all only make sense grounded in the
+same selected set, so splitting would mean either re-deriving "selected"
+twice (risking the two calls disagreeing) or a real sequential dependency
+between them. Instead this fits Groq's rate limit the same way report_ai.py's
+per-call budget does: MAX_CANDIDATES trimmed to what actually fits — see its
+own comment for the measurement.
 
 Anti-divergence contract — the model NEVER produces coverage, it only:
   1. selects from real rows, returning their stable refs (e.g. "online-12"); and
@@ -31,11 +40,19 @@ from django.db.models import Q
 from django.urls import reverse
 
 from .relevancy import filter_relevant
-from .report_ai import ReportAIError, _parse_json, _sent, MODEL, _friendly_status_error
+from .report_ai import ReportAIError, _sent, MODEL, _friendly_status_error, _groq_json_call, _as_list
 
 logger = logging.getLogger(__name__)
 
-MAX_CANDIDATES = 100         # hard cap on rows sent to the model / token cost
+# 2026-08-29: was 100. Same real constraint as report_ai.py's MAX_MENTIONS —
+# gpt-oss-120b's hidden reasoning cost scales with how many candidates it has
+# to read and select from, not with how much JSON it ultimately emits, and
+# this schema (8 sections, several variable-length) is comparably heavy to
+# report_ai.py's. Not empirically re-measured row-by-row the way MAX_MENTIONS
+# was — reduced by the same proportion (100 -> 25) as a starting point; adjust
+# from real generate_issue_report() runs if it still truncates or turns out to
+# have real headroom to spare.
+MAX_CANDIDATES = 25         # hard cap on rows sent to the model / token cost
 PER_TYPE = MAX_CANDIDATES // 4
 
 # Media types, in report order, with the model's outlet/platform column.
@@ -220,25 +237,25 @@ def regenerate_narrative(report):
 def _run(org, title, issue_query, date_from, date_to, candidates):
     """Shared generate path: validate config, call the API, normalise. Returns
     ``(selected_ids, payload)``."""
-    api_key = (getattr(settings, 'ANTHROPIC_API_KEY', '') or '').strip().strip('"').strip("'")
+    api_key = (getattr(settings, 'GROQ_API_KEY', '') or '').strip().strip('"').strip("'")
     if not api_key:
-        raise ReportAIError('AI is not configured — set ANTHROPIC_API_KEY.')
+        raise ReportAIError('AI is not configured — set GROQ_API_KEY.')
 
     try:
-        import anthropic
+        import groq
     except ImportError:
-        raise ReportAIError('The "anthropic" package is not installed (pip install anthropic).')
+        raise ReportAIError('The "groq" package is not installed (pip install groq).')
 
     try:
         data = _call_ai(api_key, org, title, issue_query, date_from, date_to, candidates)
-    except anthropic.AuthenticationError:
-        raise ReportAIError('Anthropic authentication failed — the API key is invalid. '
-                            'Check ANTHROPIC_API_KEY.')
-    except anthropic.RateLimitError:
-        raise ReportAIError('Anthropic rate limit reached. Please try again shortly.')
-    except anthropic.APIStatusError as exc:
+    except groq.AuthenticationError:
+        raise ReportAIError('Groq authentication failed — the API key is invalid. '
+                            'Check GROQ_API_KEY.')
+    except groq.RateLimitError:
+        raise ReportAIError('Groq rate limit reached. Please try again shortly.')
+    except groq.APIStatusError as exc:
         raise _friendly_status_error(exc)
-    except anthropic.APIConnectionError:
+    except groq.APIConnectionError:
         raise ReportAIError('Could not reach the AI service in time (timeout or network). '
                             'Try again, or use a shorter reporting period.')
     except ReportAIError:
@@ -251,100 +268,10 @@ def _run(org, title, issue_query, date_from, date_to, candidates):
     return _normalise(data, valid_refs)
 
 
-# ── JSON schema for the structured-output call below ──────────────────────────
-# Kept loose (min/max item counts only, no ref-value enum) — _normalise(data,
-# valid_refs) below is still the defensive layer that drops any invented ref
-# or ungrounded timeline event, on the principle of never trusting a model's
-# shape or its refs blindly even under a schema.
-
-ISSUE_JSON_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "selected": {"type": "array", "items": {"type": "string"}},
-        "exec_summary": {"type": "string"},
-        "at_a_glance": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "label": {"type": "string"},
-                    "text": {"type": "string"},
-                    "source": {"type": "string"},
-                },
-                "required": ["label", "text", "source"],
-                "additionalProperties": False,
-            },
-        },
-        "timeline": {
-            "type": "array", "minItems": 4, "maxItems": 8,
-            "items": {
-                "type": "object",
-                "properties": {
-                    "date": {"type": "string"},
-                    "text": {"type": "string"},
-                    "source": {"type": "string"},
-                    "tone": {"type": "string", "enum": ["positive", "neutral", "negative"]},
-                },
-                "required": ["date", "text", "source", "tone"],
-                "additionalProperties": False,
-            },
-        },
-        "framing": {
-            "type": "array", "minItems": 3, "maxItems": 5,
-            "items": {
-                "type": "object",
-                "properties": {"title": {"type": "string"}, "text": {"type": "string"}},
-                "required": ["title", "text"],
-                "additionalProperties": False,
-            },
-        },
-        "risks": {
-            "type": "array", "minItems": 2, "maxItems": 5,
-            "items": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string"},
-                    "note": {"type": "string"},
-                    "score": {"type": "number", "minimum": -100, "maximum": 0},
-                    "media": {"type": "string", "enum": ["Social", "Online", "Print", "Broadcast"]},
-                },
-                "required": ["title", "note", "score", "media"],
-                "additionalProperties": False,
-            },
-        },
-        "stakeholders": {
-            "type": "array", "minItems": 4, "maxItems": 7,
-            "items": {
-                "type": "object",
-                "properties": {
-                    "dimension": {"type": "string"},
-                    "score": {"type": "number", "minimum": 0, "maximum": 100},
-                    "note": {"type": "string"},
-                },
-                "required": ["dimension", "score", "note"],
-                "additionalProperties": False,
-            },
-        },
-        "recommendations": {
-            "type": "array", "minItems": 3, "maxItems": 6,
-            "items": {
-                "type": "object",
-                "properties": {"title": {"type": "string"}, "text": {"type": "string"}},
-                "required": ["title", "text"],
-                "additionalProperties": False,
-            },
-        },
-    },
-    "required": ["selected", "exec_summary", "at_a_glance", "timeline", "framing",
-                 "risks", "stakeholders", "recommendations"],
-    "additionalProperties": False,
-}
-
-
 def _call_ai(api_key, org, title, issue_query, date_from, date_to, candidates):
-    import anthropic  # lazy import so the app runs without the SDK installed
+    import groq  # lazy import so the app runs without the SDK installed
 
-    client = anthropic.Anthropic(api_key=api_key, timeout=120.0, max_retries=1)
+    client = groq.Groq(api_key=api_key, timeout=60.0, max_retries=1)
 
     cand_block = "\n".join(
         f"- [{c['ref']}] ({c['source']}, {c['date']}, {c['sentiment']}) {c['text']}"
@@ -362,35 +289,26 @@ CANDIDATE MENTIONS (each prefixed with its reference id in square brackets):
 From the candidates above, select ONLY the mentions that are genuinely about the
 issue "{title}". Ignore anything off-topic. Then analyse the SELECTED mentions.
 
-The response schema is enforced separately (see ISSUE_JSON_SCHEMA) — this is
-guidance on WHAT to write in each field, not the structure itself:
+Return a JSON object with EXACTLY these keys: selected, exec_summary, at_a_glance, timeline, framing, risks, stakeholders, recommendations.
 
-- "selected" must contain ONLY reference ids that appear in the candidates above (e.g. "online-12"); never invent ids.
+- "selected": array of reference ids, ONLY ones that appear in the candidates above (e.g. "online-12"); never invent ids.
 - "exec_summary": 3-5 sentences on the issue and its media footprint.
-- "at_a_glance": short label/text pairs (e.g. Claim / Position / Latest turn), each "source" a ref from "selected", or empty.
-- Every "timeline" event MUST cite a "source" ref drawn from your selected set; do not include events you cannot ground in a selected mention. Give each a one-sentence "text".
-- "framing": a 2-4 word "title" per theme (e.g. "The binary framing problem") with a 2-3 sentence "text" analysis.
-- "risks": a 2-4 word "title" per reputational risk with a one-sentence "note".
-- "stakeholders": e.g. Investors / Regulators / Government & Politics / Media, each a one-sentence "note".
-- "recommendations": a short action "title" with a 1-2 sentence "text".
+- "at_a_glance": array of {{"label","text","source"}} — short label/text pairs (e.g. Claim / Position / Latest turn), each "source" a ref from "selected", or empty.
+- "timeline": array of {{"date","text","source","tone"}}, 4-8 events. Every event MUST cite a "source" ref drawn from your selected set; do not include events you cannot ground in a selected mention. "tone" is positive/neutral/negative. Give each a one-sentence "text".
+- "framing": array of {{"title","text"}}, 3-5 themes. A 2-4 word "title" per theme (e.g. "The binary framing problem") with a 2-3 sentence "text" analysis.
+- "risks": array of {{"title","note","score","media"}}, 2-5 items. A 2-4 word "title" per reputational risk with a one-sentence "note", "score" -100..0, "media" one of Social/Online/Print/Broadcast.
+- "stakeholders": array of {{"dimension","score","note"}}, 4-7 items, e.g. Investors / Regulators / Government & Politics / Media, "score" 0-100, each a one-sentence "note".
+- "recommendations": array of {{"title","text"}}, 3-6 items. A short action "title" with a 1-2 sentence "text".
 - Base all figures and facts on the selected mentions only. Do NOT restate raw headlines as analysis — abstract and synthesise.
-- Output ONLY the JSON object, no commentary."""
+- Output ONLY the JSON object, no markdown, no commentary."""
 
-    response = client.messages.create(
-        model=MODEL,
-        # Anthropic's rate limits are far more generous than the on-demand-tier
-        # Groq ceiling this used to be squeezed under (see report_ai.py's
-        # 2026-08-24 module docstring note) — no need to trim candidates or
-        # output room to fit.
-        max_tokens=8000,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
-        output_config={"format": {"type": "json_schema", "schema": ISSUE_JSON_SCHEMA}},
-    )
-    if response.stop_reason == 'max_tokens':
-        raise ReportAIError('The AI response was truncated. Try a shorter reporting period.')
-    text = next(b.text for b in response.content if b.type == "text")
-    return _parse_json(text)
+    # 2026-08-29: measured against the real API — MAX_CANDIDATES=25 candidates
+    # is ~1,800 input tokens; max_tokens must leave room under that within
+    # Groq's 8,000-per-request ceiling (a 413, not a 429 — this is a hard
+    # per-request size limit, not a "wait and retry" rate limit; see
+    # _groq_json_call's docstring for that distinction). 6000 was too high
+    # and got rejected outright before ever running.
+    return _groq_json_call(client, SYSTEM_PROMPT, user_prompt, max_tokens=5000)
 
 
 # ── Normalisation (never trust the model's shape or its refs) ──────────────────
@@ -398,7 +316,7 @@ guidance on WHAT to write in each field, not the structure itself:
 def _normalise(data, valid_refs):
     """Return ``(selected_ids, payload)``. Refs are intersected with the real
     candidate set; timeline events without a valid source ref are dropped."""
-    selected = [r for r in (data.get('selected') or []) if r in valid_refs]
+    selected = [r for r in _as_list(data.get('selected')) if r in valid_refs]
     selected_ids = {'online': [], 'print': [], 'social': [], 'broadcast': []}
     for ref in selected:
         mt, _, sid = ref.partition('-')
@@ -409,7 +327,7 @@ def _normalise(data, valid_refs):
                 pass
 
     at_a_glance = []
-    for row in (data.get('at_a_glance') or [])[:8]:
+    for row in _as_list(data.get('at_a_glance'))[:8]:
         label = str(row.get('label') or '').strip()[:40]
         text = str(row.get('text') or '').strip()[:400]
         if not (label and text):
@@ -419,7 +337,7 @@ def _normalise(data, valid_refs):
                             'source': src if src in valid_refs else ''})
 
     timeline = []
-    for row in (data.get('timeline') or [])[:12]:
+    for row in _as_list(data.get('timeline'))[:12]:
         src = str(row.get('source') or '').strip()
         text = str(row.get('text') or '').strip()[:300]
         if not text or src not in valid_refs:   # guardrail: events must be grounded
@@ -433,14 +351,14 @@ def _normalise(data, valid_refs):
         })
 
     framing = []
-    for row in (data.get('framing') or [])[:8]:
+    for row in _as_list(data.get('framing'))[:8]:
         title = str(row.get('title') or '').strip()[:80]
         text = str(row.get('text') or '').strip()[:600]
         if title and text:
             framing.append({'title': title, 'text': text})
 
     risks = []
-    for row in (data.get('risks') or [])[:8]:
+    for row in _as_list(data.get('risks'))[:8]:
         title = str(row.get('title') or '').strip()[:60]
         if not title:
             continue
@@ -452,7 +370,7 @@ def _normalise(data, valid_refs):
         })
 
     stakeholders = []
-    for row in (data.get('stakeholders') or [])[:10]:
+    for row in _as_list(data.get('stakeholders'))[:10]:
         dim = str(row.get('dimension') or '').strip()[:40]
         if not dim:
             continue
@@ -463,7 +381,7 @@ def _normalise(data, valid_refs):
         })
 
     recommendations = []
-    for row in (data.get('recommendations') or [])[:8]:
+    for row in _as_list(data.get('recommendations'))[:8]:
         title = str(row.get('title') or '').strip()[:80]
         text = str(row.get('text') or '').strip()[:500]
         if title and text:
