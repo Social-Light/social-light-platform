@@ -48,3 +48,25 @@ def update_sector_intelligence():
     """
     call_command('update_sector_intelligence')
     return 'update_sector_intelligence ran'
+
+
+@shared_task(name='monitor.analyze_sentiment')
+def analyze_sentiment_task(limit=300):
+    """
+    Re-score sentiment on newly-ingested mentions via a real contextual AI
+    read (Groq — see monitor/sentiment_ai.py), replacing crawler VADER /
+    vendor-tagged / manually-typed sentiment with one that actually reasons
+    about the text from the monitored org's own perspective.
+
+    Only ever touches rows with a blank sentiment_rationale (i.e. not yet
+    AI-analysed) — see the analyze_sentiment management command — so each
+    scheduled run only costs API calls on what's genuinely new since the
+    last run. `limit` bounds one run's duration/cost; raise it (or pass
+    --force via call_command kwargs) for a one-off larger backfill instead
+    of waiting for many scheduled runs to work through a big backlog.
+
+    Scheduled every 30 min by Celery Beat (see CELERY_BEAT_SCHEDULE), but can
+    also be triggered ad-hoc: analyze_sentiment_task.delay(limit=1000).
+    """
+    call_command('analyze_sentiment', limit=limit)
+    return f'analyze_sentiment ran (limit={limit})'

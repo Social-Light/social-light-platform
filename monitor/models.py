@@ -55,6 +55,7 @@ PLATFORM_CHOICES = [
     ('LinkedIn', 'LinkedIn'),
     ('YouTube', 'YouTube'),
     ('TikTok', 'TikTok'),
+    ('Facebook Group', 'Facebook Group'),
     ('Other', 'Other'),
 ]
 
@@ -379,6 +380,10 @@ class CompetitorArticle(models.Model):
     matched_keywords = models.CharField(max_length=300, blank=True)
     sentiment_score = models.FloatField(default=0)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    sentiment_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI sentiment pass set this — see monitor/sentiment_ai.py. "
+                  "Blank when sentiment was set manually, by a vendor feed, or not yet analysed.")
     reach = models.IntegerField(default=0)
     cpm = models.FloatField(default=0)
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -407,6 +412,10 @@ class OnlineArticle(models.Model):
     date_published = models.DateField()
     country = models.CharField(max_length=100, blank=True)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    sentiment_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI sentiment pass set this — see monitor/sentiment_ai.py. "
+                  "Blank when sentiment was set manually, by a vendor feed, or not yet analysed.")
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     coverage = models.CharField(max_length=50, choices=COVERAGE_CHOICES, blank=True, default='Not Set')
     reach = models.IntegerField(default=0)
@@ -435,6 +444,10 @@ class PrintArticle(models.Model):
     date_published = models.DateField()
     country = models.CharField(max_length=100, blank=True)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    sentiment_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI sentiment pass set this — see monitor/sentiment_ai.py. "
+                  "Blank when sentiment was set manually, by a vendor feed, or not yet analysed.")
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     reach = models.IntegerField(default=0, help_text='Estimated readership (circulation × readers-per-copy).')
     relevancy = models.FloatField(default=0)
@@ -463,6 +476,10 @@ class SocialMediaPost(models.Model):
     date_published = models.DateField()
     country = models.CharField(max_length=100, blank=True)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    sentiment_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI sentiment pass set this — see monitor/sentiment_ai.py. "
+                  "Blank when sentiment was set manually, by a vendor feed, or not yet analysed.")
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     rank = models.FloatField(default=0)
     reach = models.IntegerField(default=0)
@@ -489,6 +506,10 @@ class BroadcastMention(models.Model):
     date_published = models.DateField()
     country = models.CharField(max_length=100, blank=True)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    sentiment_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI sentiment pass set this — see monitor/sentiment_ai.py. "
+                  "Blank when sentiment was set manually, by a vendor feed, or not yet analysed.")
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     relevancy = models.FloatField(default=0)
     duration = models.CharField(max_length=50, blank=True)

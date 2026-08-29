@@ -106,6 +106,7 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')  # monitor/sentiment_ai.py
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN', '')
 
 DEFAULT_FROM_EMAIL  = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <support@sociallightbw.com>')
@@ -171,6 +172,10 @@ CELERY_BEAT_SCHEDULE = {
     'update-sector-intelligence': {
         'task': 'monitor.update_sector_intelligence',
         'schedule': crontab(hour=5, minute=12),          # once daily, before business hours
+    },
+    'analyze-sentiment': {
+        'task': 'monitor.analyze_sentiment',
+        'schedule': crontab(minute='*/30'),              # every 30 min, picks up newly-ingested mentions
     },
 }
 
