@@ -31,7 +31,7 @@ from django.db.models import Q
 from django.urls import reverse
 
 from .relevancy import filter_relevant
-from .report_ai import ReportAIError, _parse_json, _sent, MODEL
+from .report_ai import ReportAIError, _parse_json, _sent, MODEL, _friendly_status_error
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +237,7 @@ def _run(org, title, issue_query, date_from, date_to, candidates):
     except anthropic.RateLimitError:
         raise ReportAIError('Anthropic rate limit reached. Please try again shortly.')
     except anthropic.APIStatusError as exc:
-        raise ReportAIError(f'Anthropic API error (HTTP {exc.status_code}). Please try again.')
+        raise _friendly_status_error(exc)
     except anthropic.APIConnectionError:
         raise ReportAIError('Could not reach the AI service in time (timeout or network). '
                             'Try again, or use a shorter reporting period.')

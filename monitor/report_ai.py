@@ -75,6 +75,22 @@ class ReportAIError(Exception):
     """A user-presentable failure while generating the AI analysis."""
 
 
+def _friendly_status_error(exc):
+    """Turn an anthropic.APIStatusError into a message that actually tells the
+    user what to do. "HTTP 400, please try again" is actively misleading for
+    the most common real 400: an empty Anthropic credit balance, where
+    retrying can never succeed — surfaced 2026-08-29 testing this against the
+    real API for the first time. Anthropic has no distinct exception subclass
+    for this (it's a plain 400 invalid_request_error), so it's detected by
+    message text."""
+    body = str(exc)
+    if 'credit balance is too low' in body.lower():
+        return ReportAIError(
+            'The Anthropic account has run out of credit. Add credits at '
+            'console.anthropic.com/settings/billing, then try again.')
+    return ReportAIError(f'Anthropic API error (HTTP {exc.status_code}). Please try again.')
+
+
 def _record(org, date_from, date_to):
     from .models import ReportAnalysis
     return ReportAnalysis.objects.filter(
@@ -175,7 +191,7 @@ def generate_analysis(org, date_from, date_to, force=False):
     except anthropic.RateLimitError:
         raise ReportAIError('Anthropic rate limit reached. Please try again shortly.')
     except anthropic.APIStatusError as exc:
-        raise ReportAIError(f'Anthropic API error (HTTP {exc.status_code}). Please try again.')
+        raise _friendly_status_error(exc)
     except anthropic.APIConnectionError:
         raise ReportAIError('Could not reach the AI service in time (timeout or network). '
                             'Try again, or use a shorter reporting period.')
