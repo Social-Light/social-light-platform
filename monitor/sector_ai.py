@@ -8,10 +8,26 @@ tool) for genuinely current news and prices, since this content is public
 marketing-page material shown to visitors who aren't any org's client, not a
 summary of any client's monitored coverage.
 
-Model: claude-opus-5, same as report_ai.py, via the Messages API's structured
-outputs (output_config.format: json_schema) combined with the web_search tool
-in a single call — Claude searches (server-side, no client loop needed) and
-composes the final schema-constrained answer in one client.messages.create().
+Primary model: claude-opus-5, same as report_ai.py, via the Messages API's
+structured outputs (output_config.format: json_schema) combined with the
+web_search tool in a single call — Claude searches (server-side, no client
+loop needed) and composes the final schema-constrained answer in one
+client.messages.create().
+
+Free fallback (added 2026-08-30, for whenever Anthropic is unavailable — no
+credit balance, auth, rate limit, whatever): SearXNG (self-hosted metasearch,
+same instance media-monitor's discovery/services/search_api.py uses) does the
+actual search, then Groq (openai/gpt-oss-120b, already used by
+sentiment_ai.py/report_ai.py — free-tier friendly) selects and formats from
+those real results. Groq is told to extract only from what search actually
+returned, never to free-generate, so the fallback can't hallucinate a
+story/price search didn't find. generate_sector_stories/generate_commodity_
+quotes try Anthropic first and drop to this automatically on SectorAIError;
+callers don't need to know or care which path actually answered.
+(Considered, and rejected: Groq's own "compound"/"compound-mini" models,
+which have built-in web search — live-tested 2026-08-30 and every prompt
+that actually triggers their search tool 413s on this account. The listed
+models respond fine, but not to anything requiring a real search.)
 
 Every row this writes carries is_ai_generated=True (see the SectorStory/
 CommodityQuote model docstrings) — an editor's own hand-written rows are never
@@ -19,21 +35,38 @@ touched. Scheduled daily via Celery Beat -> monitor.update_sector_intelligence
 (see tasks.py / the update_sector_intelligence management command); can also
 be run ad hoc: ``python manage.py update_sector_intelligence``.
 
-If the SDK/API key is missing or a generation fails, callers get a
-SectorAIError — the caller decides whether that's fatal (the management
-command logs and continues to the next sector rather than aborting the whole
-run over one bad search).
+If both the primary and free fallback fail, callers get a SectorAIError — the
+caller decides whether that's fatal (the management command logs and
+continues to the next sector rather than aborting the whole run over one bad
+search).
 """
 import json
 import logging
 import re
 from datetime import date
 
+import requests
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 MODEL = getattr(settings, 'REPORT_AI_MODEL', 'claude-opus-5')  # reuse report_ai.py's override hook
+
+# Free fallback path (2026-08-30): when Anthropic fails — no credit balance,
+# auth, rate limit, whatever — generate_sector_stories/generate_commodity_quotes
+# fall back to SearXNG (self-hosted metasearch, same instance media-monitor's
+# discovery/services/search_api.py uses) for the actual search, then Groq
+# (already used by sentiment_ai.py/report_ai.py, free-tier friendly) to select
+# and format from those real results. Groq is instructed to extract ONLY from
+# the search results it's given — never free-generate — so this can't
+# hallucinate a story/price search didn't actually return.
+FALLBACK_MODEL = getattr(settings, 'SECTOR_AI_FALLBACK_MODEL', 'openai/gpt-oss-120b')
+
+FALLBACK_SYSTEM_PROMPT = (
+    "You extract genuinely current information from real web search results provided to "
+    "you below. Only use what is actually in the provided results — never invent, estimate, "
+    "or fill gaps from general knowledge. If the results don't contain a solid answer, say so."
+)
 
 STORIES_PER_SECTOR = 6
 
@@ -130,6 +163,91 @@ def _parse_json(text):
     return json.loads(text[start:end + 1])
 
 
+# ── Free fallback: SearXNG (search) + Groq (extract/format) ───────────────────
+
+def _searxng_search(query, count=8, time_range='week', categories='news'):
+    """Free, self-hosted web search. Returns a list of {title, url, content,
+    published_date} dicts, or [] if the instance is unreachable/misconfigured
+    or returns nothing — never raises, since "no SearXNG" and "SearXNG found
+    nothing" both mean the same thing to a caller: no results to work with."""
+    base_url = (getattr(settings, 'SEARXNG_URL', '') or '').rstrip('/')
+    if not base_url:
+        return []
+    params = {'q': query, 'format': 'json', 'categories': categories}
+    if time_range:
+        params['time_range'] = time_range
+    try:
+        resp = requests.get(f'{base_url}/search', params=params, timeout=15)
+        resp.raise_for_status()
+        results = resp.json().get('results', [])
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning('sector_ai: SearXNG search failed for %r: %s', query, exc)
+        return []
+
+    out = []
+    for r in results[:count]:
+        url = (r.get('url') or '').strip()
+        if not url:
+            continue
+        out.append({
+            'title': (r.get('title') or '').strip(),
+            'url': url,
+            'content': (r.get('content') or '').strip(),
+            'published_date': (r.get('publishedDate') or '').strip(),
+        })
+    return out
+
+
+def _groq_extract_json(user_prompt, max_tokens=2000):
+    """One Groq structured-JSON call for the free fallback path. Raises
+    SectorAIError on any failure, mirroring _run()'s contract, so callers
+    don't need to know which backend actually produced (or failed to
+    produce) a result."""
+    try:
+        import groq
+    except ImportError:
+        raise SectorAIError('The "groq" package is not installed (pip install groq).')
+
+    api_key = (getattr(settings, 'GROQ_API_KEY', '') or '').strip().strip('"').strip("'")
+    if not api_key:
+        raise SectorAIError('Free fallback unavailable — GROQ_API_KEY is not set.')
+
+    client = groq.Groq(api_key=api_key, timeout=30.0, max_retries=1)
+    try:
+        completion = client.chat.completions.create(
+            model=FALLBACK_MODEL,
+            # gpt-oss spends hidden reasoning tokens before the visible JSON —
+            # confirmed live 2026-08-30 (too tight a budget silently returns
+            # empty content, same finding as sentiment_ai.py/report_ai.py).
+            # This is headroom, not a target.
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": FALLBACK_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+    except groq.AuthenticationError:
+        raise SectorAIError('Groq authentication failed — the API key is invalid.')
+    except groq.RateLimitError:
+        raise SectorAIError('Groq rate limit reached. Please try again shortly.')
+    except groq.APIStatusError as exc:
+        raise SectorAIError(f'Groq API error (HTTP {exc.status_code}). Please try again.')
+    except groq.APIConnectionError:
+        raise SectorAIError('Could not reach Groq in time (timeout or network).')
+
+    choice = completion.choices[0]
+    if choice.finish_reason == 'length':
+        raise SectorAIError('The free fallback response was truncated.')
+    content = (choice.message.content or '').strip()
+    if not content:
+        raise SectorAIError('The free fallback returned no content.')
+    start, end = content.find('{'), content.rfind('}')
+    if start == -1 or end == -1:
+        raise SectorAIError("No JSON object in the free fallback's response")
+    return json.loads(content[start:end + 1])
+
+
 # ── Sector stories ─────────────────────────────────────────────────────────────
 
 STORY_JSON_SCHEMA = {
@@ -183,8 +301,27 @@ Only include stories you found via search and can point to a real URL for. If fe
 genuinely qualify, return fewer rather than padding with weaker items — an empty list is fine if
 nothing qualifies."""
 
-    data = _run(user_prompt, STORY_JSON_SCHEMA, max_uses=8)
-    stories = data.get('stories') or []
+    try:
+        data = _run(user_prompt, STORY_JSON_SCHEMA, max_uses=8)
+        stories = data.get('stories') or []
+    except SectorAIError as primary_exc:
+        logger.warning(
+            "sector_ai: Anthropic search failed for sector %r (%s) — trying free SearXNG+Groq fallback",
+            sector.name, primary_exc,
+        )
+        try:
+            stories = _generate_sector_stories_free(sector, count)
+        except SectorAIError as fallback_exc:
+            raise SectorAIError(
+                f'AI search unavailable (Anthropic: {primary_exc}; free fallback: {fallback_exc})'
+            ) from fallback_exc
+
+    return _clean_stories(stories, count)
+
+
+def _clean_stories(stories, count):
+    """Shared validation/truncation for both the Anthropic path's 'stories'
+    and the free fallback's — same shape, same rules either way."""
     out = []
     for row in stories[:count]:
         title = (row.get('title') or '').strip()
@@ -200,6 +337,41 @@ nothing qualifies."""
             'published_on': pub,
         })
     return out
+
+
+def _generate_sector_stories_free(sector, count):
+    """Free fallback: SearXNG finds real, current results; Groq selects and
+    formats from THOSE results only — it's told to extract, not generate, so
+    it can't hallucinate a story search didn't find. Returns a raw 'stories'
+    list in the same shape _run() would, for _clean_stories to validate."""
+    results = _searxng_search(f"{sector.name} Botswana", count=count * 3,
+                               time_range='week', categories='news')
+    if not results:
+        return []
+
+    listing = "\n\n".join(
+        f"[{i}] {r['title']}\nURL: {r['url']}\nPublished: {r['published_date'] or 'unknown'}\n"
+        f"Excerpt: {r['content'][:400]}"
+        for i, r in enumerate(results)
+    )
+    user_prompt = f"""Below are {len(results)} real, current web search results about the \
+{sector.name} sector in Botswana and Southern Africa.
+
+{listing}
+
+From ONLY the results above, pick up to {count} that report genuine business/market news — \
+deals, regulatory or policy changes, production/output figures, investments, disruptions, \
+credible market commentary. Skip anything that isn't real news (ads, unrelated topics, or a \
+duplicate of a story you've already picked).
+
+Return a JSON object: {{"stories": [{{"title": "...", "summary": "...", "source_label": "...", \
+"url": "...", "published_on": "YYYY-MM-DD or empty string if unknown"}}, ...]}}. "url" MUST be \
+copied verbatim from the listing above — never guessed or altered. "summary" is one or two \
+sentences of genuine substance from the excerpt — never invented. "source_label" is the outlet, \
+inferred from the URL's domain. If nothing above genuinely qualifies, return {{"stories": []}}."""
+
+    data = _groq_extract_json(user_prompt, max_tokens=2500)
+    return data.get('stories') or []
 
 
 def _parse_date(value):
@@ -264,8 +436,22 @@ For each, return:
 Only include a commodity if you found a real, current figure via search. Omit any you can't find
 solid data for — do not estimate or invent a plausible-sounding number."""
 
-    data = _run(user_prompt, QUOTE_JSON_SCHEMA, max_uses=len(names) + 2)
-    quotes = data.get('quotes') or []
+    try:
+        data = _run(user_prompt, QUOTE_JSON_SCHEMA, max_uses=len(names) + 2)
+        quotes = data.get('quotes') or []
+    except SectorAIError as primary_exc:
+        logger.warning(
+            "sector_ai: Anthropic quote search failed (%s) — trying free SearXNG+Groq fallback",
+            primary_exc,
+        )
+        quotes = _generate_commodity_quotes_free(names)
+
+    return _clean_quotes(quotes, names)
+
+
+def _clean_quotes(quotes, names):
+    """Shared validation for both the Anthropic path's 'quotes' and the free
+    fallback's — same shape, same rules either way."""
     by_name = {(q.get('name') or '').strip().lower(): q for q in quotes}
     out = []
     for name in names:
@@ -281,3 +467,65 @@ solid data for — do not estimate or invent a plausible-sounding number."""
             change = 0.0
         out.append({'name': name, 'price_display': price[:40], 'change_percent': round(change, 2)})
     return out
+
+
+def _generate_commodity_quotes_free(names):
+    """Free fallback: one SearXNG search per commodity, Groq extracts a
+    price/change from those results only (never invents one). Unlike stories,
+    this never raises — a commodity search finding nothing is not an error
+    (see generate_commodity_quotes' docstring) — UNLESS every single one
+    fails for a real reason (bad key, rate limit, etc.), in which case that's
+    surfaced rather than silently reported as 'nothing found'.
+
+    Known weak spot (confirmed live 2026-08-30, several query phrasings
+    tried): SearXNG's own snippets on this instance run ~120-150 chars and
+    rarely carry a clean numeric price, unlike headline+snippet being enough
+    for stories above. Groq correctly returns found=False rather than
+    fabricate a number from a vague snippet, so this path often comes back
+    empty — that's it working as designed, not a bug. Fetching each result's
+    full article text (like media-monitor's fetcher does) would likely fix
+    this, at the cost of being a real fetch pipeline rather than a search
+    call; not built here since it wasn't asked for."""
+    quotes = []
+    errors = []
+    for name in names:
+        # categories='general' returns nothing on this SearXNG instance (no
+        # engines enabled for it, confirmed live 2026-08-30) — 'news' does.
+        results = _searxng_search(f"{name} price today", count=6,
+                                   time_range='day', categories='news')
+        if not results:
+            continue
+
+        listing = "\n\n".join(
+            f"[{i}] {r['title']}\nExcerpt: {r['content'][:400]}"
+            for i, r in enumerate(results)
+        )
+        user_prompt = f"""Below are real, current web search results for "{name} price today":
+
+{listing}
+
+From ONLY the text above, extract today's real market price and day-over-day (or most recent \
+trading session) percentage change for {name}. Return a JSON object: {{"found": true or false, \
+"price_display": "...", "change_percent": number}}. "price_display" must be the price as it \
+would actually be quoted, with currency/unit (e.g. "$2,412.30/oz" or "$185/tonne"). If nothing \
+above gives a solid current figure, return {{"found": false}} — do not estimate or invent."""
+
+        try:
+            data = _groq_extract_json(user_prompt, max_tokens=800)
+        except SectorAIError as exc:
+            logger.warning('sector_ai: free fallback quote extraction failed for %s: %s', name, exc)
+            errors.append(exc)
+            continue
+        if not data.get('found'):
+            continue
+        quotes.append({
+            'name': name,
+            'price_display': data.get('price_display'),
+            'change_percent': data.get('change_percent'),
+        })
+
+    if not quotes and errors and len(errors) == len(names):
+        # every attempt hard-failed (config/auth/rate-limit) — that's a real
+        # problem, not "the market has nothing to report today".
+        raise SectorAIError(f'Free fallback failed for every commodity: {errors[0]}')
+    return quotes

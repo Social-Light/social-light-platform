@@ -107,6 +107,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')  # monitor/sentiment_ai.py
+# Self-hosted metasearch (same instance media-monitor's discovery/services/
+# search_api.py uses) — sector_ai.py's free fallback when Anthropic is
+# unavailable. Reachable on the compose network; see docker-compose.yml.
+SEARXNG_URL = os.getenv('SEARXNG_URL', 'http://searxng:8080')
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN', '')
 
 DEFAULT_FROM_EMAIL  = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <support@sociallightbw.com>')
