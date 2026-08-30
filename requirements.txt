@@ -1,6 +1,5 @@
 gunicorn
 whitenoise
-django-anymail[resend]
 psycopg2-binary
 anthropic
 amqp==5.3.1

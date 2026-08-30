@@ -354,6 +354,7 @@
     </select>
     <button type="submit" class="btn btn-secondary btn-sm">Apply</button>
   </form>
+{% if features.report_download %}
   <button type="button" class="btn btn-primary btn-sm" onclick="downloadPDF()">
     &#8681; Download PDF
   </button>
@@ -361,6 +362,9 @@
      class="btn btn-secondary btn-sm">
     &#8681; Download PPTX
   </a>
+{% else %}
+  {% include "monitor/partials/locked_button.html" with label="Download PDF or PPTX" %}
+{% endif %}
 </div>
 
 <!-- ── Report body ──────────────────────────────────────────────────────── -->

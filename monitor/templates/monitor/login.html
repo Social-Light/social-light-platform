@@ -119,6 +119,13 @@
     .af-forgot{font-size:13px;color:#3891C7;text-decoration:none;font-weight:500;}
     .af-forgot:hover{color:#306EB1;text-decoration:underline;}
 
+    /* confirmation */
+    .af-ok{
+      background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;
+      border-radius:8px;padding:11px 14px;font-size:13px;
+      display:flex;align-items:center;gap:8px;margin-bottom:20px;
+    }
+
     /* error */
     .af-error{
       background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;
@@ -187,6 +194,13 @@
     <p class="af-eyebrow">Social Light Platform</p>
     <h2 class="af-heading">Sign in</h2>
     <p class="af-sub">Enter your credentials to access your dashboard</p>
+
+    {% if request.GET.verified %}
+    <div class="af-ok">
+      <i class="bi bi-check-circle-fill" style="font-size:15px;flex-shrink:0;"></i>
+      Your email address is confirmed. Sign in to carry on setting up your account.
+    </div>
+    {% endif %}
 
     {% if error %}
     <div class="af-error">

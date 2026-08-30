@@ -102,7 +102,7 @@
       <a href="#coverage">Coverage</a>
       {% if sectors %}<button type="button" data-page="sectors">Sector Intelligence</button>{% endif %}
       {% if publications %}<button type="button" data-page="publications">Publications</button>{% endif %}
-      <button type="button" data-page="assessment">Free Assessment</button>
+      <a href="{% url 'monitor:assessment' %}">Free Assessment</a>
       <a href="{% url 'monitor:pricing' %}">Pricing</a>
       <a href="{% url 'monitor:login' %}" class="signin">Sign in</a>
       <a href="{% url 'monitor:signup' %}" class="start">Start free trial</a>
@@ -117,7 +117,7 @@
     <a href="#coverage" data-close>Coverage</a>
     {% if sectors %}<button type="button" data-page="sectors">Sector Intelligence</button>{% endif %}
     {% if publications %}<button type="button" data-page="publications">Publications</button>{% endif %}
-    <button type="button" data-page="assessment">Free Assessment</button>
+    <a href="{% url 'monitor:assessment' %}" data-close>Free Assessment</a>
     <a href="{% url 'monitor:pricing' %}">Pricing</a>
     <div class="drawer-actions">
       <a href="{% url 'monitor:signup' %}" class="btn btn-navy">Start free trial</a>
@@ -259,25 +259,6 @@
   .subbar.on-navy .back{color:#fff;border-color:rgba(255,255,255,.28);}
   .subbar.on-navy .label{color:var(--on-navy-mute);}
 
-  .assessment{background:var(--wash);border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
-  .assessment .shell{max-width:1120px;padding-top:78px;padding-bottom:78px;}
-  .assessment .eyebrow{color:var(--teal);}
-  .assessment .h2{font-size:32px;line-height:1.14;margin-bottom:16px;}
-  .assessment p.intro{margin:0 0 34px;font-size:15px;line-height:1.7;color:var(--body);}
-  .questions{display:flex;flex-direction:column;gap:2px;background:var(--line);border-radius:10px;overflow:hidden;}
-  .question{background:#fff;padding:22px 24px;display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;}
-  .question .q{font-size:15px;line-height:1.6;color:var(--ink);}
-  .question .picks{display:flex;gap:8px;flex:0 0 auto;}
-  .question .picks button{font-size:13px;font-weight:600;color:#33475A;background:#fff;border:1px solid #D6DCE2;border-radius:6px;padding:9px 18px;cursor:pointer;min-width:62px;}
-  .question .picks button.yes.on{background:var(--green);border-color:var(--green);color:#fff;}
-  .question .picks button.no.on{background:var(--blue);border-color:var(--blue);color:#fff;}
-  .verdict{margin-top:26px;display:grid;grid-template-columns:6px 1fr;gap:20px;align-items:stretch;}
-  .verdict .bar{border-radius:3px;background:linear-gradient(180deg,#EA8C13,#F5B01B,#7BA32C,#1E9160,#0A8B8E,#0A6C9E);}
-  .verdict .body{padding:4px 0;}
-  .verdict h3{font-size:19px;font-weight:600;line-height:1.35;margin:0 0 8px;}
-  .verdict p{margin:0 0 20px;font-size:14.5px;line-height:1.7;color:var(--body);max-width:60ch;}
-  .verdict .book{display:inline-block;font-size:14px;font-weight:600;color:#fff;background:var(--teal);padding:13px 22px;border-radius:6px;}
-  .verdict .book:hover{color:#fff;}
 </style>
 
 <style>
@@ -710,39 +691,6 @@
 
 </main>
 
-<div class="subpage" id="page-assessment">
-  <div class="subbar">
-    <div class="shell">
-      <button type="button" class="back" data-page="landing">← Back to home</button>
-      <span class="label">Free assessment</span>
-    </div>
-  </div>
-  <section class="assessment">
-    <div class="shell">
-      <div style="max-width:62ch;">
-        <div class="rule"></div>
-        <div class="eyebrow">Free assessment</div>
-        <h2 class="h2">Not sure you need media monitoring yet?</h2>
-        <p class="intro">Four questions, no sign-up. Answer honestly and we will tell you whether monitoring would change anything for your organisation.</p>
-      </div>
-
-      <div class="questions" id="questions"></div>
-
-      <div class="verdict">
-        <div class="bar"></div>
-        <div class="body">
-          <h3 id="verdictTitle">Answer the four questions above</h3>
-          <p id="verdictBody">Nothing is sent anywhere. The result appears here as soon as you have answered.</p>
-          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-            <a href="mailto:admin@sociallightbw.com?subject=Free%20assessment%20call" class="book">Book a free assessment call</a>
-            <span class="cta-note">45 minutes with an analyst. No trial required.</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-</div>
-
 {% if sectors %}
 <div class="subpage" id="page-sectors">
   <div class="subbar on-navy">
@@ -925,9 +873,9 @@
     });
   });
 
-  /* ── page switching (landing / sectors / publications / assessment) ── */
+  /* ── page switching (landing / sectors / publications) ── */
   var pages = { landing: $('#landing') };
-  ['assessment', 'sectors', 'publications'].forEach(function (k) {
+  ['sectors', 'publications'].forEach(function (k) {
     pages[k] = $('#page-' + k);
   });
   function showPage(name) {
@@ -958,59 +906,6 @@
     if (html != null) n.innerHTML = html;
     return n;
   };
-
-  /* ── free assessment ───────────────────────────────────────────────── */
-  var questions = [
-    'Do you know what is being said about your organisation in the press this week?',
-    'Have you ever been blindsided by a story you did not see coming?',
-    'Can you show a board how coverage moved after your last campaign?',
-    'Do you track what is said about you on radio and television?'
-  ];
-  var answers = {};
-  var qHost = $('#questions');
-
-  questions.forEach(function (text, i) {
-    var row = el('div', 'question');
-    row.appendChild(el('div', 'q', text));
-    var picks = el('div', 'picks');
-    ['yes', 'no'].forEach(function (v) {
-      var b = el('button', v, v === 'yes' ? 'Yes' : 'No');
-      b.type = 'button';
-      b.addEventListener('click', function () {
-        answers[i] = v;
-        Array.prototype.forEach.call(picks.children, function (c) { c.classList.remove('on'); });
-        b.classList.add('on');
-        verdict();
-      });
-      picks.appendChild(b);
-    });
-    row.appendChild(picks);
-    qHost.appendChild(row);
-  });
-
-  function verdict() {
-    var answered = Object.keys(answers).length;
-    var gaps = Object.keys(answers).filter(function (k) { return answers[k] === 'no'; }).length;
-    var title = 'Answer the four questions above';
-    var body = 'Nothing is sent anywhere. The result appears here as soon as you have answered.';
-
-    if (answered === questions.length) {
-      if (gaps === 0) {
-        title = 'You already have good visibility';
-        body = 'You are tracking coverage and can evidence it. An assessment call would focus on breadth — the broadcast and print sources most tools miss — rather than starting from scratch.';
-      } else if (gaps <= 2) {
-        title = 'There are gaps worth closing';
-        body = 'You have partial visibility. An analyst can show you which of the channels you are missing carry the most weight for your organisation, and what a first reporting cycle would look like.';
-      } else {
-        title = 'You are working without visibility';
-        body = 'Most of what is said about your organisation is currently reaching you late or not at all. An assessment call is the fastest way to see what this week already contained.';
-      }
-    } else if (answered > 0) {
-      title = answered + ' of ' + questions.length + ' answered';
-    }
-    $('#verdictTitle').textContent = title;
-    $('#verdictBody').textContent = body;
-  }
 
   /* ── sector intelligence tabs ──────────────────────────────────────── */
   /* Panels and the ticker are rendered server-side from the database; this only

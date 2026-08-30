@@ -1,0 +1,32 @@
+Hi {{ submission.first_name }},
+
+Here is the full read on how {{ submission.company }} is tracking its own
+coverage, based on the ten questions you answered.
+
+YOUR SCORE: {{ result.score }}% — {{ result.tier_label }}
+
+{{ headline }}
+{{ summary }}
+
+{{ result.fit_label|upper }} FOR SOCIAL LIGHT
+{{ fit_message }}
+
+WHAT YOU TOLD US
+Investment range:   {{ result.budget }}
+Urgency:            {{ result.urgency }}
+Decision timeline:  {{ result.timeline }}
+{% if result.team_size %}Team size:          {{ result.team_size }}
+{% endif %}{% if result.platforms %}Channels needed:    {{ result.platforms|join:", " }}
+{% endif %}
+{% if insights %}WHAT THIS MEANS
+{% for insight in insights %}
+{{ insight.title }}
+{{ insight.body }}
+{% endfor %}{% endif %}
+See what we are already picking up in your market:
+{{ site_url }}{% url 'monitor:signup' %}
+
+Someone from the team will follow up on this. If you would rather get on with
+it, reply to this email and tell us what you need watched.
+
+— The Social Light team

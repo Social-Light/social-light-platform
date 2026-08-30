@@ -1,0 +1,31 @@
+{% extends 'monitor/email/base_email.html' %}
+
+{% block title %}Confirm your email address{% endblock %}
+{% block subtitle %}Confirm Your Email Address{% endblock %}
+
+{% block content %}
+<p>Hi {{ full_name }},</p>
+
+<p>One quick step to finish setting up your Social Light account: confirm that this is
+your email address.</p>
+
+<div class="btn-wrap">
+    <a href="{{ verification_url }}" class="button button--green">Confirm my email address</a>
+</div>
+
+<p>If the button doesn't work, copy this link into your browser:</p>
+<p class="link">{{ verification_url }}</p>
+
+<div class="notice">
+    This link is valid for {{ ttl_hours }} hours. If it expires, you can send yourself a new
+    one from the setup page.
+</div>
+
+<p>Everything the platform sends you — alert digests, reports and password resets — goes to
+this address, which is why we check it before letting an account loose in the product.</p>
+
+<p>If you did not create a Social Light account, you can ignore this email. Nothing happens
+until the link is opened.</p>
+
+<p>— The Social Light Team</p>
+{% endblock %}

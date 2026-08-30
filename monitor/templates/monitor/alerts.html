@@ -480,7 +480,7 @@ function testAlert(btn, id) {
   apiRequest(`/api/${ORG_ID}/alerts/${id}/test/`, 'POST', {})
     .then(res => {
       const to = (res && res.recipients && res.recipients.length) ? res.recipients.join(', ') : 'your email';
-      alert(`Test email sent to ${to}. If it's not in your inbox, check your spam folder and the Resend dashboard logs.`);
+      alert(`Test email sent to ${to}. If it's not in your inbox, check your spam folder, then the application logs.`);
     })
     .catch(err => alert(err.message || 'Could not send test email.'))
     .finally(() => { btn.disabled = false; btn.style.opacity = ''; });

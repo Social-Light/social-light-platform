@@ -25,13 +25,24 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
+from . import onboarding
 from .models import Organization, Package, SubscriptionRequest, User, trial_period_days
+from .onboarding import COUNTRY_CHOICES, DEFAULT_COUNTRY
+from .verification import send_verification_email
 
 
 MIN_PASSWORD_LENGTH = 10
 
 
 def active_packages():
+    """The published price list. `is_public` keeps assignable-but-unadvertised
+    tiers (Free) off the marketing cards without making them unassignable."""
+    return Package.objects.filter(is_active=True, is_public=True)
+
+
+def selectable_packages():
+    """Every tier a user or admin may actually be put on — the price list plus
+    the unadvertised ones. Used by the onboarding plan step and admin assignment."""
     return Package.objects.filter(is_active=True)
 
 
@@ -44,15 +55,41 @@ def _split_name(full_name):
 
 def _validate_signup(data):
     """Returns (cleaned, errors). Kept separate from the view so the rules are
-    readable in one place and testable without a request."""
+    readable in one place and testable without a request.
+
+    Registration deliberately enforces only what is needed to create the account:
+    a name, a working email, an organisation and a password. Phone, job title and
+    country are accepted here but not required, because the onboarding profile
+    step asks for them and *does* require them — asking twice and blocking twice
+    would make signup heavier for no gain.
+
+    ``contact_name`` is still accepted as an alternative to first/last name so
+    that anything still posting the older form keeps working.
+    """
+    first_name = data.get('first_name', '').strip()
+    last_name = data.get('last_name', '').strip()
+    contact_name = data.get('contact_name', '').strip()
+    if not (first_name or last_name) and contact_name:
+        first_name, last_name = _split_name(contact_name)
+
     cleaned = {
-        'contact_name': data.get('contact_name', '').strip(),
+        'first_name': first_name,
+        'last_name': last_name,
+        'contact_name': contact_name or f'{first_name} {last_name}'.strip(),
         'email': data.get('email', '').strip(),
+        'phone': data.get('phone', '').strip(),
+        'job_title': data.get('job_title', '').strip(),
+        'country': data.get('country', '').strip(),
         'org_name': data.get('org_name', '').strip(),
         'password': data.get('password', ''),
+        'confirm_password': data.get('confirm_password', ''),
     }
     errors = {}
 
+    if not cleaned['first_name']:
+        errors['first_name'] = 'Enter your first name.'
+    if not cleaned['last_name']:
+        errors['last_name'] = 'Enter your last name.'
     if not cleaned['contact_name']:
         errors['contact_name'] = 'Enter your name.'
 
@@ -84,6 +121,17 @@ def _validate_signup(data):
             validate_password(password)
         except ValidationError as exc:
             errors['password'] = ' '.join(exc.messages)
+
+    # Confirmation is checked separately from the password rules, and only once
+    # the password itself is valid — telling someone their passwords do not match
+    # *and* that the password is too short at the same time is noise. A typo here
+    # is expensive: the account is created with a password its owner does not
+    # know, and the only way out is a reset.
+    if not errors.get('password'):
+        if not cleaned['confirm_password']:
+            errors['confirm_password'] = 'Type your password again to confirm it.'
+        elif cleaned['confirm_password'] != password:
+            errors['confirm_password'] = 'These passwords do not match.'
 
     return cleaned, errors
 
@@ -138,36 +186,60 @@ def _notify_sales(request, sub_request):
 # ── Signup ───────────────────────────────────────────────────────────────────
 
 def signup(request):
-    """Public self-service signup. Creates the organisation and its first user
-    (an org admin) and starts the free trial."""
+    """Public self-service signup — step 1 of onboarding.
+
+    Creates the organisation and its first user (an org admin), starts the free
+    trial, and hands the user straight to step 2. The account exists at this
+    point but is not yet verified, so the middleware will keep it out of the
+    application until the emailed link is followed.
+    """
     if request.user.is_authenticated:
         return redirect('monitor:organizations')
 
-    values, errors = {}, {}
+    # Pre-select the home market so a blank form does not silently default to
+    # whichever country sorts first.
+    values, errors = {'country': DEFAULT_COUNTRY}, {}
     if request.method == 'POST':
         values, errors = _validate_signup(request.POST)
         if not errors:
-            first_name, last_name = _split_name(values['contact_name'])
             with transaction.atomic():
                 org = Organization(
                     name=values['org_name'],
                     email=values['email'],
                     status='active',
                 )
+                if values['country']:
+                    org.country = values['country']
                 org.start_trial()
                 org.save()
                 user = User.objects.create_user(
                     username=values['email'].lower(),
                     email=values['email'],
                     password=values['password'],
-                    first_name=first_name,
-                    last_name=last_name,
+                    first_name=values['first_name'],
+                    last_name=values['last_name'],
+                    phone=values['phone'],
+                    job_title=values['job_title'],
+                    country=values['country'],
                     organization=org,
                     role='org_admin',
                 )
+                onboarding.start(user)
             login(request, user)
             _send_trial_welcome(request, user, org)
-            return redirect('monitor:dashboard', org_id=org.id)
+            _token, mail_error = send_verification_email(request, user)
+            if mail_error:
+                # The account is created and the user is signed in — a mail
+                # failure must not undo that. Hand the reason to the verify step
+                # so it can say what happened instead of claiming success.
+                request.session['verification_email_error'] = mail_error
+            return redirect(onboarding.next_url(user))
+
+    # Re-render the form without the passwords in it. The template never echoes
+    # them into a value attribute, but there is no reason for a plaintext
+    # password to sit in a template context at all — one careless
+    # `{{ values.password }}` later and it is on the page.
+    values = {k: v for k, v in values.items() if k not in ('password', 'confirm_password')}
 
     return render(request, 'monitor/signup.html', {
         'values': values,
@@ -175,6 +247,7 @@ def signup(request):
         'trial_days': trial_period_days(),
         'min_password_length': MIN_PASSWORD_LENGTH,
         'packages': active_packages(),
+        'countries': COUNTRY_CHOICES,
     })
 
 

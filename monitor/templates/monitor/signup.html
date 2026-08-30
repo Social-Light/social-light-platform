@@ -34,6 +34,9 @@
     .su-sub{font-size:14px;color:#64748b;line-height:1.65;margin-bottom:30px;}
 
     .su-group{margin-bottom:18px;}
+    .su-row{display:flex;gap:14px;}
+    .su-row>.su-group{flex:1;min-width:0;}
+    select.su-input{appearance:none;background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3e%3cpolyline points='6 9 12 15 18 9'/%3e%3c/svg%3e");background-repeat:no-repeat;background-position:right 12px center;background-size:16px;padding-right:38px;}
     .su-label{display:block;font-size:11px;font-weight:600;color:#64748b;letter-spacing:.09em;text-transform:uppercase;margin-bottom:7px;}
     .su-input{width:100%;padding:12px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14.5px;font-family:inherit;color:#0f172a;background:#fff;outline:none;transition:border-color .18s,box-shadow .18s;}
     .su-input:focus{border-color:#3891C7;box-shadow:0 0 0 3px rgba(56,145,199,.12);}
@@ -109,13 +112,23 @@
     <form method="post" action="{% url 'monitor:signup' %}" novalidate>
       {% csrf_token %}
 
-      <div class="su-group">
-        <label class="su-label" for="id_contact_name">Contact name</label>
-        <input type="text" id="id_contact_name" name="contact_name"
-               class="su-input {% if errors.contact_name %}is-invalid{% endif %}"
-               placeholder="Naledi Mokgadi" value="{{ values.contact_name|default:'' }}"
-               required autofocus autocomplete="name"/>
-        {% if errors.contact_name %}<span class="su-field-error">{{ errors.contact_name }}</span>{% endif %}
+      <div class="su-row">
+        <div class="su-group">
+          <label class="su-label" for="id_first_name">First name</label>
+          <input type="text" id="id_first_name" name="first_name"
+                 class="su-input {% if errors.first_name %}is-invalid{% endif %}"
+                 placeholder="Sabrinah" value="{{ values.first_name|default:'' }}"
+                 required autofocus autocomplete="given-name"/>
+          {% if errors.first_name %}<span class="su-field-error">{{ errors.first_name }}</span>{% endif %}
+        </div>
+        <div class="su-group">
+          <label class="su-label" for="id_last_name">Last name</label>
+          <input type="text" id="id_last_name" name="last_name"
+                 class="su-input {% if errors.last_name %}is-invalid{% endif %}"
+                 placeholder="Watson" value="{{ values.last_name|default:'' }}"
+                 required autocomplete="family-name"/>
+          {% if errors.last_name %}<span class="su-field-error">{{ errors.last_name }}</span>{% endif %}
+        </div>
       </div>
 
       <div class="su-group">
@@ -124,16 +137,43 @@
                class="su-input {% if errors.email %}is-invalid{% endif %}"
                placeholder="you@organisation.co.bw" value="{{ values.email|default:'' }}"
                required autocomplete="email"/>
+        <span class="su-hint">We send a confirmation link here before your account goes live.</span>
         {% if errors.email %}<span class="su-field-error">{{ errors.email }}</span>{% endif %}
       </div>
 
       <div class="su-group">
-        <label class="su-label" for="id_org_name">Organisation name</label>
+        <label class="su-label" for="id_org_name">Organisation or agency</label>
         <input type="text" id="id_org_name" name="org_name"
                class="su-input {% if errors.org_name %}is-invalid{% endif %}"
                placeholder="Ministry, agency or company" value="{{ values.org_name|default:'' }}"
                required autocomplete="organization"/>
+        <span class="su-hint">Using Social Light for yourself? Put your own name here — you'll
+          tell us which it is in a moment.</span>
         {% if errors.org_name %}<span class="su-field-error">{{ errors.org_name }}</span>{% endif %}
+      </div>
+
+      <div class="su-row">
+        <div class="su-group">
+          <label class="su-label" for="id_job_title">Job title</label>
+          <input type="text" id="id_job_title" name="job_title" class="su-input"
+                 placeholder="Communications Manager" value="{{ values.job_title|default:'' }}"
+                 autocomplete="organization-title"/>
+        </div>
+        <div class="su-group">
+          <label class="su-label" for="id_country">Country</label>
+          <select id="id_country" name="country" class="su-input">
+            {% for c in countries %}
+            <option value="{{ c }}" {% if values.country == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="su-group">
+        <label class="su-label" for="id_phone">Phone number</label>
+        <input type="tel" id="id_phone" name="phone" class="su-input"
+               placeholder="+267 71 234 567" value="{{ values.phone|default:'' }}" autocomplete="tel"/>
+        <span class="su-hint">Optional. Only used if we need to reach you about your account.</span>
       </div>
 
       <div class="su-group">
@@ -153,11 +193,30 @@
         {% endif %}
       </div>
 
+      <div class="su-group">
+        <label class="su-label" for="id_confirm_password">Confirm password</label>
+        <div class="su-pw-wrap">
+          <input type="password" id="id_confirm_password" name="confirm_password"
+                 class="su-input {% if errors.confirm_password %}is-invalid{% endif %}"
+                 placeholder="••••••••••" required autocomplete="new-password"/>
+          <button type="button" class="su-pw-toggle" onclick="togglePw('id_confirm_password','pwIcon2')"
+                  aria-label="Show or hide password">
+            <i class="bi bi-eye" id="pwIcon2" style="font-size:16px;"></i>
+          </button>
+        </div>
+        {% if errors.confirm_password %}
+          <span class="su-field-error">{{ errors.confirm_password }}</span>
+        {% else %}
+          <span class="su-hint" id="pwMatchHint">Type it again so a typo can't lock you out.</span>
+        {% endif %}
+      </div>
+
       <button type="submit" class="btn-create">Create account</button>
     </form>
 
     <p class="su-signin">Already have an account? <a href="{% url 'monitor:login' %}">Sign in</a></p>
-    <p class="su-terms">By creating an account you agree to be contacted about your trial.<br/>No payment is taken until you choose a package.</p>
+    <p class="su-terms">You'll be asked to read and accept our Terms, privacy notice and disclaimer
+      as part of setting up.<br/>No payment is taken until you choose a package.</p>
   </div>
 </div>
 
@@ -190,12 +249,37 @@
 </div>
 
 <script>
-function togglePw(){
-  var inp=document.getElementById('id_password');
-  var icon=document.getElementById('pwIcon');
+function togglePw(inputId,iconId){
+  var inp=document.getElementById(inputId||'id_password');
+  var icon=document.getElementById(iconId||'pwIcon');
   if(inp.type==='password'){inp.type='text';icon.className='bi bi-eye-slash';}
   else{inp.type='password';icon.className='bi bi-eye';}
 }
+
+// Tell the user the passwords differ while they type, rather than after a round
+// trip to the server. The server checks it too — this is only a courtesy.
+(function(){
+  var pw=document.getElementById('id_password');
+  var confirm=document.getElementById('id_confirm_password');
+  var hint=document.getElementById('pwMatchHint');
+  if(!pw||!confirm) return;
+
+  function check(){
+    if(!confirm.value){
+      confirm.classList.remove('is-invalid');
+      if(hint){hint.textContent="Type it again so a typo can't lock you out.";hint.style.color='';}
+      return;
+    }
+    var same=pw.value===confirm.value;
+    confirm.classList.toggle('is-invalid',!same);
+    if(hint){
+      hint.textContent=same?'Passwords match.':'These passwords do not match.';
+      hint.style.color=same?'#16a34a':'#dc2626';
+    }
+  }
+  pw.addEventListener('input',check);
+  confirm.addEventListener('input',check);
+})();
 </script>
 
 </body>
