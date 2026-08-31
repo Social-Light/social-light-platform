@@ -76,6 +76,19 @@ class Command(BaseCommand):
         force = options['force']
         dry_run = options['dry_run']
 
+        # Give each media type its own fair share of `limit`, rather than
+        # consuming it sequentially in dict order. Online alone routinely has
+        # 1000+ unanalysed rows (more than the default limit=300) and keeps
+        # growing from live crawling — under strict sequential consumption it
+        # silently ate the ENTIRE budget every scheduled run, so broadcast/
+        # print/social/competitor got zero analysis passes, indefinitely,
+        # regardless of how large their own backlogs were. Confirmed live
+        # 2026-08-31: 625 BroadcastMention rows, 0 ever analysed, despite the
+        # task "succeeding" every 30 min for weeks.
+        per_type_limit = None
+        if limit:
+            per_type_limit = max(1, limit // len(types))
+
         processed = analyzed = skipped = 0
         for label, model in types.values():
             qs = model.objects.select_related('organization').all()
@@ -83,11 +96,8 @@ class Command(BaseCommand):
                 qs = qs.filter(organization=org)
             if not force:
                 qs = qs.filter(sentiment_rationale='')
-            if limit:
-                remaining = limit - processed
-                if remaining <= 0:
-                    break
-                qs = qs[:remaining]
+            if per_type_limit:
+                qs = qs[:per_type_limit]
 
             for mention in qs:
                 processed += 1
