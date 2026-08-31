@@ -22,6 +22,7 @@ is no code path anywhere in the application that can rewrite consent history.
 user has reached plus a timestamped history, so a user who abandons at the
 payment step returns to the payment step rather than starting again.
 """
+import re
 import secrets
 from datetime import timedelta
 
@@ -38,6 +39,11 @@ LEGAL_DOCUMENT_TYPES = [
     ('terms', 'Terms & Conditions'),
     ('privacy', 'Privacy & Personal Data Consent'),
     ('disclaimer', 'Disclaimer'),
+    # Published and publicly readable, but deliberately NOT one of the documents
+    # onboarding asks a user to tick. It states what we will do about refunds and
+    # cancellations; it is not a permission the user grants us, and adding it to
+    # the consent gate would force every existing account to re-accept.
+    ('refund', 'Refund & Cancellation Policy'),
 ]
 
 # Deliberately explicit. Nothing drafted in-product may be presented to a user as
@@ -119,6 +125,30 @@ class LegalDocument(models.Model):
         """The body split into paragraphs for rendering, so templates never have
         to trust stored HTML."""
         return [p.strip() for p in self.body.split('\n\n') if p.strip()]
+
+    @property
+    def sections(self):
+        """The body grouped into ``{'heading', 'paragraphs'}`` blocks, so the
+        public document page can set clause headings apart from the prose under
+        them rather than rendering one undifferentiated wall of text.
+
+        A numbered line standing on its own — ``4. Organisations and agencies`` —
+        opens a new section. Anything before the first of those becomes a section
+        with no heading, so a document written without clause numbers still
+        renders in full rather than disappearing.
+        """
+        blocks = []
+        current = {'heading': '', 'paragraphs': []}
+        for para in self.paragraphs:
+            if '\n' not in para and re.match(r'^\d+(\.\d+)*\.?\s+\S', para):
+                if current['heading'] or current['paragraphs']:
+                    blocks.append(current)
+                current = {'heading': para, 'paragraphs': []}
+            else:
+                current['paragraphs'].append(para)
+        if current['heading'] or current['paragraphs']:
+            blocks.append(current)
+        return blocks
 
     @classmethod
     def current(cls, doc_type, at=None):

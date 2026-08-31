@@ -18,6 +18,12 @@ from .onboarding_models import LEGAL_DOCUMENT_TYPES, ConsentRecord, LegalDocumen
 # gating anyone.
 REQUIRED_DOC_TYPES = ('terms', 'privacy', 'disclaimer')
 
+# Everything with a public page in the footer. Wider than REQUIRED_DOC_TYPES: the
+# refund policy has to be readable by anyone — the card schemes and DPO require a
+# published one — but it is a statement of what we do, not a consent, so it is not
+# part of the onboarding gate.
+PUBLIC_DOC_TYPES = REQUIRED_DOC_TYPES + ('refund',)
+
 DOC_TYPE_LABELS = dict(LEGAL_DOCUMENT_TYPES)
 
 

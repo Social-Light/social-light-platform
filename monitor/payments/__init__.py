@@ -19,20 +19,21 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
 
-from .base import (CardDetails, ChargeResult, PaymentConfigurationError, PaymentError,
-                   PaymentProvider, PaymentsDisabled)
+from .base import (CardDetails, ChargeResult, CheckoutSession, PaymentConfigurationError,
+                   PaymentError, PaymentProvider, PaymentsDisabled)
 from .manual import ManualProvider, record_manual_payment
 
 #: Providers shipped with the platform, by key.
 BUILTIN_PROVIDERS = {
     'manual': 'monitor.payments.manual.ManualProvider',
     'stripe': 'monitor.payments.stripe_provider.StripeProvider',
+    'dpo': 'monitor.payments.dpo.DPOProvider',
 }
 
 __all__ = [
-    'CardDetails', 'ChargeResult', 'ManualProvider', 'PaymentConfigurationError',
-    'PaymentError', 'PaymentProvider', 'PaymentsDisabled', 'get_provider',
-    'payments_enabled', 'record_manual_payment',
+    'CardDetails', 'ChargeResult', 'CheckoutSession', 'ManualProvider',
+    'PaymentConfigurationError', 'PaymentError', 'PaymentProvider', 'PaymentsDisabled',
+    'get_provider', 'payments_enabled', 'record_manual_payment',
 ]
 
 

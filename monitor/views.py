@@ -10,7 +10,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -29,6 +29,7 @@ from .relevancy import compute_relevancy, filter_relevant
 from .print_metrics import estimate_print_reach as _print_reach
 from .alert_email import build_and_send, start_of_today
 from .org_email import send_org_disabled_email, send_org_enabled_email
+from . import legal
 
 
 def _absolute_url(path):
@@ -126,6 +127,36 @@ def home(request):
         'sectors': sectors,
         'commodity_quotes': CommodityQuote.objects.filter(is_published=True),
         'publications': Publication.objects.filter(is_published=True),
+    })
+
+
+# ── Public legal documents ───────────────────────────────────────────────────
+
+def legal_document(request, doc_type):
+    """The public, read-only page for one legal document.
+
+    Deliberately reads the same ``LegalDocument`` rows the onboarding wizard puts
+    in front of a new user, so the footer links and the consent screens can never
+    drift apart: approved wording pasted into the admin changes both at once, and
+    there is no second copy of the text in a template to forget about.
+
+    Read-only by design. Consent is recorded from the wizard and from
+    ``/app/legal/``; visiting this page agrees to nothing and writes no record.
+    """
+    if doc_type not in legal.PUBLIC_DOC_TYPES:
+        raise Http404('No such document.')
+
+    document = legal.current_document(doc_type)
+    if document is None:
+        # Nothing published for this type. A 404 is honest — better than an empty
+        # page implying Social Light has no terms.
+        raise Http404('That document has not been published yet.')
+
+    published = legal.current_documents()
+    return render(request, 'monitor/legal.html', {
+        'document': document,
+        'active': doc_type,
+        'documents': [(t, published[t]) for t in legal.REQUIRED_DOC_TYPES if t in published],
     })
 
 

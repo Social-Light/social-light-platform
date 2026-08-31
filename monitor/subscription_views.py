@@ -6,10 +6,25 @@ Flow:
                   →  full access, with a countdown banner in the app
     trial ends    →  OrganizationAccessMiddleware redirects every /app/ and
                      /api/ request to `billing`
-    billing       →  the user picks a package, which raises a SubscriptionRequest
-                     and emails sales; a platform admin activates the package
-                     from the Django admin, which restores access.
+    billing       →  the user picks a package.
+
+What happens at that last step depends on whether a gateway is switched on.
+
+With no gateway — the platform's long-standing behaviour — picking a package
+raises a SubscriptionRequest and emails sales; a platform admin activates the
+package from the Django admin, which restores access.
+
+With a hosted-redirect gateway (DPO Pay), picking a package instead opens a
+checkout at the gateway and sends the customer there to pay. They come back to
+`checkout_return`, which asks the gateway server-side what happened and, if the
+money arrived, activates the package immediately. `checkout_callback` is the same
+verification reached from the gateway's own webhook, so a customer who closes the
+tab on the payment page still gets activated.
+
+Both paths end at the same place — an active package — and the manual path
+remains available on every deployment for purchase orders and EFT.
 """
+import logging
 import re
 
 from django.conf import settings
@@ -20,15 +35,21 @@ from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.core.validators import validate_email
 from django.db import transaction
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from . import onboarding
 from .models import Organization, Package, SubscriptionRequest, User, trial_period_days
 from .onboarding import COUNTRY_CHOICES, DEFAULT_COUNTRY
+from .payment_models import Payment
+from .payments import PaymentError, get_provider, payments_enabled
 from .verification import send_verification_email
+
+logger = logging.getLogger(__name__)
 
 
 MIN_PASSWORD_LENGTH = 10
@@ -279,6 +300,11 @@ def billing(request):
         'trial_days': trial_period_days(),
         'pending_request': latest_request,
         'submitted': request.GET.get('requested') == '1',
+        # When a gateway is on, the package buttons post straight to checkout
+        # instead of opening the "request a call" modal.
+        'gateway_checkout': redirect_checkout_provider() is not None,
+        'checkout_status': request.GET.get('checkout', ''),
+        'latest_payment': (org.payments.first() if org else None),
     })
 
 
@@ -311,3 +337,160 @@ def package_request(request):
 
     _notify_sales(request, sub_request)
     return redirect(f"{reverse('monitor:billing')}?requested=1")
+
+
+# ── Gateway checkout ─────────────────────────────────────────────────────────
+# Only reached when a hosted-redirect provider is configured. The manual path
+# above is untouched and remains the fallback on every deployment.
+
+def redirect_checkout_provider():
+    """The configured provider, but only if it can actually take a payment by
+    redirect. Returns None otherwise, which is what makes every view below fall
+    back to the manual request flow instead of erroring."""
+    if not payments_enabled():
+        return None
+    provider = get_provider()
+    if not (provider.is_redirect and provider.is_enabled):
+        return None
+    return provider
+
+
+def _absolute(request, url_name):
+    return request.build_absolute_uri(reverse(url_name))
+
+
+def _billing_url(**params):
+    query = '&'.join(f'{k}={v}' for k, v in params.items() if v)
+    return f"{reverse('monitor:billing')}?{query}" if query else reverse('monitor:billing')
+
+
+@login_required
+@require_http_methods(['POST'])
+def checkout_start(request):
+    """Open a payment at the gateway and send the customer to it.
+
+    Falls back to the manual request flow whenever a gateway cannot be used —
+    no provider, a contact-only tier, a package with no price. A customer must
+    never reach a dead end here: the worst case is the flow they would have had
+    before payments were switched on.
+    """
+    org = request.user.organization
+    provider = redirect_checkout_provider()
+    package = Package.objects.filter(slug=request.POST.get('package'), is_active=True).first()
+
+    if org is None or provider is None or package is None or package.contact_only or not package.price:
+        return package_request(request)
+
+    try:
+        session = provider.start_checkout(
+            org, package.price, package.currency,
+            package=package,
+            user=request.user,
+            description=f'{package.name} — {package.get_billing_period_display()}',
+            return_url=_absolute(request, 'monitor:checkout_return'),
+            callback_url=_absolute(request, 'monitor:checkout_callback'),
+        )
+    except PaymentError as exc:
+        # A gateway that is down must not strand a customer who wants to pay.
+        logger.warning('Checkout could not be started for org %s: %s', org.id, exc)
+        return redirect(_billing_url(checkout='unavailable'))
+
+    return redirect(session.redirect_url)
+
+
+def _settle(payment):
+    """Verify a payment with the gateway and activate the package if it is paid.
+
+    The single place a subscription is turned on by a gateway payment, so that
+    the browser return and the webhook cannot disagree about what happened. Safe
+    to call repeatedly — ``verify_checkout`` is idempotent and
+    ``activate_package`` is a straight assignment.
+    """
+    provider = redirect_checkout_provider()
+    if provider is None:
+        return None
+
+    result = provider.verify_checkout(payment)
+    if result.succeeded and payment.package_id:
+        payment.organization.activate_package(payment.package)
+    return result
+
+
+def _payment_from_reference(reference):
+    """Find the payment a gateway is talking about.
+
+    ``CompanyRef`` is the Payment row's own UUID, so this is a primary-key
+    lookup. It is also the only thing taken from the query string: the *outcome*
+    is always re-fetched from the gateway, never read from what the browser
+    carried back.
+    """
+    if not reference:
+        return None
+    try:
+        return Payment.objects.select_related('organization', 'package').get(pk=reference)
+    except (Payment.DoesNotExist, ValueError, ValidationError):
+        return None
+
+
+def checkout_return(request):
+    """Where the gateway sends the customer's browser after payment.
+
+    Deliberately not behind ``@login_required`` and deliberately outside
+    ``/app/``. The customer arriving here is, by definition, one whose trial has
+    expired, so the paywall would bounce them; and a session cookie that does not
+    survive the round trip would send them to a login page instead of confirming
+    the payment they just made. The reference is an unguessable UUID and the
+    verdict comes from the gateway, so nothing here depends on the session.
+    """
+    payment = _payment_from_reference(
+        request.GET.get('CompanyRef') or request.GET.get('company_ref'))
+    if payment is None:
+        return redirect(_billing_url(checkout='unknown'))
+
+    try:
+        result = _settle(payment)
+    except PaymentError as exc:
+        logger.warning('Could not verify payment %s on return: %s', payment.id, exc)
+        return redirect(_billing_url(checkout='unverified'))
+
+    if result is not None and result.succeeded:
+        return redirect(_billing_url(checkout='paid'))
+    if payment.status == 'pending':
+        # Still in flight — the webhook will finish it. Saying "failed" here
+        # would be wrong and would push the customer into paying twice.
+        return redirect(_billing_url(checkout='pending'))
+    return redirect(_billing_url(checkout='failed'))
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def checkout_callback(request):
+    """The gateway's server-to-server notification.
+
+    CSRF-exempt because the caller is DPO, not a browser with a session — and
+    safe to be, because the request grants nothing on its own: it names a payment
+    and this view then asks the gateway directly what that payment's status is. A
+    forged call can at most trigger a verification that returns the truth.
+
+    DPO expects an ``<API3G><Response>OK</Response></API3G>`` body, and treats
+    anything else as a delivery failure worth retrying — which is fine, because
+    the handler is idempotent.
+    """
+    reference = request.POST.get('CompanyRef') or request.POST.get('TransactionToken')
+    payment = _payment_from_reference(request.POST.get('CompanyRef'))
+    if payment is None and reference:
+        payment = Payment.objects.filter(provider_reference=reference).first()
+
+    if payment is not None:
+        try:
+            _settle(payment)
+        except PaymentError as exc:
+            # Acknowledge anyway: a retry storm from the gateway will not fix a
+            # gateway we cannot reach, and the return leg verifies as well.
+            logger.warning('Callback verification failed for %s: %s', payment.id, exc)
+    else:
+        logger.warning('Payment callback for an unknown reference: %r', reference)
+
+    return HttpResponse(
+        '<?xml version="1.0" encoding="utf-8"?><API3G><Response>OK</Response></API3G>',
+        content_type='application/xml')

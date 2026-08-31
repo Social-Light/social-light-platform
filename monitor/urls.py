@@ -12,6 +12,12 @@ urlpatterns = [
     path('', views.home, name='home'),
     path('pricing/', subscription_views.pricing, name='pricing'),
 
+    # ── Legal documents ──────────────────────────────────────────────────────
+    # Public and read-only, so the footer and the signup page can link to the
+    # terms someone is about to be asked to accept. Same rows the onboarding
+    # consent steps render, so there is only ever one copy of the wording.
+    path('legal/<slug:doc_type>/', views.legal_document, name='legal_document'),
+
     # ── Free assessment ──────────────────────────────────────────────────────
     # Public and pre-signup: this is the step before somebody becomes a user, so
     # it has a real URL of its own rather than living as a tab inside the landing
@@ -45,6 +51,15 @@ urlpatterns = [
     # Subscription / free trial
     path('app/billing/', subscription_views.billing, name='billing'),
     path('app/billing/request/', subscription_views.package_request, name='package_request'),
+    path('app/billing/checkout/', subscription_views.checkout_start, name='checkout_start'),
+
+    # The gateway's two ways back. Both sit outside /app/ on purpose: the
+    # customer returning from checkout is one whose trial has expired, and the
+    # webhook arrives with no session at all — under /app/ the paywall and the
+    # onboarding gate would both have an opinion about requests that are neither
+    # a signed-in user browsing nor anything they can redirect usefully.
+    path('payments/return/', subscription_views.checkout_return, name='checkout_return'),
+    path('payments/callback/', subscription_views.checkout_callback, name='checkout_callback'),
 
     # Organizations
     path('app/organizations/', views.organizations, name='organizations'),

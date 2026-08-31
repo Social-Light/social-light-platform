@@ -200,9 +200,32 @@ if _trial_entitlements:
 # that does not happen is card capture. Nothing in the application requires a
 # gateway to be configured.
 PAYMENTS_ENABLED = _flag('PAYMENTS_ENABLED', 'False')
-# Which gateway, when payments are on: 'manual', 'stripe', or a dotted path to a
-# monitor.payments.base.PaymentProvider subclass.
+# Which gateway, when payments are on: 'manual', 'stripe', 'dpo', or a dotted path
+# to a monitor.payments.base.PaymentProvider subclass.
 PAYMENT_PROVIDER = os.getenv('PAYMENT_PROVIDER', 'manual')
+
+# ── DPO Pay ──────────────────────────────────────────────────────────────────
+# DPO is a hosted-redirect gateway: the customer pays on DPO's own page and we
+# confirm the outcome server-side with verifyToken. No card data reaches us and
+# there is nothing to store, so there is no publishable/secret key pair here —
+# the company token is the whole credential and is secret.
+#
+# DPO runs no separate sandbox host. Test and live integrations hit the same
+# endpoint and are told apart ONLY by which company token is configured, so this
+# value must never be committed and a staging deployment must be checked against
+# the token it actually has.
+DPO_COMPANY_TOKEN = os.getenv('DPO_COMPANY_TOKEN', '')
+# Issued by DPO alongside the company token; the two are a matched pair.
+DPO_SERVICE_TYPE = os.getenv('DPO_SERVICE_TYPE', '')
+DPO_ENDPOINT = os.getenv('DPO_ENDPOINT', 'https://secure.3gdirectpay.com/API/v6/')
+# DPO's own documentation gives three different hosted-checkout paths (payv3.php
+# in the integration email, payv2.php in the createToken reference, pay.asp in
+# the hosted-page guide). Overridable so a correction does not need a release.
+DPO_PAYMENT_URL = os.getenv('DPO_PAYMENT_URL', 'https://secure.3gdirectpay.com/payv3.php')
+# Hours a customer has to finish paying before DPO expires the token. DPO's own
+# default is 96, which is far longer than a subscription checkout should stay open.
+DPO_PAYMENT_TIME_LIMIT_HOURS = int(os.getenv('DPO_PAYMENT_TIME_LIMIT_HOURS', '2'))
+DPO_TIMEOUT_SECONDS = int(os.getenv('DPO_TIMEOUT_SECONDS', '30'))
 
 # Card data never reaches this application: the browser posts it to the
 # provider's hosted field and we store only the token that comes back. The secret
