@@ -61,6 +61,8 @@
     .su-signin a{color:#3891C7;font-weight:600;text-decoration:none;}
     .su-signin a:hover{text-decoration:underline;}
     .su-terms{text-align:center;font-size:11.5px;color:#94a3b8;line-height:1.6;margin-top:18px;}
+    .su-terms a{color:#64748b;text-decoration:underline;}
+    .su-terms a:hover{color:#0f172a;}
 
     /* ── Right: the trial panel ── */
     .su-right{width:46%;max-width:560px;flex-shrink:0;position:relative;overflow:hidden;background:linear-gradient(165deg,#12305f 0%,#1d4878 55%,#0d2547 100%);color:#fff;padding:52px 52px;display:flex;flex-direction:column;}
@@ -215,8 +217,11 @@
     </form>
 
     <p class="su-signin">Already have an account? <a href="{% url 'monitor:login' %}">Sign in</a></p>
-    <p class="su-terms">You'll be asked to read and accept our Terms, privacy notice and disclaimer
-      as part of setting up.<br/>No payment is taken until you choose a package.</p>
+    <p class="su-terms">You'll be asked to read and accept our
+      <a href="{% url 'monitor:legal_document' 'terms' %}" target="_blank">Terms</a>,
+      <a href="{% url 'monitor:legal_document' 'privacy' %}" target="_blank">privacy notice</a> and
+      <a href="{% url 'monitor:legal_document' 'disclaimer' %}" target="_blank">disclaimer</a>
+      as part of setting up — you can read them now.<br/>No payment is taken until you choose a package.</p>
   </div>
 </div>
 

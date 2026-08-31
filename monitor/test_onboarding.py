@@ -8,14 +8,17 @@ with a usable price list and a usable set of consent documents.
 """
 import re
 from datetime import timedelta
+from urllib.parse import urlparse
 
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.core import mail
-from django.test import Client, TestCase, override_settings
-from django.urls import reverse
+from django.test import Client, RequestFactory, TestCase, override_settings
+from django.urls import resolve, reverse
 from django.utils import timezone
+from django.utils.html import escape
 
 from monitor import legal, onboarding, verification
+from monitor.verification import verification_url
 from monitor.entitlements import entitlements_for_organization, user_has_feature
 from monitor.models import (AgencyDeclaration, ConsentRecord, EmailVerificationToken,
                             LegalDocument, OnboardingProgress, Organization, Package,
@@ -790,6 +793,87 @@ class ConsentTests(TestCase):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+#  Public legal pages
+# ═══════════════════════════════════════════════════════════════════════════
+
+class PublicLegalPageTests(TestCase):
+    """The read-only pages the footer and the signup page link to.
+
+    The point of these is that somebody can read what they are going to be asked
+    to accept *before* they hand over an email address, and that what they read
+    is the same row the consent step will show them — not a second copy of the
+    wording living in a template.
+    """
+
+    def test_each_published_document_has_a_public_page(self):
+        for doc_type in ('terms', 'privacy', 'disclaimer'):
+            response = self.client.get(reverse('monitor:legal_document', args=[doc_type]))
+            self.assertEqual(response.status_code, 200, doc_type)
+            # escape(): the shipped titles contain an ampersand.
+            self.assertContains(response, escape(LegalDocument.current(doc_type).title))
+
+    def test_the_page_needs_no_account(self):
+        """Anonymous by design — a login wall in front of the terms would defeat
+        the purpose of linking to them from the signup page."""
+        response = self.client.get(reverse('monitor:legal_document', args=['terms']))
+        self.assertEqual(response.status_code, 200)
+
+    def test_the_page_renders_the_stored_wording(self):
+        document = LegalDocument.current('privacy')
+        response = self.client.get(reverse('monitor:legal_document', args=['privacy']))
+        body = response.content.decode()
+        for paragraph in document.paragraphs[:5]:
+            self.assertIn(paragraph.split('\n')[0][:60], body)
+
+    def test_the_page_says_the_shipped_wording_is_a_draft(self):
+        """The same honesty the consent step owes a user is owed to a visitor."""
+        response = self.client.get(reverse('monitor:legal_document', args=['terms']))
+        self.assertContains(response, 'pending legal review')
+
+    def test_an_unknown_document_is_a_404_not_a_blank_page(self):
+        response = self.client.get(reverse('monitor:legal_document', args=['popia']))
+        self.assertEqual(response.status_code, 404)
+
+    def test_an_unpublished_document_is_a_404(self):
+        """Better than an empty page implying Social Light has no terms."""
+        LegalDocument.objects.filter(doc_type='disclaimer').update(is_published=False)
+        response = self.client.get(reverse('monitor:legal_document', args=['disclaimer']))
+        self.assertEqual(response.status_code, 404)
+
+    def test_the_landing_footer_links_to_every_document(self):
+        response = self.client.get(reverse('monitor:home'))
+        body = response.content.decode()
+        for doc_type in ('terms', 'privacy', 'disclaimer'):
+            self.assertIn(reverse('monitor:legal_document', args=[doc_type]), body)
+
+    def test_the_signup_page_links_to_the_documents_it_promises(self):
+        """Signup tells the visitor they will be asked to accept three documents;
+        those words are the links to them."""
+        response = self.client.get(reverse('monitor:signup'))
+        body = response.content.decode()
+        for doc_type in ('terms', 'privacy', 'disclaimer'):
+            self.assertIn(reverse('monitor:legal_document', args=[doc_type]), body)
+
+    def test_clause_numbers_become_headings(self):
+        """`sections` splits the body on its numbered clauses so the page reads as
+        a document rather than one block of text."""
+        sections = LegalDocument.current('terms').sections
+        self.assertGreater(len(sections), 1)
+        self.assertTrue(sections[0].get('heading', '').startswith('1.'))
+        self.assertTrue(all(s['paragraphs'] for s in sections))
+
+    def test_a_body_without_clause_numbers_still_renders_in_full(self):
+        document = LegalDocument.objects.create(
+            doc_type='terms', version='9.9', title='Unnumbered',
+            body='First paragraph.\n\nSecond paragraph.',
+            consent_label='I accept.', is_published=False)
+        sections = document.sections
+        self.assertEqual(len(sections), 1)
+        self.assertEqual(sections[0]['heading'], '')
+        self.assertEqual(sections[0]['paragraphs'], ['First paragraph.', 'Second paragraph.'])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 #  11–14. Feature entitlements
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1251,3 +1335,55 @@ class ExistingBehaviourTests(TestCase):
                              fetch_redirect_response=False)
         self.assertEqual(
             self.client.get(reverse('monitor:dashboard', args=[org_a.id])).status_code, 200)
+
+
+@override_settings(EMAIL_BACKEND=LOCMEM)
+class VerificationLinkHostTests(TestCase):
+    """Where the emailed link points.
+
+    The link is read in somebody else's inbox, so it has to carry the deployed
+    address rather than whatever host the signup request happened to arrive on.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='linkuser', email='link@example.com', password='pw12345!')
+        OnboardingProgress.objects.get_or_create(user=self.user)
+
+    def _url(self, **overrides):
+        request = RequestFactory().get('/onboarding/verify/', HTTP_HOST='127.0.0.1:8000')
+        token = EmailVerificationToken.issue(self.user)
+        with override_settings(**overrides):
+            return verification_url(request, token)
+
+    def test_production_links_use_site_url_not_the_request_host(self):
+        url = self._url(DEBUG=False, SITE_URL='https://app.sociallight.africa')
+
+        self.assertTrue(url.startswith('https://app.sociallight.africa/'), url)
+        self.assertNotIn('127.0.0.1', url)
+
+    def test_a_forged_host_header_cannot_redirect_the_link(self):
+        """ALLOWED_HOSTS permits '*' in this project, so the Host header is not
+        trusted input. A link built from it would send a valid token to whichever
+        host the attacker named."""
+        request = RequestFactory().get('/onboarding/verify/', HTTP_HOST='attacker.example')
+        token = EmailVerificationToken.issue(self.user)
+
+        with override_settings(DEBUG=False, SITE_URL='https://sociallight.africa'):
+            url = verification_url(request, token)
+
+        self.assertNotIn('attacker.example', url)
+        self.assertTrue(url.startswith('https://sociallight.africa/'), url)
+
+    def test_debug_links_stay_on_the_local_server(self):
+        url = self._url(DEBUG=True, SITE_URL='https://sociallight.africa')
+
+        self.assertTrue(url.startswith('http://127.0.0.1:8000/'), url)
+
+    def test_the_link_still_resolves_to_the_confirm_route(self):
+        token = EmailVerificationToken.issue(self.user)
+        with override_settings(DEBUG=False, SITE_URL='https://sociallight.africa'):
+            url = verification_url(None, token)
+
+        self.assertIn(str(token.token), url)
+        self.assertEqual(resolve(urlparse(url).path).url_name, 'onboarding_verify_confirm')

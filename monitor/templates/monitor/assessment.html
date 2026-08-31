@@ -86,6 +86,8 @@ finish, and the assessment has always been sold as needing no sign-up.
 
     /* credibility, deliberately below the fold and modest */
     .aside-card{background:var(--wash);border:1px solid var(--line);border-radius:10px;padding:22px;margin-bottom:16px;}
+.aside-head{display:flex;align-items:center;gap:13px;}
+.aside-portrait{width:56px;height:56px;border-radius:50%;object-fit:cover;object-position:center top;border:2px solid var(--navy);flex-shrink:0;background:var(--line);}
     .aside-card h3{font-size:15px;font-weight:600;color:var(--navy);margin-bottom:4px;}
     .aside-role{font-size:12px;color:var(--muted);}
     .badge{display:inline-block;margin-top:10px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--amber-ink);background:#FDF3E1;border-radius:20px;padding:4px 11px;}
@@ -215,13 +217,16 @@ finish, and the assessment has always been sold as needing no sign-up.
 
       <aside>
         <div class="aside-card">
-          {% comment %}
-            TODO(content): founder portrait. Add the image to static as
-            images/design/founder.jpg and render it here. It was supplied inline
-            as base64 in the original brief, which is not where images belong.
-          {% endcomment %}
-          <h3>Tony Mautsu</h3>
-          <div class="aside-role">Founder and Managing Director, Social Light</div>
+          <div class="aside-head">
+            {# Hides itself if the asset is missing, so a missing file never breaks the card. #}
+            <img class="aside-portrait" src="{% static 'images/design/founder.jpg' %}"
+                 alt="Tony Mautsu" width="56" height="56" loading="lazy"
+                 onerror="this.style.display='none';">
+            <div>
+              <h3>Tony Mautsu</h3>
+              <div class="aside-role">Founder and Managing Director, Social Light</div>
+            </div>
+          </div>
           <span class="badge">Forbes 30 Under 30 Africa</span>
           <p class="aside-quote">"Most brands are invisible online — not because they are not posting, but because they are not monitoring. You find out first, while it is still a decision."</p>
         </div>

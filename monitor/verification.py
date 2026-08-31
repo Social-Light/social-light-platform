@@ -22,11 +22,30 @@ logger = logging.getLogger(__name__)
 
 
 def verification_url(request, token):
+    """The absolute link that goes in the email.
+
+    Built from ``SITE_URL`` rather than from the request. The request's host is
+    whatever the browser sent: in development that is localhost, which is useless
+    in somebody else's inbox, and in production it is caller-controlled unless
+    ALLOWED_HOSTS is tight — a link built from it can be pointed at another host
+    while still carrying a valid token.
+
+    In DEBUG the request wins instead, so a developer clicking their own link
+    lands on the server that issued it rather than on the deployed site, which
+    may not have the route yet. This matches how the rest of the project builds
+    links for email, and how ``manage.py test_email`` previews them.
+    """
     path = reverse('monitor:onboarding_verify_confirm', args=[token.token])
-    if request is not None:
+
+    if settings.DEBUG and request is not None:
         return request.build_absolute_uri(path)
-    base = getattr(settings, 'SITE_URL', '').rstrip('/')
-    return f'{base}{path}'
+
+    base = (getattr(settings, 'SITE_URL', '') or '').rstrip('/')
+    if base:
+        return f'{base}{path}'
+    # No SITE_URL configured. Better a request-derived link than a relative one
+    # that cannot be clicked at all.
+    return request.build_absolute_uri(path) if request is not None else path
 
 
 # The values shipped in .env.example. A deployment still carrying one of them has
