@@ -101,8 +101,15 @@ class Command(BaseCommand):
 
             for mention in qs:
                 processed += 1
-                result = analyze_sentiment(
-                    mention.organization.name, mention.headline, mention.summary)
+                # An agency org (e.g. "Launch Comms") tracks coverage of its
+                # CLIENT (e.g. "Botswana Power Corporation") — reasoning from
+                # the agency's own name produces false-neutral scores, since
+                # the agency itself is never the one mentioned in the text.
+                # sentiment_subject overrides who the AI reasons as when set;
+                # blank (the default, for orgs that ARE the brand) falls back
+                # to the org's own name, unchanged from before.
+                subject = mention.organization.sentiment_subject or mention.organization.name
+                result = analyze_sentiment(subject, mention.headline, mention.summary)
                 if result is None:
                     skipped += 1
                     self.stderr.write(self.style.WARNING(

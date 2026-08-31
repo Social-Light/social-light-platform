@@ -211,6 +211,13 @@ PLAN_STATUS_CHOICES = [
 class Organization(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200)
+    sentiment_subject = models.CharField(
+        max_length=200, blank=True, default='',
+        help_text="Who coverage is actually ABOUT, if different from this org's own name — "
+                  "e.g. an agency ('Launch Comms') tracking coverage of its client "
+                  "('Botswana Power Corporation'). The AI sentiment pass (monitor/sentiment_ai.py) "
+                  "reasons from this entity's perspective when set; falls back to `name` when blank. "
+                  "Leave blank for an org that IS the brand being covered.")
     email = models.EmailField(blank=True)
     industry = models.CharField(max_length=100, choices=INDUSTRY_CHOICES, blank=True)
     country = models.CharField(max_length=100, default='Botswana')
