@@ -1,6 +1,9 @@
 from django.urls import path
 from . import views
 from . import subscription_views
+from . import onboarding_views
+from . import export_views
+from . import assessment_views
 
 app_name = 'monitor'
 
@@ -9,14 +12,54 @@ urlpatterns = [
     path('', views.home, name='home'),
     path('pricing/', subscription_views.pricing, name='pricing'),
 
+    # ── Legal documents ──────────────────────────────────────────────────────
+    # Public and read-only, so the footer and the signup page can link to the
+    # terms someone is about to be asked to accept. Same rows the onboarding
+    # consent steps render, so there is only ever one copy of the wording.
+    path('legal/<slug:doc_type>/', views.legal_document, name='legal_document'),
+
+    # ── Free assessment ──────────────────────────────────────────────────────
+    # Public and pre-signup: this is the step before somebody becomes a user, so
+    # it has a real URL of its own rather than living as a tab inside the landing
+    # page. Marketing needs something it can link to from a campaign.
+    path('assessment/', assessment_views.assessment_page, name='assessment'),
+    path('api/assessment/', assessment_views.assessment_submit, name='assessment_submit'),
+    path('api/assessment/<uuid:submission_id>/request/',
+         assessment_views.assessment_action, name='assessment_action'),
+
     # Auth
     path('login/', views.login_view, name='login'),
     path('signup/', subscription_views.signup, name='signup'),
     path('logout/', views.logout_view, name='logout'),
 
+    # ── Onboarding ───────────────────────────────────────────────────────────
+    # One URL per step. The step a user may be on is decided by
+    # monitor/onboarding.py, not by which of these they can guess.
+    path('onboarding/verify/', onboarding_views.verify, name='onboarding_verify'),
+    path('onboarding/verify/<str:token>/', onboarding_views.verify_confirm, name='onboarding_verify_confirm'),
+    path('onboarding/profile/', onboarding_views.profile, name='onboarding_profile'),
+    path('onboarding/organisation/', onboarding_views.agency, name='onboarding_agency'),
+    path('onboarding/terms/', onboarding_views.terms, name='onboarding_terms'),
+    path('onboarding/privacy/', onboarding_views.privacy, name='onboarding_privacy'),
+    path('onboarding/disclaimer/', onboarding_views.disclaimer, name='onboarding_disclaimer'),
+    path('onboarding/payment/', onboarding_views.payment, name='onboarding_payment'),
+    path('onboarding/plan/', onboarding_views.plan, name='onboarding_plan'),
+    path('onboarding/complete/', onboarding_views.done, name='onboarding_done'),
+    path('onboarding/status/', onboarding_views.status, name='onboarding_status'),
+    path('app/legal/', onboarding_views.reconsent, name='reconsent'),
+
     # Subscription / free trial
     path('app/billing/', subscription_views.billing, name='billing'),
     path('app/billing/request/', subscription_views.package_request, name='package_request'),
+    path('app/billing/checkout/', subscription_views.checkout_start, name='checkout_start'),
+
+    # The gateway's two ways back. Both sit outside /app/ on purpose: the
+    # customer returning from checkout is one whose trial has expired, and the
+    # webhook arrives with no session at all — under /app/ the paywall and the
+    # onboarding gate would both have an opinion about requests that are neither
+    # a signed-in user browsing nor anything they can redirect usefully.
+    path('payments/return/', subscription_views.checkout_return, name='checkout_return'),
+    path('payments/callback/', subscription_views.checkout_callback, name='checkout_callback'),
 
     # Organizations
     path('app/organizations/', views.organizations, name='organizations'),
@@ -124,6 +167,10 @@ urlpatterns = [
     # Profile & Password
     path('api/<uuid:org_id>/profile/', views.profile_update, name='profile_update'),
     path('api/<uuid:org_id>/profile/password/', views.password_change, name='password_change'),
+
+    # Coverage / crawl-result export (paid: crawl_result_download)
+    path('api/<uuid:org_id>/export/<str:media_type>/', export_views.coverage_export,
+         name='coverage_export'),
 
     # Media Monitor webhook receiver
     path('api/<uuid:org_id>/webhook/media-monitor/', views.media_monitor_webhook, name='media_monitor_webhook'),

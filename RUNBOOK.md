@@ -285,7 +285,8 @@ bulk data fixes (management commands), or a Postgres major-version change.
 
 - **Anthropic AI report errors** — non-fatal by design; reports omit AI sections. Check
   `ANTHROPIC_API_KEY` and `report_ai.py` logs (`docker-compose logs web | grep -i anthropic`).
-- **Email not sending** — check `RESEND_API_KEY` and worker logs; test alerts send
+- **Email not sending** — run `python manage.py test_email you@example.com`, then check the
+  SMTP settings it reports and the worker logs; test alerts send
   synchronously in the web process, scheduled digests via the worker.
 - **Data integrity / unknown corruption** — stop writers (§5.3 step 1), take a backup, then
   investigate before resuming.

@@ -1,0 +1,74 @@
+{% load static %}<!DOCTYPE html>
+{% comment %}
+Shown when a form submission is rejected by CSRF protection. The user needs one
+thing — "reload the page and try again" — so that is what the page leads with.
+The diagnostic block underneath appears only in DEBUG, for whoever is debugging.
+{% endcomment %}
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Your session expired — Social Light</title>
+  <link rel="icon" type="image/x-icon" href="{% static 'favicon/favicon.ico' %}?v=2">
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;}
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+         font-family:'Inter',system-ui,sans-serif;color:#0f172a;background:#f8fafc;padding:24px;}
+    .cf{max-width:560px;width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:14px;
+        padding:38px 40px;box-shadow:0 4px 24px rgba(15,23,42,.06);}
+    .cf-badge{width:52px;height:52px;border-radius:14px;background:#fef3c7;color:#b45309;
+              display:flex;align-items:center;justify-content:center;margin-bottom:22px;font-size:24px;}
+    h1{font-size:23px;font-weight:800;letter-spacing:-.02em;margin:0 0 12px;}
+    p{font-size:14.5px;line-height:1.7;color:#475569;margin:0 0 16px;}
+    .cf-btn{display:inline-block;margin-top:10px;padding:12px 24px;border-radius:8px;background:#12305f;
+            color:#fff;font-size:14.5px;font-weight:700;text-decoration:none;}
+    .cf-btn:hover{background:#0d2547;}
+    .cf-alt{font-size:13.5px;color:#64748b;margin-top:18px;}
+    .cf-alt a{color:#3891C7;font-weight:600;}
+    details{margin-top:26px;border-top:1px solid #f1f5f9;padding-top:18px;}
+    summary{font-size:12.5px;font-weight:600;color:#94a3b8;cursor:pointer;}
+    dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:14px 0 0;
+       font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+    dt{color:#64748b;}
+    dd{margin:0;color:#0f172a;word-break:break-all;}
+    .cf-cause{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;
+              padding:11px 14px;font-size:13px;line-height:1.6;margin-top:14px;}
+  </style>
+</head>
+<body>
+  <div class="cf">
+    <div class="cf-badge">↻</div>
+
+    <h1>Your session expired</h1>
+    <p>For your security, the form you submitted is no longer valid. This usually happens when a
+      page has been left open for a while, or when you sign in somewhere else in the meantime.</p>
+    <p><strong>Nothing was lost and nothing was charged.</strong> Reload the page and submit it
+      again.</p>
+
+    <a href="{{ retry_url }}" class="cf-btn">Reload and try again</a>
+
+    <p class="cf-alt">Still stuck? Make sure cookies are enabled for this site, or contact
+      <a href="mailto:support@sociallightbw.com">support@sociallightbw.com</a>.</p>
+
+    {% if debug %}
+    <details open>
+      <summary>Diagnostics (shown because DEBUG is on)</summary>
+      <div class="cf-cause"><strong>Likely cause:</strong> {{ facts.likely_cause }}</div>
+      <dl>
+        <dt>reason</dt><dd>{{ reason }}</dd>
+        <dt>body readable</dt><dd>{{ facts.body_readable }}</dd>
+        <dt>fields posted</dt><dd>{{ facts.posted_fields }}</dd>
+        <dt>csrf cookie</dt><dd>{{ facts.has_csrf_cookie }}</dd>
+        <dt>csrf header</dt><dd>{{ facts.has_csrf_header }}</dd>
+        <dt>content-length</dt><dd>{{ facts.content_length }}</dd>
+        <dt>content-type</dt><dd>{{ facts.content_type }}</dd>
+        <dt>referer</dt><dd>{{ facts.referer }}</dd>
+        <dt>origin</dt><dd>{{ facts.origin }}</dd>
+      </dl>
+    </details>
+    {% endif %}
+  </div>
+</body>
+</html>

@@ -181,7 +181,50 @@
 
 <div class="bl-wrap">
 
-  {% if submitted %}
+  {% if checkout_status == 'paid' %}
+  <div class="bl-status bl-status--active">
+    <i class="bi bi-patch-check-fill"></i>
+    <div>
+      <p class="bl-status-title">Payment received — your subscription is active</p>
+      <p class="bl-status-text">
+        Thank you. {% if org.package %}{{ org.name }} is now on the <strong>{{ org.package.name }}</strong> package and full access has been restored.{% else %}Full access has been restored.{% endif %}
+      </p>
+    </div>
+  </div>
+  {% elif checkout_status == 'pending' %}
+  <div class="bl-status bl-status--pending">
+    <i class="bi bi-hourglass-split"></i>
+    <div>
+      <p class="bl-status-title">Your payment is still being confirmed</p>
+      <p class="bl-status-text">
+        The bank has not finished processing this payment yet. There is no need to pay again — this page
+        updates as soon as it clears, and we'll email you either way.
+      </p>
+    </div>
+  </div>
+  {% elif checkout_status == 'failed' %}
+  <div class="bl-status bl-status--expired">
+    <i class="bi bi-exclamation-octagon-fill"></i>
+    <div>
+      <p class="bl-status-title">That payment didn't go through</p>
+      <p class="bl-status-text">
+        {% if latest_payment and latest_payment.failure_reason %}{{ latest_payment.failure_reason }}{% else %}The payment was not completed.{% endif %}
+        Nothing has been charged. Try again below, or <a href="mailto:sales@sociallight.africa">talk to our team</a> to pay by invoice.
+      </p>
+    </div>
+  </div>
+  {% elif checkout_status == 'unavailable' or checkout_status == 'unverified' or checkout_status == 'unknown' %}
+  <div class="bl-status bl-status--pending">
+    <i class="bi bi-exclamation-circle-fill"></i>
+    <div>
+      <p class="bl-status-title">We couldn't reach the payment gateway</p>
+      <p class="bl-status-text">
+        This is on our side, not yours{% if checkout_status == 'unverified' %} — and if you completed a payment, it is safe and will be confirmed automatically{% endif %}.
+        Try again in a moment, or <a href="mailto:sales@sociallight.africa">talk to our team</a> to pay by invoice.
+      </p>
+    </div>
+  </div>
+  {% elif submitted %}
   <div class="bl-status bl-status--pending">
     <i class="bi bi-check-circle-fill"></i>
     <div>
@@ -282,11 +325,19 @@
       {% elif org and org.package_id == p.id and org.effective_plan_status == 'active' %}
         <div class="pkg-current"><i class="bi bi-check-circle-fill"></i> Your current package</div>
       {% else %}
+        {% if gateway_checkout and p.price and not p.contact_only %}
+        <form method="post" action="{% url 'monitor:checkout_start' %}">
+          {% csrf_token %}
+          <input type="hidden" name="package" value="{{ p.slug }}"/>
+          <button type="submit" class="pkg-btn">Pay {{ p.price_display }} and activate</button>
+        </form>
+        {% else %}
         <button type="button" class="pkg-btn" onclick="openRequest('{{ p.slug }}','{{ p.name|escapejs }}')">
           {% if p.contact_only %}{{ p.button_label }}
           {% elif org and org.effective_plan_status == 'active' %}Switch to this package
           {% else %}Choose {{ p.name }}{% endif %}
         </button>
+        {% endif %}
       {% endif %}
     </div>
     {% endfor %}

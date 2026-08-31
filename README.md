@@ -71,7 +71,7 @@ Relevant settings: `TRIAL_PERIOD_DAYS` (default 14) and
    (sibling service)                                 │ scoped mention │  │  (ReportAnalysis)
                                                      │ models, Keyword│  │
  Article Extractor ─────────▶ (full-text extract) ──▶│ /Competitor,   │  └─ alert digest emails
-   (sibling service)                                 │ ReportAnalysis,│     (Resend / Anymail)
+   (sibling service)                                 │ ReportAnalysis,│     (SMTP)
                                                      │ Alert          │
  Manual + CSV upload ───────▶ create / CSV endpoints▶│                │
                                                      └────────────────┘
@@ -133,7 +133,7 @@ Relevant settings: `TRIAL_PERIOD_DAYS` (default 14) and
 - **Database:** PostgreSQL 15 (SQLite for local dev by default)
 - **Async:** Celery + Redis (broker), Celery Beat scheduler (`django_celery_beat`)
 - **AI:** Anthropic API (`claude-sonnet-4-6`)
-- **Email:** Resend via Anymail
+- **Email:** SMTP (`django.core.mail`), provider chosen in `.env`
 - **Frontend:** Django templates + Chart.js, Bootstrap 5 (crispy-forms)
 - **Infra:** Docker Compose, Nginx reverse proxy
 
@@ -160,7 +160,7 @@ Edit `.env` and fill in the keys you need:
 | `ANTHROPIC_API_KEY` | AI report analysis (optional — sections are omitted if unset) |
 | `MEDIAHOST_API_KEY` | mediahost clips import (blank = import disabled) |
 | `CELERY_BROKER_URL` | Redis broker (e.g. `redis://localhost:6379/0`) |
-| `RESEND_API_KEY` | Outbound email via Resend/Anymail |
+| `EMAIL_HOST` / `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | Outbound email over SMTP |
 | `SITE_URL` | Public base URL, used for absolute links in alert emails |
 
 ### 3. Run migrations and start the server

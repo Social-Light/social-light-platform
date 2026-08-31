@@ -10,7 +10,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -24,10 +24,12 @@ from .models import (
     SENTIMENT_CHOICES, COVERAGE_CHOICES, PLATFORM_CHOICES, INDUSTRY_CHOICES, ROLE_CHOICES,
     SOURCE_TYPE_CHOICES, BROADCAST_TYPE_CHOICES, EVENT_CATEGORY_CHOICES,
 )
+from .entitlements import enforce_feature, require_feature
 from .relevancy import compute_relevancy, filter_relevant
 from .print_metrics import estimate_print_reach as _print_reach
 from .alert_email import build_and_send, start_of_today
 from .org_email import send_org_disabled_email, send_org_enabled_email
+from . import legal
 
 
 def _absolute_url(path):
@@ -125,6 +127,36 @@ def home(request):
         'sectors': sectors,
         'commodity_quotes': CommodityQuote.objects.filter(is_published=True),
         'publications': Publication.objects.filter(is_published=True),
+    })
+
+
+# ── Public legal documents ───────────────────────────────────────────────────
+
+def legal_document(request, doc_type):
+    """The public, read-only page for one legal document.
+
+    Deliberately reads the same ``LegalDocument`` rows the onboarding wizard puts
+    in front of a new user, so the footer links and the consent screens can never
+    drift apart: approved wording pasted into the admin changes both at once, and
+    there is no second copy of the text in a template to forget about.
+
+    Read-only by design. Consent is recorded from the wizard and from
+    ``/app/legal/``; visiting this page agrees to nothing and writes no record.
+    """
+    if doc_type not in legal.PUBLIC_DOC_TYPES:
+        raise Http404('No such document.')
+
+    document = legal.current_document(doc_type)
+    if document is None:
+        # Nothing published for this type. A 404 is honest — better than an empty
+        # page implying Social Light has no terms.
+        raise Http404('That document has not been published yet.')
+
+    published = legal.current_documents()
+    return render(request, 'monitor/legal.html', {
+        'document': document,
+        'active': doc_type,
+        'documents': [(t, published[t]) for t in legal.REQUIRED_DOC_TYPES if t in published],
     })
 
 
@@ -483,6 +515,7 @@ def _keyword_trends(org, start, end):
 # ── Analytics ─────────────────────────────────────────────────────────────────
 
 @login_required
+@require_feature('advanced_analytics')
 def analytics(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     media_type = request.GET.get('type', 'social')
@@ -1364,6 +1397,7 @@ def broadcast_delete(request, org_id, mention_id):
 # ── Competitors ───────────────────────────────────────────────────────────────
 
 @login_required
+@require_feature('competitor_analysis')
 def competitors_view(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     competitors = list(org.competitors.all())
@@ -1810,6 +1844,7 @@ def _kpi_insights(qs, label, period_label):
 
 
 @login_required
+@require_feature('premium_reports')
 def report_full(request, org_id):
     import re as _re
     from collections import defaultdict, Counter
@@ -2154,6 +2189,7 @@ _GLOSSARY_TERMS = [
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('ai_analysis')
 def report_ai_generate(request, org_id):
     """Run the Anthropic analysis for a period on demand and cache it. The Full
     Report's 'Generate AI Analysis' button calls this, then reloads."""
@@ -2389,6 +2425,7 @@ def _issue_report_context(report):
 
 
 @login_required
+@require_feature('premium_reports')
 def report_issue(request, org_id, report_id):
     """Render a saved issue-focused report."""
     org = get_object_or_404(Organization, id=org_id)
@@ -2414,6 +2451,7 @@ def _pdf_download(request, template, ctx, filename, wait_ms=1100,
 
 
 @login_required
+@require_feature('report_download')
 def report_issue_pdf(request, org_id, report_id):
     """Download the issue/campaign report as a self-contained, server-rendered PDF
     (headless Chromium) — no browser print chrome, theme colours preserved."""
@@ -2440,6 +2478,7 @@ def report_issue_pdf(request, org_id, report_id):
 
 
 @login_required
+@require_feature('premium_reports')
 def report_issue_generate(request, org_id):
     """Create an issue-focused report: the AI selects the coverage relevant to the
     saga and writes the issue narrative. Returns the new report's id and view URL."""
@@ -2597,6 +2636,7 @@ def _campaign_metrics(campaign):
 
 
 @login_required
+@require_feature('campaigns')
 def campaigns_view(request, org_id):
     """Campaign list with a quick mention/sentiment summary per campaign."""
     org = get_object_or_404(Organization, id=org_id)
@@ -2611,6 +2651,7 @@ def campaigns_view(request, org_id):
 
 
 @login_required
+@require_feature('campaigns')
 def campaign_detail(request, org_id, campaign_id):
     org = get_object_or_404(Organization, id=org_id)
     campaign = get_object_or_404(Campaign, id=campaign_id, organization=org)
@@ -2683,6 +2724,7 @@ def campaign_delete(request, org_id, campaign_id):
 
 
 @login_required
+@require_feature('premium_reports')
 def campaign_generate_report(request, org_id, campaign_id):
     """Generate an Issue-Focused report for the campaign, seeded with its terms."""
     if request.method != 'POST':
@@ -2812,6 +2854,13 @@ def report_sentiment(request, org_id):
         'top_positive': top_positive,
         'top_negative': top_negative,
     }
+    # Paid: the report renders on screen for everyone, but taking it away as a
+    # file is a plan feature. Gated on the download branch rather than over the
+    # whole view, so a free user still sees the report itself.
+    if request.GET.get('download') == 'pdf':
+        denied = enforce_feature(request, 'report_download')
+        if denied is not None:
+            return denied
     if request.GET.get('download') == 'pdf':
         return _pdf_download(request, 'monitor/report_sentiment_pdf.html', ctx, 'sentiment-report.pdf')
     if request.GET.get('format') == 'pdf':
@@ -2885,6 +2934,13 @@ def report_source(request, org_id):
             {'label': s['label'], 'chart': s['chart_json']} for s in sections
         ]),
     }
+    # Paid: the report renders on screen for everyone, but taking it away as a
+    # file is a plan feature. Gated on the download branch rather than over the
+    # whole view, so a free user still sees the report itself.
+    if request.GET.get('download') == 'pdf':
+        denied = enforce_feature(request, 'report_download')
+        if denied is not None:
+            return denied
     if request.GET.get('download') == 'pdf':
         return _pdf_download(request, 'monitor/report_source_pdf.html', ctx, 'source-report.pdf')
     if request.GET.get('format') == 'pdf':
@@ -3221,6 +3277,7 @@ def _hot_topics(texts, top_n=20):
 
 
 @login_required
+@require_feature('competitor_analysis')
 def report_competitor(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
 
@@ -3463,6 +3520,13 @@ def report_competitor(request, org_id):
         # PDF mode flag
         'pdf_mode': request.GET.get('format') in ('pdf',) or request.GET.get('download') == 'pdf',
     }
+    # Paid: the report renders on screen for everyone, but taking it away as a
+    # file is a plan feature. Gated on the download branch rather than over the
+    # whole view, so a free user still sees the report itself.
+    if request.GET.get('download') == 'pdf':
+        denied = enforce_feature(request, 'report_download')
+        if denied is not None:
+            return denied
     if request.GET.get('download') == 'pdf':
         from .pdf import render_url_to_pdf, PDFError
         # This report depends on app static assets + live charts, so we navigate a
@@ -3492,6 +3556,7 @@ def report_competitor(request, org_id):
 
 
 @login_required
+@require_feature('report_download')
 def report_competitor_pptx(request, org_id):
     from io import BytesIO
     from pptx import Presentation

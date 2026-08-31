@@ -1,0 +1,59 @@
+{% extends "monitor/onboarding/base.html" %}
+{% block title %}You're all set{% endblock %}
+
+{% block extra_head %}
+<style>
+  .dn-summary{border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;margin:6px 0 26px;}
+  .dn-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 18px;
+          font-size:13.5px;border-bottom:1px solid #f1f5f9;}
+  .dn-row:last-child{border-bottom:none;}
+  .dn-label{color:#475569;}
+  .dn-value{color:#0f172a;font-weight:600;display:flex;align-items:center;gap:7px;}
+  .dn-value i{color:#16a34a;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ob-alert ob-alert--ok">
+  <i class="bi bi-check-circle-fill"></i>
+  <span>Your account is set up. Everything below is on record.</span>
+</div>
+
+<div class="dn-summary">
+  <div class="dn-row">
+    <span class="dn-label">Email address</span>
+    <span class="dn-value"><i class="bi bi-check-lg"></i>{{ user.email }} — verified</span>
+  </div>
+  {% if org %}
+  <div class="dn-row">
+    <span class="dn-label">Organisation</span>
+    <span class="dn-value">{{ org.name }}</span>
+  </div>
+  <div class="dn-row">
+    <span class="dn-label">Plan</span>
+    <span class="dn-value">
+      {% if org.package %}{{ org.package.name }}{% else %}Free trial{% endif %}
+      {% if org.is_on_trial %}· {{ org.trial_days_left }} day{{ org.trial_days_left|pluralize }} of trial left{% endif %}
+    </span>
+  </div>
+  {% endif %}
+  {% for c in consents %}
+  <div class="dn-row">
+    <span class="dn-label">{{ c.label }}</span>
+    <span class="dn-value">
+      {% if c.is_current %}<i class="bi bi-check-lg"></i>Version {{ c.accepted_version }} accepted
+        {{ c.accepted_at|date:"j M Y" }}{% else %}Not recorded{% endif %}
+    </span>
+  </div>
+  {% endfor %}
+</div>
+
+<p class="ob-blurb">
+  You can review what you accepted, and change your plan, at any time from your account settings.
+</p>
+
+<div class="ob-actions">
+  <a href="{{ app_url }}" class="ob-btn ob-btn--primary">Go to your dashboard</a>
+  <a href="{% url 'monitor:billing' %}" class="ob-back">View plans</a>
+</div>
+{% endblock %}

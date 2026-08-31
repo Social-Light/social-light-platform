@@ -3,7 +3,7 @@ that closes on day 14, package requests, and the organisation scoping that makes
 public signup safe.
 
 Everything here runs against the test database and the in-memory email backend,
-so no Resend, Celery or real data is touched.
+so no real mail server, Celery or real data is touched.
 """
 from datetime import timedelta
 
@@ -26,6 +26,7 @@ SIGNUP_POST = {
     'email': 'naledi@ministry.co.bw',
     'org_name': 'Ministry of Health',
     'password': 'correct-horse-9',
+    'confirm_password': 'correct-horse-9',
 }
 
 
@@ -50,7 +51,9 @@ class SignupTests(TestCase):
 
         org = Organization.objects.get(name='Ministry of Health')
         user = User.objects.get(email='naledi@ministry.co.bw')
-        self.assertRedirects(response, reverse('monitor:dashboard', args=[org.id]))
+        # Signup is step 1 of onboarding, so the new account lands on step 2
+        # rather than in the application.
+        self.assertRedirects(response, reverse('monitor:onboarding_verify'))
         self.assertEqual(user.organization, org)
         self.assertEqual(user.role, 'org_admin')
         self.assertEqual(user.first_name, 'Naledi')
@@ -64,10 +67,14 @@ class SignupTests(TestCase):
         self.assertIn('_auth_user_id', self.client.session)
 
     def test_signup_emails_the_new_user(self):
+        """Two emails now: the trial welcome, and the address confirmation the
+        account needs before it can reach the application."""
         self.client.post(reverse('monitor:signup'), SIGNUP_POST)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, ['naledi@ministry.co.bw'])
-        self.assertIn('14-day', mail.outbox[0].subject)
+        self.assertEqual(len(mail.outbox), 2)
+        subjects = [m.subject for m in mail.outbox]
+        self.assertTrue(all(m.to == ['naledi@ministry.co.bw'] for m in mail.outbox))
+        self.assertTrue(any('14-day' in s for s in subjects), subjects)
+        self.assertTrue(any('Confirm your email' in s for s in subjects), subjects)
 
     def test_password_must_be_ten_characters_with_a_number(self):
         for bad in ('short1', 'no-numbers-here'):
@@ -303,7 +310,7 @@ class PriceListTests(TestCase):
     def test_landing_page_links_to_the_trial_signup(self):
         response = self.client.get(reverse('monitor:home'))
         self.assertContains(response, reverse('monitor:signup'))
-        self.assertContains(response, 'Try Our Free Trial')
+        self.assertContains(response, 'Start free trial')
 
 
 class SeededPriceListTests(TestCase):
@@ -313,8 +320,15 @@ class SeededPriceListTests(TestCase):
 
     def test_a_new_deployment_has_the_four_published_tiers(self):
         self.assertEqual(
-            list(Package.objects.filter(is_active=True).values_list('name', flat=True)),
+            list(Package.objects.filter(is_active=True, is_public=True).values_list('name', flat=True)),
             ['Spark', 'Momentum', 'Scale', 'Enterprise'])
+
+    def test_the_free_tier_is_assignable_but_not_advertised(self):
+        """Free exists so an account can be put on it, but it is not one of the
+        cards on the published price list."""
+        free = Package.objects.get(slug='free')
+        self.assertTrue(free.is_active)
+        self.assertFalse(free.is_public)
 
     def test_momentum_is_the_featured_tier(self):
         featured = Package.objects.get(is_featured=True)

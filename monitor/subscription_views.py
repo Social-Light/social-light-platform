@@ -6,10 +6,25 @@ Flow:
                   →  full access, with a countdown banner in the app
     trial ends    →  OrganizationAccessMiddleware redirects every /app/ and
                      /api/ request to `billing`
-    billing       →  the user picks a package, which raises a SubscriptionRequest
-                     and emails sales; a platform admin activates the package
-                     from the Django admin, which restores access.
+    billing       →  the user picks a package.
+
+What happens at that last step depends on whether a gateway is switched on.
+
+With no gateway — the platform's long-standing behaviour — picking a package
+raises a SubscriptionRequest and emails sales; a platform admin activates the
+package from the Django admin, which restores access.
+
+With a hosted-redirect gateway (DPO Pay), picking a package instead opens a
+checkout at the gateway and sends the customer there to pay. They come back to
+`checkout_return`, which asks the gateway server-side what happened and, if the
+money arrived, activates the package immediately. `checkout_callback` is the same
+verification reached from the gateway's own webhook, so a customer who closes the
+tab on the payment page still gets activated.
+
+Both paths end at the same place — an active package — and the manual path
+remains available on every deployment for purchase orders and EFT.
 """
+import logging
 import re
 
 from django.conf import settings
@@ -20,18 +35,35 @@ from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.core.validators import validate_email
 from django.db import transaction
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from . import onboarding
 from .models import Organization, Package, SubscriptionRequest, User, trial_period_days
+from .onboarding import COUNTRY_CHOICES, DEFAULT_COUNTRY
+from .payment_models import Payment
+from .payments import PaymentError, get_provider, payments_enabled
+from .verification import send_verification_email
+
+logger = logging.getLogger(__name__)
 
 
 MIN_PASSWORD_LENGTH = 10
 
 
 def active_packages():
+    """The published price list. `is_public` keeps assignable-but-unadvertised
+    tiers (Free) off the marketing cards without making them unassignable."""
+    return Package.objects.filter(is_active=True, is_public=True)
+
+
+def selectable_packages():
+    """Every tier a user or admin may actually be put on — the price list plus
+    the unadvertised ones. Used by the onboarding plan step and admin assignment."""
     return Package.objects.filter(is_active=True)
 
 
@@ -44,15 +76,41 @@ def _split_name(full_name):
 
 def _validate_signup(data):
     """Returns (cleaned, errors). Kept separate from the view so the rules are
-    readable in one place and testable without a request."""
+    readable in one place and testable without a request.
+
+    Registration deliberately enforces only what is needed to create the account:
+    a name, a working email, an organisation and a password. Phone, job title and
+    country are accepted here but not required, because the onboarding profile
+    step asks for them and *does* require them — asking twice and blocking twice
+    would make signup heavier for no gain.
+
+    ``contact_name`` is still accepted as an alternative to first/last name so
+    that anything still posting the older form keeps working.
+    """
+    first_name = data.get('first_name', '').strip()
+    last_name = data.get('last_name', '').strip()
+    contact_name = data.get('contact_name', '').strip()
+    if not (first_name or last_name) and contact_name:
+        first_name, last_name = _split_name(contact_name)
+
     cleaned = {
-        'contact_name': data.get('contact_name', '').strip(),
+        'first_name': first_name,
+        'last_name': last_name,
+        'contact_name': contact_name or f'{first_name} {last_name}'.strip(),
         'email': data.get('email', '').strip(),
+        'phone': data.get('phone', '').strip(),
+        'job_title': data.get('job_title', '').strip(),
+        'country': data.get('country', '').strip(),
         'org_name': data.get('org_name', '').strip(),
         'password': data.get('password', ''),
+        'confirm_password': data.get('confirm_password', ''),
     }
     errors = {}
 
+    if not cleaned['first_name']:
+        errors['first_name'] = 'Enter your first name.'
+    if not cleaned['last_name']:
+        errors['last_name'] = 'Enter your last name.'
     if not cleaned['contact_name']:
         errors['contact_name'] = 'Enter your name.'
 
@@ -84,6 +142,17 @@ def _validate_signup(data):
             validate_password(password)
         except ValidationError as exc:
             errors['password'] = ' '.join(exc.messages)
+
+    # Confirmation is checked separately from the password rules, and only once
+    # the password itself is valid — telling someone their passwords do not match
+    # *and* that the password is too short at the same time is noise. A typo here
+    # is expensive: the account is created with a password its owner does not
+    # know, and the only way out is a reset.
+    if not errors.get('password'):
+        if not cleaned['confirm_password']:
+            errors['confirm_password'] = 'Type your password again to confirm it.'
+        elif cleaned['confirm_password'] != password:
+            errors['confirm_password'] = 'These passwords do not match.'
 
     return cleaned, errors
 
@@ -138,36 +207,60 @@ def _notify_sales(request, sub_request):
 # ── Signup ───────────────────────────────────────────────────────────────────
 
 def signup(request):
-    """Public self-service signup. Creates the organisation and its first user
-    (an org admin) and starts the free trial."""
+    """Public self-service signup — step 1 of onboarding.
+
+    Creates the organisation and its first user (an org admin), starts the free
+    trial, and hands the user straight to step 2. The account exists at this
+    point but is not yet verified, so the middleware will keep it out of the
+    application until the emailed link is followed.
+    """
     if request.user.is_authenticated:
         return redirect('monitor:organizations')
 
-    values, errors = {}, {}
+    # Pre-select the home market so a blank form does not silently default to
+    # whichever country sorts first.
+    values, errors = {'country': DEFAULT_COUNTRY}, {}
     if request.method == 'POST':
         values, errors = _validate_signup(request.POST)
         if not errors:
-            first_name, last_name = _split_name(values['contact_name'])
             with transaction.atomic():
                 org = Organization(
                     name=values['org_name'],
                     email=values['email'],
                     status='active',
                 )
+                if values['country']:
+                    org.country = values['country']
                 org.start_trial()
                 org.save()
                 user = User.objects.create_user(
                     username=values['email'].lower(),
                     email=values['email'],
                     password=values['password'],
-                    first_name=first_name,
-                    last_name=last_name,
+                    first_name=values['first_name'],
+                    last_name=values['last_name'],
+                    phone=values['phone'],
+                    job_title=values['job_title'],
+                    country=values['country'],
                     organization=org,
                     role='org_admin',
                 )
+                onboarding.start(user)
             login(request, user)
             _send_trial_welcome(request, user, org)
-            return redirect('monitor:dashboard', org_id=org.id)
+            _token, mail_error = send_verification_email(request, user)
+            if mail_error:
+                # The account is created and the user is signed in — a mail
+                # failure must not undo that. Hand the reason to the verify step
+                # so it can say what happened instead of claiming success.
+                request.session['verification_email_error'] = mail_error
+            return redirect(onboarding.next_url(user))
+
+    # Re-render the form without the passwords in it. The template never echoes
+    # them into a value attribute, but there is no reason for a plaintext
+    # password to sit in a template context at all — one careless
+    # `{{ values.password }}` later and it is on the page.
+    values = {k: v for k, v in values.items() if k not in ('password', 'confirm_password')}
 
     return render(request, 'monitor/signup.html', {
         'values': values,
@@ -175,6 +268,7 @@ def signup(request):
         'trial_days': trial_period_days(),
         'min_password_length': MIN_PASSWORD_LENGTH,
         'packages': active_packages(),
+        'countries': COUNTRY_CHOICES,
     })
 
 
@@ -206,6 +300,11 @@ def billing(request):
         'trial_days': trial_period_days(),
         'pending_request': latest_request,
         'submitted': request.GET.get('requested') == '1',
+        # When a gateway is on, the package buttons post straight to checkout
+        # instead of opening the "request a call" modal.
+        'gateway_checkout': redirect_checkout_provider() is not None,
+        'checkout_status': request.GET.get('checkout', ''),
+        'latest_payment': (org.payments.first() if org else None),
     })
 
 
@@ -238,3 +337,160 @@ def package_request(request):
 
     _notify_sales(request, sub_request)
     return redirect(f"{reverse('monitor:billing')}?requested=1")
+
+
+# ── Gateway checkout ─────────────────────────────────────────────────────────
+# Only reached when a hosted-redirect provider is configured. The manual path
+# above is untouched and remains the fallback on every deployment.
+
+def redirect_checkout_provider():
+    """The configured provider, but only if it can actually take a payment by
+    redirect. Returns None otherwise, which is what makes every view below fall
+    back to the manual request flow instead of erroring."""
+    if not payments_enabled():
+        return None
+    provider = get_provider()
+    if not (provider.is_redirect and provider.is_enabled):
+        return None
+    return provider
+
+
+def _absolute(request, url_name):
+    return request.build_absolute_uri(reverse(url_name))
+
+
+def _billing_url(**params):
+    query = '&'.join(f'{k}={v}' for k, v in params.items() if v)
+    return f"{reverse('monitor:billing')}?{query}" if query else reverse('monitor:billing')
+
+
+@login_required
+@require_http_methods(['POST'])
+def checkout_start(request):
+    """Open a payment at the gateway and send the customer to it.
+
+    Falls back to the manual request flow whenever a gateway cannot be used —
+    no provider, a contact-only tier, a package with no price. A customer must
+    never reach a dead end here: the worst case is the flow they would have had
+    before payments were switched on.
+    """
+    org = request.user.organization
+    provider = redirect_checkout_provider()
+    package = Package.objects.filter(slug=request.POST.get('package'), is_active=True).first()
+
+    if org is None or provider is None or package is None or package.contact_only or not package.price:
+        return package_request(request)
+
+    try:
+        session = provider.start_checkout(
+            org, package.price, package.currency,
+            package=package,
+            user=request.user,
+            description=f'{package.name} — {package.get_billing_period_display()}',
+            return_url=_absolute(request, 'monitor:checkout_return'),
+            callback_url=_absolute(request, 'monitor:checkout_callback'),
+        )
+    except PaymentError as exc:
+        # A gateway that is down must not strand a customer who wants to pay.
+        logger.warning('Checkout could not be started for org %s: %s', org.id, exc)
+        return redirect(_billing_url(checkout='unavailable'))
+
+    return redirect(session.redirect_url)
+
+
+def _settle(payment):
+    """Verify a payment with the gateway and activate the package if it is paid.
+
+    The single place a subscription is turned on by a gateway payment, so that
+    the browser return and the webhook cannot disagree about what happened. Safe
+    to call repeatedly — ``verify_checkout`` is idempotent and
+    ``activate_package`` is a straight assignment.
+    """
+    provider = redirect_checkout_provider()
+    if provider is None:
+        return None
+
+    result = provider.verify_checkout(payment)
+    if result.succeeded and payment.package_id:
+        payment.organization.activate_package(payment.package)
+    return result
+
+
+def _payment_from_reference(reference):
+    """Find the payment a gateway is talking about.
+
+    ``CompanyRef`` is the Payment row's own UUID, so this is a primary-key
+    lookup. It is also the only thing taken from the query string: the *outcome*
+    is always re-fetched from the gateway, never read from what the browser
+    carried back.
+    """
+    if not reference:
+        return None
+    try:
+        return Payment.objects.select_related('organization', 'package').get(pk=reference)
+    except (Payment.DoesNotExist, ValueError, ValidationError):
+        return None
+
+
+def checkout_return(request):
+    """Where the gateway sends the customer's browser after payment.
+
+    Deliberately not behind ``@login_required`` and deliberately outside
+    ``/app/``. The customer arriving here is, by definition, one whose trial has
+    expired, so the paywall would bounce them; and a session cookie that does not
+    survive the round trip would send them to a login page instead of confirming
+    the payment they just made. The reference is an unguessable UUID and the
+    verdict comes from the gateway, so nothing here depends on the session.
+    """
+    payment = _payment_from_reference(
+        request.GET.get('CompanyRef') or request.GET.get('company_ref'))
+    if payment is None:
+        return redirect(_billing_url(checkout='unknown'))
+
+    try:
+        result = _settle(payment)
+    except PaymentError as exc:
+        logger.warning('Could not verify payment %s on return: %s', payment.id, exc)
+        return redirect(_billing_url(checkout='unverified'))
+
+    if result is not None and result.succeeded:
+        return redirect(_billing_url(checkout='paid'))
+    if payment.status == 'pending':
+        # Still in flight — the webhook will finish it. Saying "failed" here
+        # would be wrong and would push the customer into paying twice.
+        return redirect(_billing_url(checkout='pending'))
+    return redirect(_billing_url(checkout='failed'))
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def checkout_callback(request):
+    """The gateway's server-to-server notification.
+
+    CSRF-exempt because the caller is DPO, not a browser with a session — and
+    safe to be, because the request grants nothing on its own: it names a payment
+    and this view then asks the gateway directly what that payment's status is. A
+    forged call can at most trigger a verification that returns the truth.
+
+    DPO expects an ``<API3G><Response>OK</Response></API3G>`` body, and treats
+    anything else as a delivery failure worth retrying — which is fine, because
+    the handler is idempotent.
+    """
+    reference = request.POST.get('CompanyRef') or request.POST.get('TransactionToken')
+    payment = _payment_from_reference(request.POST.get('CompanyRef'))
+    if payment is None and reference:
+        payment = Payment.objects.filter(provider_reference=reference).first()
+
+    if payment is not None:
+        try:
+            _settle(payment)
+        except PaymentError as exc:
+            # Acknowledge anyway: a retry storm from the gateway will not fix a
+            # gateway we cannot reach, and the return leg verifies as well.
+            logger.warning('Callback verification failed for %s: %s', payment.id, exc)
+    else:
+        logger.warning('Payment callback for an unknown reference: %r', reference)
+
+    return HttpResponse(
+        '<?xml version="1.0" encoding="utf-8"?><API3G><Response>OK</Response></API3G>',
+        content_type='application/xml')
