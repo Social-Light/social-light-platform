@@ -46,7 +46,7 @@ from . import onboarding
 from .models import Organization, Package, SubscriptionRequest, User, trial_period_days
 from .onboarding import COUNTRY_CHOICES, DEFAULT_COUNTRY
 from .payment_models import Payment
-from .payments import PaymentError, get_provider, payments_enabled
+from .payments import PaymentError, PaymentRejected, get_provider, payments_enabled
 from .verification import send_verification_email
 
 logger = logging.getLogger(__name__)
@@ -356,6 +356,24 @@ def redirect_checkout_provider():
 
 
 def _absolute(request, url_name):
+    """The public URL a payment gateway should send the customer back to.
+
+    Normally derived from the request, which is right in production: the host the
+    customer arrived on is the host they should return to.
+
+    ``PAYMENT_RETURN_BASE_URL`` overrides that, and exists because the derived
+    host is not always usable. Behind a tunnel or a proxy the request can carry a
+    rewritten or loopback host, and DPO rejects a loopback return URL outright —
+    the whole transaction, with 403, before its API ever sees the request. That
+    failure is invisible from the code's point of view: everything is correct
+    except the one value that came from the environment rather than from us.
+
+    Setting it pins the URL regardless of how the request arrived, which is what
+    makes a tunnelled development setup behave like production.
+    """
+    base = (getattr(settings, 'PAYMENT_RETURN_BASE_URL', '') or '').rstrip('/')
+    if base:
+        return f'{base}{reverse(url_name)}'
     return request.build_absolute_uri(reverse(url_name))
 
 
@@ -381,17 +399,42 @@ def checkout_start(request):
     if org is None or provider is None or package is None or package.contact_only or not package.price:
         return package_request(request)
 
+    return_url = _absolute(request, 'monitor:checkout_return')
+    cancel_url = _absolute(request, 'monitor:checkout_cancelled')
+    # Logged because these are built from the request's own host, so they are the
+    # first thing to check when a gateway rejects a checkout: behind a proxy or a
+    # tunnel the host can be rewritten to something the gateway will not accept —
+    # DPO refuses loopback addresses outright.
+    logger.info('Starting checkout for org %s: return=%s cancel=%s',
+                org.id, return_url, cancel_url)
+
     try:
         session = provider.start_checkout(
             org, package.price, package.currency,
             package=package,
             user=request.user,
             description=f'{package.name} — {package.get_billing_period_display()}',
-            return_url=_absolute(request, 'monitor:checkout_return'),
-            callback_url=_absolute(request, 'monitor:checkout_callback'),
+            return_url=return_url,
+            # DPO's BackURL is where it sends a customer who clicks back from the
+            # payment page without paying. It is NOT the completion webhook —
+            # that is checkout_callback, which DPO calls server-to-server and
+            # which is configured account-side rather than per transaction.
+            callback_url=cancel_url,
+            # Self-serve tiers renew monthly, so ask DPO to save the card on the
+            # first payment. Without this there is no token to charge later and
+            # every renewal would mean sending the customer back through checkout.
+            allow_recurrent=not package.contact_only,
         )
+    except PaymentRejected as exc:
+        # Reached the gateway and been refused. Retrying will be refused the same
+        # way, so the customer must not be told to try again in a moment. The
+        # gateway's own wording is logged rather than shown: it often names the
+        # gateway's support address, which is not who the customer should ask.
+        logger.warning('Gateway refused checkout for org %s (%s): %s',
+                       org.id, package.slug, exc.reason)
+        return redirect(_billing_url(checkout='rejected'))
     except PaymentError as exc:
-        # A gateway that is down must not strand a customer who wants to pay.
+        # Could not reach the gateway at all. Worth trying again shortly.
         logger.warning('Checkout could not be started for org %s: %s', org.id, exc)
         return redirect(_billing_url(checkout='unavailable'))
 
@@ -410,10 +453,54 @@ def _settle(payment):
     if provider is None:
         return None
 
+    # Whether this call is the one that settles the payment, or a repeat of a
+    # settlement that already happened. Both the browser return and the webhook
+    # arrive for every payment, and a support agent re-checking arrives again.
+    was_already_paid = payment.status == 'succeeded'
+
     result = provider.verify_checkout(payment)
     if result.succeeded and payment.package_id:
+        # activate_package sets current_period_end from the package's billing
+        # period, so the subscription actually lapses rather than running forever.
         payment.organization.activate_package(payment.package)
+        if not was_already_paid:
+            # Only on the transition to paid. Re-verifying a settled payment must
+            # not generate fresh gateway traffic.
+            _capture_saved_card(provider, payment)
     return result
+
+
+def _capture_saved_card(provider, payment):
+    """Store the saved-card token so this subscription can renew itself.
+
+    Best effort by design. The customer has paid and their access is already
+    restored; failing to retrieve a token only means the next renewal asks them
+    to pay again, which is a worse experience but not a broken one. It must never
+    turn a successful payment into an error.
+    """
+    capture = getattr(provider, 'capture_subscription_token', None)
+    if capture is None:
+        return
+
+    # Already have one. Both the browser return and the webhook reach this for the
+    # same payment, and a support agent re-checking reaches it again — fetching
+    # the same token repeatedly would be pointless traffic against the gateway.
+    if provider.recurring_method_for(payment.organization) is not None:
+        return
+
+    try:
+        capture(payment.organization, _customer_email(payment), user=payment.created_by)
+    except Exception as exc:                     # noqa: BLE001 - never break a paid checkout
+        logger.warning('Could not store the saved card for org %s: %s',
+                       payment.organization_id, exc)
+
+
+def _customer_email(payment):
+    """The address the customer was identified by at checkout, which is what the
+    gateway's token lookup is keyed on."""
+    if payment.created_by and payment.created_by.email:
+        return payment.created_by.email
+    return payment.organization.email if payment.organization else ''
 
 
 def _payment_from_reference(reference):
@@ -460,6 +547,26 @@ def checkout_return(request):
         # would be wrong and would push the customer into paying twice.
         return redirect(_billing_url(checkout='pending'))
     return redirect(_billing_url(checkout='failed'))
+
+
+def checkout_cancelled(request):
+    """DPO's BackURL — the customer clicked back without paying.
+
+    Deliberately verifies nothing and changes nothing. There is no payment to
+    confirm: they chose not to make one, and calling verifyToken here would only
+    ask DPO about a transaction we already know was abandoned. The pending
+    Payment row is left exactly as it is, which is what an abandoned attempt
+    should look like in the admin.
+
+    Separate from checkout_callback, which is the server-to-server webhook DPO
+    calls when a payment completes. Conflating the two would mean a customer
+    backing out hit the same code path as a completed payment.
+    """
+    payment = _payment_from_reference(
+        request.GET.get('CompanyRef') or request.GET.get('company_ref'))
+    if payment is not None:
+        logger.info('Checkout abandoned at the gateway for payment %s', payment.id)
+    return redirect(_billing_url(checkout='cancelled'))
 
 
 @csrf_exempt

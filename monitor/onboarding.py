@@ -51,6 +51,59 @@ OTHER_COUNTRIES = [
 
 COUNTRY_CHOICES = AFRICAN_COUNTRIES + OTHER_COUNTRIES
 
+# ISO 3166-1 alpha-2 codes for every name above. Kept here, beside the list it
+# maps, so the two cannot drift apart when a country is added.
+#
+# The application itself has no use for these — country is stored, filtered and
+# displayed as a plain name. They exist for external systems that will not accept
+# anything else: DPO's payment API rejects a full country name outright with
+# "902 Data mismatch". Converting at that boundary keeps the ISO requirement in
+# the one place that has it, rather than migrating a field that six coverage
+# models also use and that is populated from media feeds we do not control.
+#
+# 'Other' is deliberately absent: it is a real choice in the dropdown but not a
+# country, so it has no code and callers must omit the field rather than guess.
+COUNTRY_ALPHA2 = {
+    'Algeria': 'DZ', 'Angola': 'AO', 'Benin': 'BJ', 'Botswana': 'BW',
+    'Burkina Faso': 'BF', 'Burundi': 'BI', 'Cabo Verde': 'CV', 'Cameroon': 'CM',
+    'Central African Republic': 'CF', 'Chad': 'TD', 'Comoros': 'KM',
+    'Congo (Democratic Republic of the)': 'CD', 'Congo (Republic of the)': 'CG',
+    "Côte d'Ivoire": 'CI', 'Djibouti': 'DJ', 'Egypt': 'EG',
+    'Equatorial Guinea': 'GQ', 'Eritrea': 'ER', 'Eswatini': 'SZ',
+    'Ethiopia': 'ET', 'Gabon': 'GA', 'Gambia': 'GM', 'Ghana': 'GH',
+    'Guinea': 'GN', 'Guinea-Bissau': 'GW', 'Kenya': 'KE', 'Lesotho': 'LS',
+    'Liberia': 'LR', 'Libya': 'LY', 'Madagascar': 'MG', 'Malawi': 'MW',
+    'Mali': 'ML', 'Mauritania': 'MR', 'Mauritius': 'MU', 'Morocco': 'MA',
+    'Mozambique': 'MZ', 'Namibia': 'NA', 'Niger': 'NE', 'Nigeria': 'NG',
+    'Rwanda': 'RW', 'São Tomé and Príncipe': 'ST', 'Senegal': 'SN',
+    'Seychelles': 'SC', 'Sierra Leone': 'SL', 'Somalia': 'SO',
+    'South Africa': 'ZA', 'South Sudan': 'SS', 'Sudan': 'SD',
+    'Tanzania': 'TZ', 'Togo': 'TG', 'Tunisia': 'TN', 'Uganda': 'UG',
+    'Zambia': 'ZM', 'Zimbabwe': 'ZW',
+    'United Kingdom': 'GB', 'United States': 'US',
+    'United Arab Emirates': 'AE', 'China': 'CN', 'India': 'IN',
+    'Australia': 'AU', 'Canada': 'CA',
+}
+
+
+def country_alpha2(value):
+    """The ISO 3166-1 alpha-2 code for a stored country name, or ''.
+
+    Returns '' rather than a guess for anything unrecognised — including 'Other',
+    a blank, and free text typed before the dropdown existed. A caller sending
+    this to an external API must omit the field entirely in that case: an invalid
+    code is rejected outright, whereas a missing optional one is not.
+
+    A value that is already a two-letter code is passed through, so a record
+    written directly with 'BW' still works.
+    """
+    text = (value or '').strip()
+    if not text:
+        return ''
+    if len(text) == 2 and text.isalpha():
+        return text.upper()
+    return COUNTRY_ALPHA2.get(text, '')
+
 # Pre-selected on a blank form. Botswana is the home market, and without this the
 # browser would default to whatever sorts first alphabetically.
 DEFAULT_COUNTRY = 'Botswana'

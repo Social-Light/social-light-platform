@@ -29,9 +29,9 @@ from xml.etree import ElementTree
 from django.conf import settings
 from django.utils import timezone
 
-from ..payment_models import Payment
+from ..payment_models import Payment, PaymentMethod
 from .base import (ChargeResult, CheckoutSession, PaymentConfigurationError,
-                   PaymentError, PaymentProvider)
+                   PaymentError, PaymentProvider, PaymentRejected)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,13 @@ VERIFY_FAILED = {
     '903',    # Payment time limit exceeded
     '904',    # Cancelled
 }
+
+#: ``SearchCriteria`` value for looking a customer up by email address.
+SEARCH_BY_EMAIL = '1'
+
+#: ``chargeTokenRecurrent`` answers finally rather than needing a verifyToken, so
+#: this is the whole set of codes that mean money moved.
+RECURRENT_PAID = {'000'}
 
 #: Codes that mean *we* sent something wrong, not that the customer's payment
 #: failed. Surfaced as a configuration error so a broken integration is loud in
@@ -183,8 +190,16 @@ class DPOProvider(PaymentProvider):
 
     # ── API calls ────────────────────────────────────────────────────────────
     def create_token(self, *, amount, currency, company_ref, description,
-                     redirect_url='', back_url='', customer=None, metadata=''):
-        """``createToken`` — open a transaction and get the checkout token back."""
+                     redirect_url='', back_url='', customer=None, metadata='',
+                     allow_recurrent=False):
+        """``createToken`` — open a transaction and get the checkout token back.
+
+        ``allow_recurrent`` adds ``<AllowRecurrent>1</AllowRecurrent>``, which
+        tells DPO to save the customer's card against a subscription token so it
+        can be charged again without them re-entering it. That token is not
+        returned here — it is fetched afterwards with
+        :meth:`get_subscription_token`, once the customer has actually paid.
+        """
         self._require_config()
 
         root = ElementTree.Element('API3G')
@@ -203,6 +218,8 @@ class DPOProvider(PaymentProvider):
         ElementTree.SubElement(transaction, 'PTL').text = str(self.payment_time_limit)
         ElementTree.SubElement(transaction, 'PTLtype').text = 'hours'
         ElementTree.SubElement(transaction, 'TransactionSource').text = 'API'
+        if allow_recurrent:
+            ElementTree.SubElement(transaction, 'AllowRecurrent').text = '1'
         if redirect_url:
             ElementTree.SubElement(transaction, 'RedirectURL').text = redirect_url
         if back_url:
@@ -223,8 +240,13 @@ class DPOProvider(PaymentProvider):
         response = self._post(root)
         result, explanation = self._check_result(response, 'createToken')
         if result != RESULT_OK:
-            raise PaymentError(
-                explanation or 'The payment gateway could not start this payment.')
+            # Reached DPO and been refused — an amount over the account's limit,
+            # an unsupported currency. Retrying changes nothing, so this must not
+            # be reported to the customer as a gateway we could not reach.
+            logger.warning('DPO refused createToken (%s): %s', result, explanation)
+            raise PaymentRejected(
+                'The payment gateway would not accept this payment.',
+                reason=explanation or f'createToken returned {result}')
 
         token = self._text(response, 'TransToken')
         if not token:
@@ -260,13 +282,78 @@ class DPOProvider(PaymentProvider):
             'fraud_explanation': self._text(response, 'TransactionFraudExplanation'),
         }
 
+    def get_subscription_token(self, email):
+        """``getSubscriptionToken`` — the stored-card tokens for a customer.
+
+        Looked up by contact detail rather than by transaction: DPO's search takes
+        a criteria code and a value, and ``1`` is the customer's email address.
+        Call it only after a payment made with ``allow_recurrent`` has actually
+        been paid — before that there is no saved card and DPO answers 999.
+
+        Returns ``None`` when DPO has no customer on file, which is a normal
+        answer rather than an error: it means this organisation simply cannot be
+        auto-renewed, and the caller falls back to asking them to pay again.
+        """
+        self._require_config()
+
+        root = ElementTree.Element('API3G')
+        ElementTree.SubElement(root, 'CompanyToken').text = self.company_token
+        ElementTree.SubElement(root, 'Request').text = 'getSubscriptionToken'
+        ElementTree.SubElement(root, 'SearchCriteria').text = SEARCH_BY_EMAIL
+        ElementTree.SubElement(root, 'SearchCriteriaValue').text = str(email)
+
+        response = self._post(root)
+        result, explanation = self._check_result(response, 'getSubscriptionToken')
+        if result != RESULT_OK:
+            logger.info('No DPO subscription token for %s: %s %s', email, result, explanation)
+            return None
+
+        subscription = self._text(response, 'SubscriptionToken')
+        if not subscription:
+            return None
+        return {
+            'subscription_token': subscription,
+            'customer_token': self._text(response, 'CustomerToken'),
+        }
+
+    def charge_token_recurrent(self, transaction_token, subscription_token):
+        """``chargeTokenRecurrent`` — charge a saved card.
+
+        Note the request needs *both* a subscription token (the saved card) and a
+        ``TransactionToken`` for a **new** transaction: the subscription token
+        says who to charge, the transaction token says what for. So a renewal is
+        always ``createToken`` followed by this call.
+
+        Unlike the hosted-checkout flow, the answer here is final. DPO returns the
+        outcome directly and there is no ``verifyToken`` step — checking again
+        would tell us nothing new.
+        """
+        self._require_config()
+
+        root = ElementTree.Element('API3G')
+        ElementTree.SubElement(root, 'CompanyToken').text = self.company_token
+        ElementTree.SubElement(root, 'Request').text = 'chargeTokenRecurrent'
+        ElementTree.SubElement(root, 'TransactionToken').text = str(transaction_token)
+        # Lower-case 's' is what DPO documents for this request, unlike the
+        # capitalised SubscriptionToken it returns from getSubscriptionToken.
+        ElementTree.SubElement(root, 'subscriptionToken').text = str(subscription_token)
+
+        response = self._post(root)
+        result, explanation = self._check_result(response, 'chargeTokenRecurrent')
+        return {
+            'result': result,
+            'explanation': explanation,
+            'succeeded': result in RECURRENT_PAID,
+        }
+
     def checkout_url(self, token):
         separator = '&' if '?' in self.payment_url else '?'
         return f'{self.payment_url}{separator}ID={token}'
 
     # ── Contract ─────────────────────────────────────────────────────────────
     def start_checkout(self, organization, amount, currency, *, package=None,
-                       description='', user=None, return_url='', callback_url=''):
+                       description='', user=None, return_url='', callback_url='',
+                       allow_recurrent=False):
         """Create the local Payment row first, then open the transaction at DPO.
 
         The row is written before the API call so that its UUID can be the
@@ -295,6 +382,7 @@ class DPOProvider(PaymentProvider):
             back_url=callback_url,
             customer=self._customer_fields(organization, user),
             metadata=f'org={organization.id}; package={package.slug if package else "-"}',
+            allow_recurrent=allow_recurrent,
         )
 
         payment.provider_reference = created['token']
@@ -312,8 +400,15 @@ class DPOProvider(PaymentProvider):
         """Prefill what DPO's checkout page would otherwise ask for again.
 
         All optional — a missing field costs the customer a moment of typing, so
-        nothing here is worth failing a payment over.
+        nothing here is worth failing a payment over. That is exactly why
+        ``customerCountry`` is converted and then dropped when it cannot be:
+        DPO requires an ISO 3166-1 alpha-2 code there and rejects the whole
+        transaction with "902 Data mismatch" for anything else, including the
+        full country names this application stores everywhere else. Omitting an
+        optional field costs nothing; sending an invalid one costs the payment.
         """
+        from ..onboarding import country_alpha2
+
         fields = {}
         if user is not None:
             fields['customerFirstName'] = user.first_name
@@ -322,7 +417,9 @@ class DPOProvider(PaymentProvider):
             fields['customerPhone'] = getattr(user, 'phone', '')
         if organization is not None:
             fields.setdefault('customerEmail', organization.email or '')
-            fields['customerCountry'] = getattr(organization, 'country', '') or ''
+            country = country_alpha2(getattr(organization, 'country', ''))
+            if country:
+                fields['customerCountry'] = country
         return fields
 
     def verify_checkout(self, payment):
@@ -378,6 +475,106 @@ class DPOProvider(PaymentProvider):
         self._record_failure(payment, reason)
         return ChargeResult(reference=payment.provider_reference, succeeded=False,
                             failure_reason=reason, raw=verified)
+
+    # ── Recurring billing ────────────────────────────────────────────────────
+    def capture_subscription_token(self, organization, email, user=None):
+        """Store the saved-card token for an organisation after its first payment.
+
+        Kept on :class:`PaymentMethod`, the model that already exists for exactly
+        this — a tokenised instrument belonging to an organisation — rather than
+        on new fields. The subscription token goes in ``provider_token`` and the
+        customer token in ``provider_customer_id``, mirroring how the Stripe
+        provider uses the same two columns.
+
+        Returns the PaymentMethod, or None when DPO has no saved card. A missing
+        token is not an error: it means this organisation renews by paying again
+        rather than automatically.
+        """
+        if not email:
+            return None
+
+        tokens = self.get_subscription_token(email)
+        if not tokens:
+            return None
+
+        existing = organization.payment_methods.filter(
+            provider=self.key, provider_token=tokens['subscription_token']).first()
+        if existing:
+            if not existing.is_active:
+                existing.is_active = True
+                existing.save(update_fields=['is_active'])
+            return existing
+
+        return PaymentMethod.objects.create(
+            organization=organization,
+            added_by=user,
+            provider=self.key,
+            provider_customer_id=tokens['customer_token'],
+            provider_token=tokens['subscription_token'],
+            # DPO's token lookup returns no card metadata, so there are no
+            # display fragments to store. The label falls back to "Dpo
+            # (tokenised)", which is honest about what we actually hold.
+            holder_name=organization.name[:200],
+            is_default=True,
+        )
+
+    def recurring_method_for(self, organization):
+        """The saved card this organisation renews against, if it has one."""
+        return organization.payment_methods.filter(
+            provider=self.key, is_active=True, provider_token__gt='').first()
+
+    def charge_recurring(self, organization, payment_method, amount, currency,
+                         package=None, description=''):
+        """Charge a saved card for a renewal, with no customer present.
+
+        Two calls: a fresh ``createToken`` for the amount, then
+        ``chargeTokenRecurrent`` against it and the stored subscription token.
+        No redirect or back URL is sent because nobody is browsing — which is
+        also why this path works from any host, unlike the hosted checkout.
+        """
+        payment = Payment.objects.create(
+            organization=organization,
+            package=package,
+            payment_method=payment_method,
+            amount=amount,
+            currency=(currency or 'USD').upper(),
+            description=description or (f'{package.name} renewal' if package
+                                        else 'Subscription renewal'),
+            provider=self.key,
+            status='pending',
+        )
+
+        try:
+            created = self.create_token(
+                amount=payment.amount,
+                currency=payment.currency,
+                company_ref=payment.id,
+                description=payment.description,
+                metadata=f'org={organization.id}; renewal=1',
+            )
+        except PaymentError as exc:
+            self._record_failure(payment, f'Could not open the renewal transaction: {exc}')
+            return ChargeResult(reference='', succeeded=False, failure_reason=str(exc)[:300])
+
+        payment.provider_reference = created['token']
+        payment.save(update_fields=['provider_reference', 'updated_at'])
+
+        try:
+            charged = self.charge_token_recurrent(
+                created['token'], payment_method.provider_token)
+        except PaymentError as exc:
+            self._record_failure(payment, f'The renewal charge failed: {exc}')
+            return ChargeResult(reference=created['token'], succeeded=False,
+                                failure_reason=str(exc)[:300])
+
+        if charged['succeeded']:
+            payment.mark_paid()
+            return ChargeResult(reference=created['token'], succeeded=True, raw=charged)
+
+        reason = charged['explanation'] or f'The renewal was declined (code {charged["result"]}).'
+        self._record_failure(payment, reason)
+        return ChargeResult(reference=created['token'], succeeded=False,
+                            failure_reason=reason, raw=charged)
 
     @staticmethod
     def _amount_matches(payment, verified):

@@ -49,6 +49,25 @@ class PaymentConfigurationError(PaymentError):
     """A gateway is switched on but is missing credentials or its client library."""
 
 
+class PaymentRejected(PaymentError):
+    """The gateway received the request, understood it, and refused it.
+
+    Distinct from a plain :class:`PaymentError`, which also covers not being able
+    to reach the gateway at all. The two need different words in front of a
+    customer: an unreachable gateway is worth retrying in a moment, whereas a
+    refused request will be refused identically however many times it is sent —
+    an amount over the account's limit, or a currency the account cannot take.
+
+    ``reason`` is the gateway's own explanation. It belongs in the log and in
+    front of staff, not in front of a customer: gateways routinely answer with
+    their own support address, which is not who the customer should contact.
+    """
+
+    def __init__(self, message, reason=''):
+        super().__init__(message)
+        self.reason = reason or message
+
+
 @dataclass
 class CardDetails:
     """The non-sensitive fragments a provider returns about a stored card.
@@ -134,8 +153,13 @@ class PaymentProvider:
     # sent in the first, and the answer is only available in the second.
 
     def start_checkout(self, organization, amount, currency, *, package=None,
-                       description='', user=None, return_url='', callback_url=''):
+                       description='', user=None, return_url='', callback_url='',
+                       allow_recurrent=False):
         """Open a payment at the gateway and return a :class:`CheckoutSession`.
+
+        ``allow_recurrent`` asks the gateway to save the customer's instrument so
+        later renewals can be charged without them present. Providers that cannot
+        do that ignore it.
 
         Creates the local :class:`~monitor.payment_models.Payment` row in
         ``pending`` so there is a record of the attempt even if the customer
