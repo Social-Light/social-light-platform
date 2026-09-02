@@ -10,6 +10,7 @@ lines of XML. It is the refusals: an unrecognised result code, an amount that
 does not match what we asked for, a second verification of an already-paid
 transaction. Those are the paths where a bug quietly gives away a subscription.
 """
+import re
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -118,6 +119,62 @@ class DPOProviderTests(TestCase):
         with canned(CREATE_OK) as post:
             DPOProvider().start_checkout(self.org, Decimal('49.999'), 'usd', user=self.user)
         self.assertIn('<PaymentAmount>50.00</PaymentAmount>', post.call_args.kwargs['data'].decode())
+
+    # ── customerCountry ──────────────────────────────────────────────────────
+    # DPO rejects the whole transaction with "902 Data mismatch" unless this is
+    # an ISO 3166-1 alpha-2 code, but the application stores full country names.
+    def country_sent(self, post):
+        """The customerCountry actually present in the XML, or None."""
+        body = post.call_args.kwargs['data'].decode()
+        match = re.search(r'<customerCountry>([^<]*)</customerCountry>', body)
+        return match.group(1) if match else None
+
+    def test_full_country_name_is_converted_to_an_iso_code(self):
+        self.org.country = 'Botswana'
+        self.org.save(update_fields=['country'])
+        with canned(CREATE_OK) as post:
+            self.start(DPOProvider())
+        self.assertEqual(self.country_sent(post), 'BW')
+
+    def test_country_is_never_sent_as_anything_but_two_letters(self):
+        """The invariant that matters: whatever ends up in the request, it is
+        either absent or exactly two letters. Checked across the whole country
+        list rather than one example, so a name added without a code is caught
+        here instead of by a declined payment."""
+        from monitor.onboarding import COUNTRY_CHOICES
+
+        for name in COUNTRY_CHOICES:
+            self.org.country = name
+            self.org.save(update_fields=['country'])
+            with canned(CREATE_OK) as post:
+                self.start(DPOProvider())
+            sent = self.country_sent(post)
+            with self.subTest(country=name):
+                if sent is not None:
+                    self.assertRegex(sent, r'^[A-Z]{2}$')
+
+    def test_every_selectable_country_except_other_has_a_code(self):
+        """'Other' is a real dropdown choice but not a country, so it alone is
+        allowed to have no code."""
+        from monitor.onboarding import COUNTRY_CHOICES, country_alpha2
+
+        missing = [c for c in COUNTRY_CHOICES if c != 'Other' and not country_alpha2(c)]
+        self.assertEqual(missing, [], f'No ISO alpha-2 code for: {missing}')
+
+    def test_an_unmappable_country_is_omitted_rather_than_guessed(self):
+        """An invalid code fails the payment; a missing optional field does not."""
+        self.org.country = 'Other'
+        self.org.save(update_fields=['country'])
+        with canned(CREATE_OK) as post:
+            self.start(DPOProvider())
+        self.assertIsNone(self.country_sent(post))
+
+    def test_a_country_already_stored_as_a_code_passes_through(self):
+        self.org.country = 'BW'
+        self.org.save(update_fields=['country'])
+        with canned(CREATE_OK) as post:
+            self.start(DPOProvider())
+        self.assertEqual(self.country_sent(post), 'BW')
 
     def test_create_token_failure_leaves_an_unopened_payment_row(self):
         """A refused createToken must still leave a trace, with no gateway

@@ -60,6 +60,9 @@ urlpatterns = [
     # a signed-in user browsing nor anything they can redirect usefully.
     path('payments/return/', subscription_views.checkout_return, name='checkout_return'),
     path('payments/callback/', subscription_views.checkout_callback, name='checkout_callback'),
+    # DPO's BackURL: the customer backed out of the payment page. Distinct from
+    # the callback above, which is the completion webhook.
+    path('payments/cancelled/', subscription_views.checkout_cancelled, name='checkout_cancelled'),
 
     # Organizations
     path('app/organizations/', views.organizations, name='organizations'),

@@ -46,7 +46,7 @@ PAYWALL_EXEMPT_URL_NAMES = {
     # Paying is the way *out* of the paywall, so the checkout must never be
     # behind it. Without this an expired organisation — the only kind that
     # reaches checkout — would be redirected back to billing on its way to pay.
-    'checkout_start', 'checkout_return', 'checkout_callback',
+    'checkout_start', 'checkout_return', 'checkout_callback', 'checkout_cancelled',
     'assessment', 'assessment_submit', 'assessment_action',
     'password_reset', 'password_reset_done', 'password_reset_confirm', 'password_reset_complete',
 }
@@ -65,7 +65,7 @@ ALWAYS_ALLOWED_URL_NAMES = ONBOARDING_URL_NAMES | {
     'home', 'login', 'logout', 'pricing', 'signup',
     # A payment that has been made must always be able to complete, whatever
     # else the account still has outstanding.
-    'checkout_return', 'checkout_callback',
+    'checkout_return', 'checkout_callback', 'checkout_cancelled',
     # Public marketing, reachable at any point — a half-onboarded account
     # following a campaign link should see the page, not be bounced back.
     'assessment', 'assessment_submit', 'assessment_action',

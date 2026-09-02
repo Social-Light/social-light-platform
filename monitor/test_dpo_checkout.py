@@ -5,6 +5,7 @@ around it — that the paywall lets a paying customer through, that a package is
 activated only on a verified payment, and that the manual invoice path still
 works untouched when no gateway is configured.
 """
+import re
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -13,7 +14,7 @@ from django.urls import reverse
 
 from monitor.models import Organization, Package, SubscriptionRequest, User
 from monitor.payment_models import Payment
-from monitor.test_dpo import CREATE_OK, DPO_SETTINGS, canned, verify_xml
+from monitor.test_dpo import CREATE_OK, DPO_SETTINGS, canned, verify_xml, xml
 
 
 @override_settings(**DPO_SETTINGS)
@@ -59,7 +60,81 @@ class CheckoutFlowTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('3gdirectpay.com', response['Location'])
 
+    # ── Return URLs ──────────────────────────────────────────────────────────
+    # DPO rejects a loopback return URL with 403 on the whole createToken call,
+    # so what goes in these fields decides whether anyone can pay at all.
+    def urls_sent(self, post):
+        body = post.call_args.kwargs['data'].decode()
+        return re.findall(r'<(?:RedirectURL|BackURL)>([^<]*)<', body)
+
+    @override_settings(PAYMENT_RETURN_BASE_URL='')
+    def test_return_urls_come_from_the_request_host_by_default(self):
+        # Pinned blank rather than left to the environment: a developer's own
+        # .env sets this to their tunnel, which would otherwise make this test
+        # pass or fail depending on whose machine it runs on.
+        with canned(CREATE_OK) as post:
+            self.start()
+        for url in self.urls_sent(post):
+            self.assertTrue(url.startswith('http://testserver'), url)
+
+    @override_settings(PAYMENT_RETURN_BASE_URL='https://pay.example.com')
+    def test_configured_base_url_overrides_the_request_host(self):
+        """The setting exists so a tunnelled or proxied development machine can
+        send a public URL regardless of the host the request arrived on."""
+        with canned(CREATE_OK) as post:
+            self.start()
+        urls = self.urls_sent(post)
+        self.assertEqual(len(urls), 2)
+        for url in urls:
+            self.assertTrue(url.startswith('https://pay.example.com/'), url)
+            self.assertNotIn('testserver', url)
+
+    @override_settings(PAYMENT_RETURN_BASE_URL='https://pay.example.com/')
+    def test_a_trailing_slash_on_the_base_url_does_not_double_up(self):
+        with canned(CREATE_OK) as post:
+            self.start()
+        for url in self.urls_sent(post):
+            self.assertNotIn('.com//', url)
+
+    @override_settings(PAYMENT_RETURN_BASE_URL='https://pay.example.com')
+    def test_no_loopback_address_reaches_the_gateway(self):
+        """The invariant that matters: whatever the request host was, DPO must
+        never be sent a loopback URL."""
+        with canned(CREATE_OK) as post:
+            self.start()
+        body = post.call_args.kwargs['data'].decode()
+        for loopback in ('127.0.0.1', 'localhost'):
+            self.assertNotIn(loopback, body)
+
     def test_gateway_failure_returns_the_user_to_billing_not_an_error_page(self):
+        import requests
+        with patch('requests.post', side_effect=requests.ConnectionError('down')):
+            response = self.start()
+        self.assertRedirects(response, reverse('monitor:billing') + '?checkout=unavailable')
+
+    def test_a_refused_amount_is_not_reported_as_an_unreachable_gateway(self):
+        """DPO's test account caps the transaction amount, and a refusal reads
+        very differently from an outage: retrying will be refused identically, so
+        telling the customer to try again in a moment is wrong."""
+        refused = xml('<Result>904</Result><ResultExplanation>The transaction amount has '
+                      'exceeded your allowed transaction limit, please contact: '
+                      'support@directpay.online</ResultExplanation>')
+        with canned(refused):
+            response = self.start()
+        self.assertRedirects(response, reverse('monitor:billing') + '?checkout=rejected')
+
+    def test_the_gateways_own_support_address_is_never_shown_to_the_customer(self):
+        """The refusal wording names DPO's support desk. Our customers must be
+        pointed at us, not at our payment provider."""
+        refused = xml('<Result>904</Result><ResultExplanation>please contact: '
+                      'support@directpay.online</ResultExplanation>')
+        with canned(refused):
+            self.start()
+        page = self.client.get(reverse('monitor:billing') + '?checkout=rejected')
+        self.assertNotContains(page, 'directpay.online')
+        self.assertContains(page, "We couldn't start that payment")
+
+    def test_an_unreachable_gateway_still_reads_as_temporary(self):
         import requests
         with patch('requests.post', side_effect=requests.ConnectionError('down')):
             response = self.start()

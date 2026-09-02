@@ -59,6 +59,16 @@ CSRF_TRUSTED_ORIGINS = [
     "https://sociallight.africa",
     "https://www.sociallight.africa",
 ]
+# Extra origins from the environment, comma separated, each with its scheme —
+# "https://abc123.ngrok-free.app". Needed whenever the site is reached over a
+# host that is not the live domain: a tunnel used to test the payment gateway
+# (DPO's firewall rejects loopback return URLs, so the checkout cannot be
+# exercised on localhost at all), a staging deployment, or a preview host.
+# Appended rather than replacing, so the live domain can never be configured away.
+CSRF_TRUSTED_ORIGINS += [
+    origin.strip() for origin in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',')
+    if origin.strip()
+]
 
 TEMPLATES = [
     {
@@ -227,6 +237,17 @@ DPO_PAYMENT_URL = os.getenv('DPO_PAYMENT_URL', 'https://secure.3gdirectpay.com/p
 DPO_PAYMENT_TIME_LIMIT_HOURS = int(os.getenv('DPO_PAYMENT_TIME_LIMIT_HOURS', '2'))
 DPO_TIMEOUT_SECONDS = int(os.getenv('DPO_TIMEOUT_SECONDS', '30'))
 
+# Public base URL the gateway sends customers back to, e.g.
+# "https://sociallight.africa" or an ngrok URL in development. No trailing slash.
+#
+# Leave blank in production behind a correctly configured proxy: the return URL
+# is then built from the request's own host, which is right. Set it whenever that
+# host cannot be trusted — a tunnel that rewrites Host, or local development,
+# where the request yields a 127.0.0.1 address. DPO rejects a loopback return URL
+# with a 403 on the whole createToken call, so an unset value on a developer
+# machine looks like a broken gateway rather than a misconfiguration.
+PAYMENT_RETURN_BASE_URL = os.getenv('PAYMENT_RETURN_BASE_URL', '').rstrip('/')
+
 # Card data never reaches this application: the browser posts it to the
 # provider's hosted field and we store only the token that comes back. The secret
 # key is used server-side to exchange and charge that token.
@@ -268,6 +289,14 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'monitor.send_alerts',
         'schedule': crontab(minute='*/15'),             # every 15 min, picks up new records
         'kwargs': {'frequency': 'immediate'},
+    },
+    # Charges saved cards for subscriptions whose paid period has run out.
+    # Hourly rather than daily so a renewal lands close to the moment it falls
+    # due; access is not waiting on it either way, because a lapsed period is
+    # computed on read and already withholds access the moment it passes.
+    'renew-subscriptions': {
+        'task': 'monitor.renew_subscriptions',
+        'schedule': crontab(minute=20),
     },
 }
 

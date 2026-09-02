@@ -202,6 +202,17 @@
       </p>
     </div>
   </div>
+  {% elif checkout_status == 'cancelled' %}
+  <div class="bl-status bl-status--pending">
+    <i class="bi bi-arrow-left-circle-fill"></i>
+    <div>
+      <p class="bl-status-title">You left the payment page</p>
+      <p class="bl-status-text">
+        Nothing has been charged and nothing has changed. Pick a package below whenever you're ready,
+        or <a href="mailto:sales@sociallight.africa">talk to our team</a> if you'd rather pay by invoice.
+      </p>
+    </div>
+  </div>
   {% elif checkout_status == 'failed' %}
   <div class="bl-status bl-status--expired">
     <i class="bi bi-exclamation-octagon-fill"></i>
@@ -210,6 +221,18 @@
       <p class="bl-status-text">
         {% if latest_payment and latest_payment.failure_reason %}{{ latest_payment.failure_reason }}{% else %}The payment was not completed.{% endif %}
         Nothing has been charged. Try again below, or <a href="mailto:sales@sociallight.africa">talk to our team</a> to pay by invoice.
+      </p>
+    </div>
+  </div>
+  {% elif checkout_status == 'rejected' %}
+  <div class="bl-status bl-status--expired">
+    <i class="bi bi-x-octagon-fill"></i>
+    <div>
+      <p class="bl-status-title">We couldn't start that payment</p>
+      <p class="bl-status-text">
+        Our payment provider wouldn't accept it, and trying again won't change that. Nothing has been charged.
+        Please <a href="mailto:sales@sociallight.africa">contact our team</a> and we'll sort it out with you —
+        we can take this package by invoice in the meantime.
       </p>
     </div>
   </div>
@@ -241,6 +264,18 @@
         <p class="bl-status-text">
           {{ org.name }}'s {{ trial_days }}-day trial ended on {{ org.trial_ends_at|date:"j F Y" }}. Your data is safe and waiting —
           choose a package below to restore access to your dashboards, reports and alerts.
+        </p>
+      </div>
+    </div>
+    {% elif org.effective_plan_status == 'past_due' %}
+    <div class="bl-status bl-status--expired">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <div>
+        <p class="bl-status-title">Your subscription payment didn't go through</p>
+        <p class="bl-status-text">
+          {{ org.name }}'s paid period ended on {{ org.current_period_end|date:"j F Y" }} and we couldn't renew it
+          automatically — usually an expired or replaced card. Your data is safe. Choose your package below to
+          settle it and restore access straight away.
         </p>
       </div>
     </div>

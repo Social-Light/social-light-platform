@@ -78,6 +78,26 @@ BILLING_PERIOD_CHOICES = [
     ('annual', 'Per year'),
 ]
 
+#: How many calendar months each billing period covers. Used to work out when a
+#: paid period ends, so the answer follows the calendar rather than a fixed
+#: number of days — a monthly subscription taken on 31 January renews on 28
+#: February, not on 2 March.
+BILLING_PERIOD_MONTHS = {'monthly': 1, 'quarterly': 3, 'annual': 12}
+
+
+def add_billing_period(start, billing_period):
+    """``start`` advanced by one whole billing period.
+
+    ``relativedelta`` is used rather than ``timedelta`` because months are not a
+    fixed length: it clamps 31 January + 1 month to the last day of February
+    instead of overflowing into March, which is the behaviour a customer expects
+    from a monthly subscription.
+    """
+    from dateutil.relativedelta import relativedelta
+
+    months = BILLING_PERIOD_MONTHS.get(billing_period, 1)
+    return start + relativedelta(months=months)
+
 
 CURRENCY_SYMBOLS = {'USD': '$', 'ZAR': 'R', 'GBP': '£', 'EUR': '€'}
 
@@ -223,6 +243,12 @@ PLAN_STATUS_CHOICES = [
     ('active', 'Paid subscription'),
     ('pending', 'Awaiting activation'),
     ('expired', 'Trial ended'),
+    # Distinct from 'expired' on purpose. 'expired' means a trial ran out and
+    # nothing was ever paid; 'past_due' means an organisation *was* paying and a
+    # renewal did not go through. They need different wording in the admin and on
+    # the paywall, and they are recovered from differently — one is a first sale,
+    # the other is a card that needs replacing.
+    ('past_due', 'Payment overdue'),
 ]
 
 
@@ -253,6 +279,11 @@ class Organization(models.Model):
     trial_started_at = models.DateTimeField(null=True, blank=True)
     trial_ends_at = models.DateTimeField(null=True, blank=True)
     subscription_activated_at = models.DateTimeField(null=True, blank=True)
+    current_period_end = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the paid period runs out. Access stops here unless a renewal '
+                  'extends it. Left blank for a subscription activated by hand with no '
+                  'agreed end date, which never lapses on its own.')
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -271,21 +302,66 @@ class Organization(models.Model):
         self.trial_started_at = now
         self.trial_ends_at = now + timedelta(days=days)
 
-    def activate_package(self, package):
-        """Move the organisation onto a paid package — the manual step a platform
-        admin performs once payment for a requested package has landed."""
+    def activate_package(self, package, period_end=None, extend=False):
+        """Move the organisation onto a paid package.
+
+        Called from two places: a platform admin activating a package once an
+        off-platform payment has landed, and the payment gateway once a charge is
+        verified.
+
+        The paid period runs from now to one billing period ahead, so a
+        subscription actually lapses instead of staying active forever. Pass
+        ``period_end`` explicitly for a term agreed off-platform that does not
+        match the package's own period — an annual invoice against a monthly
+        tier, say — or ``None`` with ``extend=False`` on a package with no
+        billing period to leave it open-ended.
+
+        ``extend=True`` renews rather than restarts: the new period runs from the
+        end of the one being replaced, not from today, so a renewal charged a day
+        early does not cost the customer a day.
+        """
+        now = timezone.now()
         self.package = package
         self.plan_status = 'active'
-        self.subscription_activated_at = timezone.now()
-        self.save(update_fields=['package', 'plan_status', 'subscription_activated_at'])
+        self.subscription_activated_at = now
+
+        if period_end is not None:
+            self.current_period_end = period_end
+        elif package is not None:
+            start = self.current_period_end if (extend and self.current_period_end) else now
+            self.current_period_end = add_billing_period(start, package.billing_period)
+
+        self.save(update_fields=['package', 'plan_status', 'subscription_activated_at',
+                                 'current_period_end'])
+
+    @property
+    def paid_period_has_lapsed(self):
+        """Whether a paid subscription has run past the period it paid for.
+
+        An organisation with no ``current_period_end`` never lapses — that is how
+        a subscription activated by hand, with no agreed end date, keeps working.
+        """
+        return bool(self.current_period_end and timezone.now() >= self.current_period_end)
 
     @property
     def effective_plan_status(self):
-        """The real status right now. A trial flips to 'expired' the moment
-        ``trial_ends_at`` passes — computed on read, so access is cut off exactly
-        on time without a scheduled job having to run."""
-        if self.plan_status == 'trial' and self.trial_ends_at and timezone.now() >= self.trial_ends_at:
+        """The real status right now.
+
+        Two states are computed on read rather than stored, so access is cut off
+        exactly on time whether or not a scheduled job has run: a trial flips to
+        'expired' the moment ``trial_ends_at`` passes, and a paid subscription
+        flips to 'past_due' the moment ``current_period_end`` does.
+
+        Deriving the lapse here rather than in the middleware means every caller
+        — the access check, the templates, the admin — agrees about it, and a
+        renewal job that fails to run cannot leave an unpaid organisation with
+        access it has not paid for.
+        """
+        now = timezone.now()
+        if self.plan_status == 'trial' and self.trial_ends_at and now >= self.trial_ends_at:
             return 'expired'
+        if self.plan_status == 'active' and self.paid_period_has_lapsed:
+            return 'past_due'
         return self.plan_status
 
     @property
@@ -294,7 +370,10 @@ class Organization(models.Model):
 
     @property
     def trial_has_expired(self):
-        return self.effective_plan_status in ('expired', 'pending')
+        """Whether the organisation is currently behind the paywall and needs to
+        pay. Named for the trial because that was once the only way in, but a
+        lapsed paid subscription puts an organisation in the same place."""
+        return self.effective_plan_status in ('expired', 'pending', 'past_due')
 
     @property
     def trial_days_left(self):
