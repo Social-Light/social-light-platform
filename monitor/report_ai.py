@@ -94,6 +94,38 @@ class ReportAIError(Exception):
     """A user-presentable failure while generating the AI analysis."""
 
 
+# Probed as GROQ_API_KEY, GROQ_API_KEY_2, ... GROQ_API_KEY_10 — same pool
+# sentiment_ai.py/date_ai.py draw from (GROQ_API_KEY specifically is shared
+# with all of them). Duplicated here rather than imported so this module
+# still works if theirs changes shape; issue_report_ai.py imports this copy
+# rather than keeping a third.
+_MAX_GROQ_KEYS = 10
+
+
+def _groq_api_keys():
+    """Every configured Groq key, in fallback order — see sentiment_ai.py's
+    identically-named helper for the full story on why a key's daily token
+    cap needs a fallback, not a wait.
+
+    GROQ_API_KEY_REPORTS is appended last: it's dedicated to report_ai.py/
+    issue_report_ai.py (never read by sentiment_ai.py/date_ai.py), reserved
+    specifically as a spare for these two report generators — added
+    2026-09-01 after the shared pool above turned out to be fully spent by
+    live ingestion traffic exactly when a report needed it. Tried last, not
+    first, so it stays fresh for as long as possible rather than being
+    drained on every run alongside the shared keys."""
+    keys = []
+    attrs = ['GROQ_API_KEY'] + [f'GROQ_API_KEY_{i}' for i in range(2, _MAX_GROQ_KEYS + 1)]
+    for attr in attrs:
+        key = (getattr(settings, attr, '') or '').strip().strip('"').strip("'")
+        if key:
+            keys.append(key)
+    reports_key = (getattr(settings, 'GROQ_API_KEY_REPORTS', '') or '').strip().strip('"').strip("'")
+    if reports_key:
+        keys.append(reports_key)
+    return keys
+
+
 def _friendly_status_error(exc, provider='Groq'):
     """Turn a provider APIStatusError into a message that actually tells the
     user what to do, rather than a blanket "please try again" that's actively
@@ -187,9 +219,8 @@ def generate_analysis(org, date_from, date_to, force=False):
         if rec and not _has_new_data(org, date_from, date_to, rec.updated_at):
             return rec.payload or None  # reuse stored result (empty-dict → no coverage)
 
-    # Trim stray whitespace/quotes that often sneak in from .env files.
-    api_key = (getattr(settings, 'GROQ_API_KEY', '') or '').strip().strip('"').strip("'")
-    if not api_key:
+    api_keys = _groq_api_keys()
+    if not api_keys:
         raise ReportAIError('AI is not configured — set GROQ_API_KEY.')
 
     payload = _gather(org, date_from, date_to)
@@ -203,12 +234,13 @@ def generate_analysis(org, date_from, date_to, force=False):
         raise ReportAIError('The "groq" package is not installed (pip install groq).')
 
     try:
-        result = _normalise(_call_ai(api_key, org, date_from, date_to, payload))
+        result = _normalise(_call_ai(api_keys, org, date_from, date_to, payload))
     except groq.AuthenticationError:
         raise ReportAIError('Groq authentication failed — the API key is invalid. '
                             'Check GROQ_API_KEY.')
     except groq.RateLimitError:
-        raise ReportAIError('Groq rate limit reached. Please try again shortly.')
+        raise ReportAIError('Groq rate limit reached on every configured key. '
+                            'Please try again later.')
     except groq.APIStatusError as exc:
         raise _friendly_status_error(exc)
     except groq.APIConnectionError:
@@ -279,13 +311,7 @@ def _gather(org, date_from, date_to):
 
 # ── AI call (Groq, two calls — see the 2026-08-29 module docstring note) ──────
 
-def _call_ai(api_key, org, date_from, date_to, payload):
-    import groq  # lazy import so the app runs without the SDK installed
-
-    # Bound each call well under gunicorn's --timeout so a slow response fails
-    # cleanly (ReportAIError) instead of getting the worker killed mid-request.
-    client = groq.Groq(api_key=api_key, timeout=60.0, max_retries=1)
-
+def _call_ai(api_keys, org, date_from, date_to, payload):
     mentions_block = "\n".join(
         f"- [{m['media']}/{m['sentiment']}] ({m['source']}) {m['text']}" for m in payload['mentions']
     )
@@ -329,54 +355,96 @@ Output ONLY the JSON object, no markdown, no commentary."""
     # risks + opportunities + kpi_insights, each a variable-length list) measured
     # meaningfully heavier than esg_prompt's two fixed-count sections (8 ESG
     # issues + 7 stakeholders) at the same mention count — see MAX_MENTIONS' note.
-    esg_data = _groq_json_call(client, SYSTEM_PROMPT, esg_prompt, max_tokens=3500)
-    comp_data = _groq_json_call(client, SYSTEM_PROMPT, comp_prompt, max_tokens=5500)
+    esg_data = _groq_json_call(api_keys, SYSTEM_PROMPT, esg_prompt, max_tokens=3500)
+    comp_data = _groq_json_call(api_keys, SYSTEM_PROMPT, comp_prompt, max_tokens=5500)
     return {**esg_data, **comp_data}
 
 
-def _groq_json_call(client, system_prompt, user_prompt, max_tokens, retries=3):
-    """One structured-JSON call, with its own small retry loop for Groq's TPM
-    rate limit specifically (separate from the client's own max_retries,
-    which doesn't know to wait — a 429 here is expected and routine, not
-    exceptional: two calls in _call_ai easily land in the same rolling
-    window). Groq's 429 body always carries a `retry-after` header in
-    seconds — measured against the real API at well under a second to a few
-    seconds, since the window is continuously rolling rather than a rigid
-    60s bucket, not the ~60s a naive "wait out the minute" approach would
-    assume. Only RateLimitError is retried here; every other failure
-    propagates immediately to the caller's own handling.
+# A rolling-TPM 429's retry-after is normally well under a second to a few
+# seconds (measured against the real API) and clears on its own shortly —
+# worth one inline retry on the same key. But it's not always tiny: a big
+# request landing right at the edge of the window has measured as high as
+# ~6s (surfaced 2026-09-01 — an initial 5.0s cutoff here rejected a genuine
+# 5.97s TPM wait as if it were a daily-cap wait, failing a request that a
+# few more seconds would have carried through fine). A daily-cap (TPD) 429
+# instead reports retry-after in the TENS OF MINUTES (1300s+, observed
+# 1300-2600s the same day) and won't clear for hours: sleeping that out
+# blocks the request thread past gunicorn's --timeout, which kills the
+# worker with no response ever reaching the client at all. 20s sits with
+# huge margin on both sides of that TPM/TPD gap — generous enough not to
+# reject a real TPM wait, nowhere near long enough to risk sleeping out a
+# TPD one. Anything longer than this is treated as "this key is out for
+# today" and falls through to the next key immediately instead.
+_MAX_SHORT_RETRY_SECONDS = 20.0
+
+
+def _short_retry_after(exc):
+    """Seconds to wait inline, or None if this 429's retry-after is too long
+    to be worth waiting out on the same key (see the constant above)."""
+    try:
+        wait = float(exc.response.headers.get('retry-after', 0))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return wait + 0.5 if 0 < wait <= _MAX_SHORT_RETRY_SECONDS else None
+
+
+def _groq_json_call(api_keys, system_prompt, user_prompt, max_tokens):
+    """One structured-JSON call, trying each configured Groq key in turn
+    (see _groq_api_keys) — a key's daily token cap doesn't free up mid-day,
+    so once one key is exhausted this moves on rather than blocking the
+    request thread waiting for it (see _MAX_SHORT_RETRY_SECONDS above).
+    Only RateLimitError triggers a retry/key-fallback; every other failure
+    (auth, connection, status) propagates immediately to the caller's own
+    handling, since trying six more keys wouldn't fix a bad key or a
+    malformed response.
 
     Shared with issue_report_ai.py's own _call_ai — hence system_prompt is a
     parameter, not this module's own SYSTEM_PROMPT global."""
-    import groq
+    import groq  # lazy import so the app runs without the SDK installed
 
-    for attempt in range(retries + 1):
-        try:
-            completion = client.chat.completions.create(
-                model=MODEL,
-                # gpt-oss models spend hidden reasoning tokens before the final
-                # JSON, counted against max_tokens (same behaviour as
-                # sentiment_ai.py) — this is headroom, not a target.
-                max_tokens=max_tokens,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format={"type": "json_object"},
-            )
-        except groq.RateLimitError as exc:
-            if attempt == retries:
-                raise
-            wait = float(exc.response.headers.get('retry-after', 2)) + 0.5
-            logger.info("report_ai: Groq TPM limit hit, waiting %.1fs (attempt %d/%d)",
-                        wait, attempt + 1, retries)
-            time.sleep(wait)
-            continue
+    last_exc = None
+    for i, api_key in enumerate(api_keys):
+        is_last_key = i == len(api_keys) - 1
+        # Bound each call well under gunicorn's --timeout so a slow response
+        # fails cleanly (ReportAIError) instead of getting the worker killed
+        # mid-request.
+        client = groq.Groq(api_key=api_key, timeout=60.0, max_retries=1)
+        retried_after_wait = False
+        while True:
+            try:
+                completion = client.chat.completions.create(
+                    model=MODEL,
+                    # gpt-oss models spend hidden reasoning tokens before the final
+                    # JSON, counted against max_tokens (same behaviour as
+                    # sentiment_ai.py) — this is headroom, not a target.
+                    max_tokens=max_tokens,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                )
+            except groq.RateLimitError as exc:
+                wait = None if retried_after_wait else _short_retry_after(exc)
+                if wait is not None:
+                    retried_after_wait = True
+                    logger.info("report_ai: Groq TPM limit hit, waiting %.1fs (key #%d/%d)",
+                                wait, i + 1, len(api_keys))
+                    time.sleep(wait)
+                    continue
+                logger.warning(
+                    "report_ai: Groq rate limit on key #%d/%d%s: %s",
+                    i + 1, len(api_keys),
+                    '' if is_last_key else ' — moving to next key', exc)
+                last_exc = exc
+                break  # give up on this key — move to the next one (or raise below)
 
-        choice = completion.choices[0]
-        if choice.finish_reason == 'length':
-            raise ReportAIError('The AI response was truncated. Try a shorter reporting period.')
-        return _parse_json(choice.message.content)
+            choice = completion.choices[0]
+            if choice.finish_reason == 'length':
+                raise ReportAIError('The AI response was truncated. Try a shorter reporting period.')
+            return _parse_json(choice.message.content)
+
+    raise last_exc
 
 
 def _parse_json(text):

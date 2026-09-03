@@ -76,8 +76,16 @@ class Command(BaseCommand):
         for alert in alerts:
             org = alert.organization
             recipients = alert.recipient_list()
-            # A test send ignores the watermark and reports the full day.
-            since = start_of_today() if test else (alert.last_sent_at or start_of_today())
+            # A test send ignores the watermark and reports the full day. A real
+            # daily send ALSO always scopes to today, regardless of last_sent_at —
+            # a daily digest must only ever carry the queried day's own coverage,
+            # never a backlog from days delivery was failing (see MAX_PUBLISH_AGE_DAYS
+            # in alert_email.py, which pairs with this to enforce it on date_published
+            # too). Only immediate/weekly/monthly still use the last_sent_at watermark.
+            if test or alert.frequency == 'daily':
+                since = start_of_today()
+            else:
+                since = alert.last_sent_at or start_of_today()
 
             if dry_run:
                 max_age = MAX_PUBLISH_AGE_DAYS.get(alert.frequency, DEFAULT_MAX_PUBLISH_AGE_DAYS)

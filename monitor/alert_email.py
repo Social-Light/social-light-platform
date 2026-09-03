@@ -35,9 +35,19 @@ def _pub_ordinal(obj):
 # this, `since` (a created_at watermark) alone would let it through as if it
 # just happened. Values are generous grace windows around each cadence, not a
 # strict window equal to it, so a slightly-delayed same-cycle item still shows.
+#
+# 'daily' is 0 — an EXACT match on today's date_published, not a grace window —
+# by design (2026-09-03, Tony): a daily digest must only ever carry the queried
+# day's own coverage, never days before it. This is deliberately independent of
+# `since`/last_sent_at: if delivery has been failing (e.g. a broken mail-provider
+# domain) and last_sent_at is stuck days in the past, the digest still must not
+# balloon into a multi-day backlog dump once sending recovers — each day's
+# content is scoped to that day alone, and an undelivered day's coverage is not
+# carried forward. See send_daily_alerts.Command.handle(), which pins `since` to
+# start_of_today() for frequency='daily' for the same reason.
 MAX_PUBLISH_AGE_DAYS = {
     'immediate': 3,
-    'daily':     3,
+    'daily':     0,
     'weekly':    10,
     'monthly':   35,
 }
@@ -57,21 +67,28 @@ def gather(org, since, alert=None, max_publish_age_days=None):
     max_publish_age_days: if given, also requires date_published to fall within
     that many days of today — independent of created_at. Without this, a row
     backfilled today for something published months ago passes the created_at
-    watermark and reads as "new" in the digest. Pass None to skip this guard
-    (e.g. for tooling that intentionally wants everything since the watermark).
+    watermark and reads as "new" in the digest. 0 is a special case — an EXACT
+    match on today's date_published (see MAX_PUBLISH_AGE_DAYS's 'daily' entry),
+    rather than a >= bound, so a stray future-dated row can't slip in under a
+    >= comparison. Pass None to skip this guard entirely (e.g. for tooling that
+    intentionally wants everything since the watermark).
     """
     if alert is not None and not alert.wants_category('mention'):
         return [], [], [], []
 
     oc = org.country or ''
+    today = timezone.localdate()
+    exact_today = max_publish_age_days == 0
     earliest_pub = (
-        timezone.localdate() - timedelta(days=max_publish_age_days)
-        if max_publish_age_days is not None else None
+        today - timedelta(days=max_publish_age_days)
+        if max_publish_age_days is not None and not exact_today else None
     )
 
     def collect(manager):
         qs = filter_relevant(manager.all()).filter(created_at__gte=since)
-        if earliest_pub is not None:
+        if exact_today:
+            qs = qs.filter(date_published=today)
+        elif earliest_pub is not None:
             qs = qs.filter(date_published__gte=earliest_pub)
         items = list(qs.order_by('-date_published', '-created_at')[:50])
         return sorted(items, key=lambda a: (_country_sort_key(a, oc), -_pub_ordinal(a)))
@@ -126,7 +143,8 @@ def daily_alert_due(alert, now=None):
     return True
 
 
-def build_and_send(alert, *, since=None, force=False, update_watermark=True, recipients_override=None):
+def build_and_send(alert, *, since=None, force=False, update_watermark=True,
+                    recipients_override=None, include_xlsx=False):
     """
     Build and send the digest email for a single alert.
 
@@ -137,6 +155,9 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True, rec
     - `update_watermark`: advance alert.last_sent_at after a successful send.
     - `recipients_override`: send to these addresses instead of the alert's
       configured recipients (used by the "send test to me" button).
+    - `include_xlsx`: attach the .xlsx workbook to the email. Defaults to False —
+      digest emails are HTML-only; the workbook is available on demand instead
+      (see views.alert_download_xlsx), not pushed out with every automated send.
 
     Returns a dict describing the outcome. Raises if the email backend fails to send.
     """
@@ -220,10 +241,11 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True, rec
         # default) still renders the inline cid-referenced banner correctly in
         # every mainstream client, while keeping the xlsx as a normal attachment.
 
-    xlsx_bytes = build_workbook(online, print_arts, social, broadcast)
-    xlsx_name = f"{org.name}-media-digest-{timezone.localdate().isoformat()}.xlsx"
-    msg.attach(xlsx_name, xlsx_bytes,
-               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    if include_xlsx:
+        xlsx_bytes = build_workbook(online, print_arts, social, broadcast)
+        xlsx_name = f"{org.name}-media-digest-{timezone.localdate().isoformat()}.xlsx"
+        msg.attach(xlsx_name, xlsx_bytes,
+                   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     msg.send()  # let failures propagate to the caller
 

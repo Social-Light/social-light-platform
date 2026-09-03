@@ -40,7 +40,10 @@ from django.db.models import Q
 from django.urls import reverse
 
 from .relevancy import filter_relevant
-from .report_ai import ReportAIError, _sent, MODEL, _friendly_status_error, _groq_json_call, _as_list
+from .report_ai import (
+    ReportAIError, _sent, MODEL, _friendly_status_error, _groq_json_call, _as_list,
+    _groq_api_keys,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -237,8 +240,8 @@ def regenerate_narrative(report):
 def _run(org, title, issue_query, date_from, date_to, candidates):
     """Shared generate path: validate config, call the API, normalise. Returns
     ``(selected_ids, payload)``."""
-    api_key = (getattr(settings, 'GROQ_API_KEY', '') or '').strip().strip('"').strip("'")
-    if not api_key:
+    api_keys = _groq_api_keys()
+    if not api_keys:
         raise ReportAIError('AI is not configured — set GROQ_API_KEY.')
 
     try:
@@ -247,12 +250,13 @@ def _run(org, title, issue_query, date_from, date_to, candidates):
         raise ReportAIError('The "groq" package is not installed (pip install groq).')
 
     try:
-        data = _call_ai(api_key, org, title, issue_query, date_from, date_to, candidates)
+        data = _call_ai(api_keys, org, title, issue_query, date_from, date_to, candidates)
     except groq.AuthenticationError:
         raise ReportAIError('Groq authentication failed — the API key is invalid. '
                             'Check GROQ_API_KEY.')
     except groq.RateLimitError:
-        raise ReportAIError('Groq rate limit reached. Please try again shortly.')
+        raise ReportAIError('Groq rate limit reached on every configured key. '
+                            'Please try again later.')
     except groq.APIStatusError as exc:
         raise _friendly_status_error(exc)
     except groq.APIConnectionError:
@@ -268,11 +272,7 @@ def _run(org, title, issue_query, date_from, date_to, candidates):
     return _normalise(data, valid_refs)
 
 
-def _call_ai(api_key, org, title, issue_query, date_from, date_to, candidates):
-    import groq  # lazy import so the app runs without the SDK installed
-
-    client = groq.Groq(api_key=api_key, timeout=60.0, max_retries=1)
-
+def _call_ai(api_keys, org, title, issue_query, date_from, date_to, candidates):
     cand_block = "\n".join(
         f"- [{c['ref']}] ({c['source']}, {c['date']}, {c['sentiment']}) {c['text']}"
         for c in candidates
@@ -308,7 +308,7 @@ Return a JSON object with EXACTLY these keys: selected, exec_summary, at_a_glanc
     # per-request size limit, not a "wait and retry" rate limit; see
     # _groq_json_call's docstring for that distinction). 6000 was too high
     # and got rejected outright before ever running.
-    return _groq_json_call(client, SYSTEM_PROMPT, user_prompt, max_tokens=5000)
+    return _groq_json_call(api_keys, SYSTEM_PROMPT, user_prompt, max_tokens=5000)
 
 
 # ── Normalisation (never trust the model's shape or its refs) ──────────────────

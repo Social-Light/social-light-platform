@@ -107,13 +107,43 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')  # monitor/sentiment_ai.py
+# Additional Groq accounts' keys — monitor/sentiment_ai.py's analyze_sentiment()
+# and monitor/date_ai.py's extract_published_date() fall back through these in
+# order when a request fails (in practice: each account's own free-tier
+# 200,000 tokens/day cap, which report_ai.py/sector_ai.py/issue_report_ai.py
+# also draw against — GROQ_API_KEY specifically, not the _2/_3/_4 accounts).
+# All optional; leave blank to run on fewer accounts.
+GROQ_API_KEY_2 = os.getenv('GROQ_API_KEY_2', '')
+GROQ_API_KEY_3 = os.getenv('GROQ_API_KEY_3', '')
+GROQ_API_KEY_4 = os.getenv('GROQ_API_KEY_4', '')
+GROQ_API_KEY_5 = os.getenv('GROQ_API_KEY_5', '')
+GROQ_API_KEY_6 = os.getenv('GROQ_API_KEY_6', '')
+GROQ_API_KEY_7 = os.getenv('GROQ_API_KEY_7', '')
+
+# Dedicated to monitor/date_ai.py's extract_published_date() ONLY — never
+# read by sentiment_ai.py (see that module's _groq_api_keys() vs. date_ai.py's
+# own), so re-dating social posts to their real publish date never competes
+# with sentiment analysis for quota, and vice versa.
+GROQ_API_KEY_DATE_1 = os.getenv('GROQ_API_KEY_DATE_1', '')
+GROQ_API_KEY_DATE_2 = os.getenv('GROQ_API_KEY_DATE_2', '')
+
+# Dedicated to monitor/report_ai.py's generate_analysis() and
+# monitor/issue_report_ai.py's generate_issue_report() ONLY — appended after
+# the shared pool above by report_ai._groq_api_keys(), so it's spent only as
+# a last resort once every shared key is exhausted for the day, rather than
+# competing with sentiment_ai.py's continuous live traffic for quota.
+GROQ_API_KEY_REPORTS = os.getenv('GROQ_API_KEY_REPORTS', '')
 # Self-hosted metasearch (same instance media-monitor's discovery/services/
 # search_api.py uses) — sector_ai.py's free fallback when Anthropic is
 # unavailable. Reachable on the compose network; see docker-compose.yml.
 SEARXNG_URL = os.getenv('SEARXNG_URL', 'http://searxng:8080')
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN', '')
 
-DEFAULT_FROM_EMAIL  = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <support@sociallightbw.com>')
+# 2026-09-03: sociallightbw.com is not a verified sending domain in Resend
+# (only sociallight.africa is — see resend.com/domains) — sending from it 403s
+# on every attempt. Fallback default matches the verified domain; DEFAULT_FROM_EMAIL
+# in .env is the actual source of truth in every real environment.
+DEFAULT_FROM_EMAIL  = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <support@sociallight.africa>')
 EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
 
 ANYMAIL = {
@@ -192,6 +222,17 @@ if MEDIAHOST_API_KEY:
     }
 
 MENTION_RELEVANCY_THRESHOLD = float(os.getenv('MENTION_RELEVANCY_THRESHOLD', '0'))
+# 2026-09-01, at Tony's request: analyze_sentiment (management command +
+# Celery Beat task) previously had no date scope at all — every scheduled
+# run chipped away at the ENTIRE historical backlog of unanalysed mentions
+# (across all orgs/history), competing with report_ai.py/live traffic for
+# the same shared Groq daily-token pool (see report_ai.py's module
+# docstring). Setting this stops the backlog dead: only mentions published
+# on/after this date get AI sentiment going forward; older unanalysed rows
+# are left as-is permanently unless a deliberate one-off backfill is run
+# with --include-backlog. ISO date (YYYY-MM-DD); blank disables the cutoff
+# (restores the old unscoped behaviour).
+SENTIMENT_AI_CUTOFF_DATE = os.getenv('SENTIMENT_AI_CUTOFF_DATE', '')
 # TEMPORARY: drop YouTube clips at ingest time (source/link is YouTube). Set
 # MEDIAHOST_EXCLUDE_YOUTUBE=0 to re-enable YouTube coverage.
 MEDIAHOST_EXCLUDE_YOUTUBE = os.getenv('MEDIAHOST_EXCLUDE_YOUTUBE', '1') not in ('0', 'false', 'False', '')

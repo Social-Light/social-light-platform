@@ -36,6 +36,7 @@ real value with a guess, and never raise into a request/task that calls it.
 import json
 import logging
 import re
+import time
 
 from django.conf import settings
 
@@ -55,14 +56,56 @@ SYSTEM_PROMPT = (
 
 _VALID_SENTIMENTS = {'positive', 'negative', 'neutral'}
 
+# See date_ai.py's identically-named helpers/constants for why this exists —
+# a short "try again in Xms/Xs" TPM cooldown is worth one inline retry on
+# the same key rather than immediately falling through the whole chain.
+_RETRY_AFTER_RE = re.compile(r'try again in ([\d.]+)(ms|s)\b')
+_MAX_SHORT_RETRY_SECONDS = 3.0
+
+
+def _short_retry_after(exc) -> float | None:
+    match = _RETRY_AFTER_RE.search(str(exc))
+    if not match:
+        return None
+    value, unit = match.groups()
+    seconds = float(value) / 1000.0 if unit == 'ms' else float(value)
+    return seconds if seconds <= _MAX_SHORT_RETRY_SECONDS else None
+
+
+# Probed as GROQ_API_KEY, GROQ_API_KEY_2, ... GROQ_API_KEY_10 — raise this to
+# add more without touching this module again; each just needs its own
+# settings.py assignment (getattr's default handles an undefined one fine).
+_MAX_GROQ_KEYS = 10
+
+
+def _groq_api_keys():
+    """Every configured Groq key, in fallback order: the primary
+    GROQ_API_KEY, then GROQ_API_KEY_2.._MAX_GROQ_KEYS — additional accounts'
+    keys to fall back through when one's daily token cap (200,000 TPD on the
+    free tier; GROQ_API_KEY specifically is also shared with report_ai.py/
+    sector_ai.py/issue_report_ai.py) runs out mid-day. Not all "additional
+    accounts" are actually independent quota — Groq allows multiple keys per
+    organization, and several supplied here have turned out to share one
+    pool (confirmed via the org_... id in a 429 response) rather than each
+    being a fresh account; the fallback still costs nothing extra to keep,
+    it just doesn't multiply capacity the way a genuinely separate account
+    would."""
+    keys = []
+    attrs = ['GROQ_API_KEY'] + [f'GROQ_API_KEY_{i}' for i in range(2, _MAX_GROQ_KEYS + 1)]
+    for attr in attrs:
+        key = (getattr(settings, attr, '') or '').strip().strip('"').strip("'")
+        if key:
+            keys.append(key)
+    return keys
+
 
 def analyze_sentiment(org_name, headline, summary=''):
     """Return {'sentiment': 'positive'|'negative'|'neutral', 'rationale': str}
     or None on any failure (no key, SDK missing, API error, malformed
     response) — callers should treat None as "leave sentiment as it was",
     never as a reason to fail the caller's own operation."""
-    api_key = (getattr(settings, 'GROQ_API_KEY', '') or '').strip().strip('"').strip("'")
-    if not api_key:
+    api_keys = _groq_api_keys()
+    if not api_keys:
         return None
 
     headline = (headline or '').strip()
@@ -87,31 +130,55 @@ Return a JSON object with exactly these keys:
   "rationale": "<one sentence explaining why, from {org_name}'s perspective specifically>"
 }}"""
 
-    try:
-        client = groq.Groq(api_key=api_key, timeout=15.0, max_retries=1)
-        completion = client.chat.completions.create(
-            model=MODEL,
-            # gpt-oss models spend hidden reasoning tokens before the final JSON,
-            # counted against max_tokens — 200 was too tight and truncated the
-            # response before it ever reached valid JSON on ~60% of real
-            # headlines in testing. This is generous headroom, not a target;
-            # actual usage/cost only reflects what the model really generates.
-            max_tokens=600,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-        )
-        choice = completion.choices[0]
-        if choice.finish_reason == 'length':
-            return None
-        data = _parse_json(choice.message.content)
-    except Exception:
-        # Deliberately broad — auth, rate limit, network, malformed response
-        # all degrade the same way: no result, caller keeps today's value.
-        logger.warning("sentiment_ai.analyze_sentiment failed for org=%s", org_name, exc_info=True)
-        return None
+    # Try each configured key in order, falling back to the next on ANY
+    # request failure (rate limit, auth, network — no need to special-case
+    # which, same reasoning as media-monitor's Tavily fallback). A malformed/
+    # truncated response is a model-response-quality issue, not a key issue,
+    # so those still return None immediately rather than burning a second
+    # key's quota on a retry that wouldn't help.
+    data = None
+    for i, api_key in enumerate(api_keys):
+        is_last_key = i == len(api_keys) - 1
+        retried_after_wait = False
+        while True:
+            try:
+                client = groq.Groq(api_key=api_key, timeout=15.0, max_retries=1)
+                completion = client.chat.completions.create(
+                    model=MODEL,
+                    # gpt-oss models spend hidden reasoning tokens before the final JSON,
+                    # counted against max_tokens — 200 was too tight and truncated the
+                    # response before it ever reached valid JSON on ~60% of real
+                    # headlines in testing. This is generous headroom, not a target;
+                    # actual usage/cost only reflects what the model really generates.
+                    max_tokens=600,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                )
+                choice = completion.choices[0]
+                if choice.finish_reason == 'length':
+                    return None
+                data = _parse_json(choice.message.content)
+                break  # success — exit the retry-same-key loop
+            except Exception as exc:
+                wait = None if retried_after_wait else _short_retry_after(exc)
+                if wait is not None:
+                    retried_after_wait = True
+                    time.sleep(wait)
+                    continue  # one retry on the same key after its cooldown
+                logger.warning(
+                    "sentiment_ai.analyze_sentiment failed for org=%s (key #%d/%d)%s: %s",
+                    org_name, i + 1, len(api_keys),
+                    '' if is_last_key else ' — retrying with next key', exc,
+                    exc_info=is_last_key,
+                )
+                if is_last_key:
+                    return None
+                break  # give up on this key — move to the next one
+        if data is not None:
+            break  # a key succeeded
 
     sentiment = (data.get('sentiment') or '').strip().lower()
     if sentiment not in _VALID_SENTIMENTS:

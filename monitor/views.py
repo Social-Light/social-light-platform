@@ -26,7 +26,8 @@ from .models import (
 )
 from .relevancy import compute_relevancy, filter_relevant
 from .print_metrics import estimate_print_reach as _print_reach
-from .alert_email import build_and_send, start_of_today
+from .alert_email import build_and_send, start_of_today, gather, MAX_PUBLISH_AGE_DAYS, DEFAULT_MAX_PUBLISH_AGE_DAYS
+from .alert_xlsx import build_workbook
 from .org_email import send_org_disabled_email, send_org_enabled_email
 from .search_ai import resolve_filters
 
@@ -3038,6 +3039,35 @@ def alert_test_send(request, org_id, alert_id):
         'recipients': result.get('recipients', [test_to]),
         'total': result.get('total', 0),
     })
+
+
+@login_required
+@require_http_methods(['GET'])
+def alert_download_xlsx(request, org_id, alert_id):
+    """On-demand .xlsx download for one alert — the same workbook that used to
+    be auto-attached to every digest email. Digest emails are HTML-only now
+    (see alert_email.build_and_send's include_xlsx default); this is how a user
+    gets the spreadsheet when they actually want it, without generating and
+    mailing one on every automated send.
+
+    Covers the same window the alert's next digest would, so "download" and
+    "what the email would have attached" stay the same data: today only for a
+    daily alert (see alert_email.MAX_PUBLISH_AGE_DAYS — a daily digest never
+    carries a backlog from days before, regardless of last_sent_at), otherwise
+    last_sent_at (or the start of today for an alert that's never sent).
+    """
+    org = get_object_or_404(Organization, id=org_id)
+    alert = get_object_or_404(Alert, id=alert_id, organization=org)
+    since = start_of_today() if alert.frequency == 'daily' else (alert.last_sent_at or start_of_today())
+    max_age = MAX_PUBLISH_AGE_DAYS.get(alert.frequency, DEFAULT_MAX_PUBLISH_AGE_DAYS)
+    online, print_arts, social, broadcast = gather(org, since, alert, max_publish_age_days=max_age)
+    xlsx_bytes = build_workbook(online, print_arts, social, broadcast)
+    filename = f"{org.name}-media-digest-{timezone.localdate().isoformat()}.xlsx"
+    resp = HttpResponse(
+        xlsx_bytes,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────

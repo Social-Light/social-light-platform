@@ -481,6 +481,13 @@ class SocialMediaPost(models.Model):
     summary = models.TextField(blank=True)
     url = models.URLField(blank=True, max_length=2000)
     date_published = models.DateField()
+    date_correction_note = models.TextField(
+        blank=True, default='',
+        help_text="Evidence an AI date-extraction pass used to change date_published "
+                  "away from its ingestion-time value — see monitor/date_ai.py's "
+                  "extract_published_date(). Blank when date_published has never been "
+                  "AI-corrected (either it was already right, or no correction was "
+                  "attempted/found).")
     country = models.CharField(max_length=100, blank=True)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
     sentiment_rationale = models.TextField(

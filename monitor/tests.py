@@ -13,8 +13,8 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from monitor.alert_email import build_and_send, gather, gather_events
-from monitor.models import Alert, Event, Organization, User
+from monitor.alert_email import build_and_send, gather, gather_events, start_of_today
+from monitor.models import Alert, Event, Organization, OnlineArticle, User
 
 LOCMEM = 'django.core.mail.backends.locmem.EmailBackend'
 
@@ -192,3 +192,66 @@ class AlertCategoryTests(TestCase):
         online, print_arts, social, broadcast = gather(self.org, since, self.alert)
 
         self.assertEqual([online, print_arts, social, broadcast], [[], [], [], []])
+
+
+@override_settings(MENTION_RELEVANCY_THRESHOLD=0)
+class DailyDigestDateScopeTests(TestCase):
+    """A daily alert must only ever carry the queried day's own coverage — never
+    a backlog from days before, however far behind last_sent_at has drifted (the
+    scenario that motivated this: Resend rejecting sends for days on end, see
+    2026-09-03 conversation with Tony). Covers both the mention-level scoping
+    (MAX_PUBLISH_AGE_DAYS['daily'] == 0, an exact date_published match) and the
+    command-level scoping (send_daily_alerts always using start_of_today() for
+    daily alerts, regardless of last_sent_at)."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='Scope Org', country='Botswana')
+        self.alert = Alert.objects.create(
+            organization=self.org, name='Daily digest',
+            recipients='someone@example.com', frequency='daily',
+        )
+        self.today = timezone.localdate()
+        self.yesterday = self.today - timedelta(days=1)
+
+    def _article(self, date_published, headline):
+        return OnlineArticle.objects.create(
+            organization=self.org, headline=headline, url='https://example.com/' + headline,
+            date_published=date_published, relevancy=100,
+        )
+
+    def test_gather_excludes_yesterdays_article_for_a_daily_alert(self):
+        self._article(self.yesterday, 'Yesterday piece')
+        self._article(self.today, 'Today piece')
+
+        online, _, _, _ = gather(self.org, start_of_today(), self.alert, max_publish_age_days=0)
+
+        self.assertEqual([a.headline for a in online], ['Today piece'])
+
+    def test_stale_watermark_does_not_resurrect_a_backlog(self):
+        """Even with `since` pinned to days ago (simulating a stuck last_sent_at
+        after repeated failed sends), max_publish_age_days=0 still drops
+        yesterday's article — the publish-date bound, not `since`, is what
+        enforces day-scoping."""
+        self._article(self.yesterday, 'Old backlog piece')
+        self._article(self.today, 'Today piece')
+        stale_since = timezone.now() - timedelta(days=3)
+
+        online, _, _, _ = gather(self.org, stale_since, self.alert, max_publish_age_days=0)
+
+        self.assertEqual([a.headline for a in online], ['Today piece'])
+
+    def test_send_daily_alerts_ignores_a_stale_last_sent_at(self):
+        self._article(self.yesterday, 'Old backlog piece')
+        self._article(self.today, 'Today piece')
+        self.alert.last_sent_at = timezone.now() - timedelta(days=3)
+        self.alert.delivery_time = timezone.localtime().time().replace(second=0, microsecond=0)
+        self.alert.save()
+
+        with override_settings(EMAIL_BACKEND=LOCMEM):
+            from django.core.management import call_command
+            call_command('send_daily_alerts', frequency='daily')
+
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].alternatives[0][0]
+        self.assertIn('Today piece', body)
+        self.assertNotIn('Old backlog piece', body)
