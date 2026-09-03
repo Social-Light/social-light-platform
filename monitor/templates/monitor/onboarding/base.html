@@ -1,0 +1,170 @@
+{% load static %}<!DOCTYPE html>
+{% comment %}
+The shell every onboarding step renders inside, so the seven steps read as one
+process rather than nine unrelated pages. The progress rail on the left is built
+by monitor/onboarding.py from the same step definitions the flow itself runs on,
+so it can never show a different picture from where the user actually is.
+{% endcomment %}
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{% block title %}Set up your account{% endblock %} — Social Light</title>
+  <link rel="icon" type="image/x-icon" href="{% static 'favicon/favicon.ico' %}?v=2">
+  <link rel="icon" type="image/svg+xml" href="{% static 'favicon/favicon.svg' %}?v=2">
+  <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon/favicon-96x96.png' %}?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}?v=2">
+  <meta name="theme-color" content="#12305f">
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;}
+    html,body{height:100%;margin:0;padding:0;}
+    body{display:flex;min-height:100vh;font-family:'Inter',system-ui,sans-serif;color:#0f172a;
+         background:#fff;-webkit-font-smoothing:antialiased;}
+
+    /* ── Left: progress rail ── */
+    .ob-rail{width:320px;flex-shrink:0;position:relative;overflow:hidden;padding:44px 36px;
+             background:linear-gradient(165deg,#12305f 0%,#1d4878 55%,#0d2547 100%);color:#fff;
+             display:flex;flex-direction:column;}
+    .ob-rail::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;
+                     background:linear-gradient(90deg,#f59e0b 0%,#22c55e 55%,#3891C7 100%);}
+    .ob-rail>*{position:relative;z-index:1;}
+    .ob-logo{display:flex;align-items:center;gap:11px;text-decoration:none;margin-bottom:40px;}
+    .ob-logo img{width:36px;height:36px;object-fit:contain;border-radius:8px;}
+    .ob-logo-name{font-size:14px;font-weight:800;color:#fff;letter-spacing:.06em;line-height:1;}
+    .ob-logo-name .lt{color:#7dc4ec;}
+
+    .ob-rail-title{font-size:11.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+                   color:#fbbf24;margin-bottom:22px;}
+    .ob-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;}
+    .ob-step{display:flex;align-items:flex-start;gap:13px;padding:9px 0;font-size:14px;line-height:1.4;}
+    .ob-dot{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
+            justify-content:center;font-size:11.5px;font-weight:700;border:1.5px solid rgba(255,255,255,.28);
+            color:rgba(255,255,255,.6);background:transparent;}
+    .ob-step--done .ob-dot{background:#22c55e;border-color:#22c55e;color:#0d2547;}
+    .ob-step--current .ob-dot{background:#fbbf24;border-color:#fbbf24;color:#0d2547;}
+    .ob-step-label{color:rgba(255,255,255,.55);padding-top:3px;}
+    .ob-step--done .ob-step-label{color:rgba(255,255,255,.8);}
+    .ob-step--current .ob-step-label{color:#fff;font-weight:700;}
+
+    .ob-rail-foot{margin-top:auto;padding-top:28px;font-size:12.5px;line-height:1.65;
+                  color:rgba(255,255,255,.5);}
+    .ob-rail-foot a{color:rgba(255,255,255,.8);}
+
+    /* ── Right: the step ── */
+    .ob-main{flex:1;display:flex;justify-content:center;padding:44px 48px 64px;overflow-y:auto;}
+    .ob-body{width:100%;max-width:600px;}
+    .ob-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:34px;
+               font-size:13px;color:#64748b;}
+    .ob-topbar a{color:#3891C7;text-decoration:none;font-weight:600;}
+    .ob-topbar a:hover{text-decoration:underline;}
+
+    .ob-eyebrow{font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+                color:#3891C7;margin-bottom:10px;}
+    .ob-title{font-size:29px;font-weight:900;letter-spacing:-.03em;line-height:1.15;margin:0 0 12px;}
+    .ob-blurb{font-size:14.5px;color:#64748b;line-height:1.7;margin:0 0 30px;}
+
+    .ob-group{margin-bottom:18px;}
+    .ob-row{display:flex;gap:14px;}
+    .ob-row>.ob-group{flex:1;}
+    .ob-label{display:block;font-size:11px;font-weight:600;color:#64748b;letter-spacing:.09em;
+              text-transform:uppercase;margin-bottom:7px;}
+    .ob-input,.ob-select{width:100%;padding:12px 14px;border:1.5px solid #e2e8f0;border-radius:8px;
+                         font-size:14.5px;font-family:inherit;color:#0f172a;background:#fff;outline:none;
+                         transition:border-color .18s,box-shadow .18s;}
+    .ob-input:focus,.ob-select:focus{border-color:#3891C7;box-shadow:0 0 0 3px rgba(56,145,199,.12);}
+    .ob-input.is-invalid,.ob-select.is-invalid{border-color:#dc2626;}
+    .ob-hint{display:block;font-size:12px;color:#94a3b8;margin-top:6px;line-height:1.55;}
+    .ob-error{display:block;font-size:12.5px;color:#dc2626;margin-top:6px;}
+
+    .ob-alert{border-radius:8px;padding:12px 15px;font-size:13.5px;line-height:1.6;
+              display:flex;align-items:flex-start;gap:9px;margin-bottom:22px;}
+    .ob-alert i{font-size:15px;flex-shrink:0;margin-top:1px;}
+    .ob-alert--error{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;}
+    .ob-alert--info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;}
+    .ob-alert--warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;}
+    .ob-alert--ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;}
+
+    .ob-actions{display:flex;align-items:center;gap:14px;margin-top:28px;}
+    .ob-btn{padding:13px 26px;border-radius:8px;font-size:14.5px;font-weight:700;font-family:inherit;
+            border:none;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px;
+            transition:transform .15s,box-shadow .15s,background .15s;}
+    .ob-btn--primary{background:#12305f;color:#fff;box-shadow:0 4px 16px rgba(18,48,95,.26);}
+    .ob-btn--primary:hover{background:#0d2547;transform:translateY(-1px);color:#fff;}
+    .ob-btn--ghost{background:#fff;color:#334155;border:1.5px solid #e2e8f0;}
+    .ob-btn--ghost:hover{border-color:#cbd5e1;color:#0f172a;}
+    .ob-back{font-size:13.5px;color:#64748b;text-decoration:none;}
+    .ob-back:hover{color:#0f172a;}
+
+    /* Choice cards (agency step, plan step) */
+    .ob-choices{display:flex;flex-direction:column;gap:12px;margin-bottom:24px;}
+    .ob-choice{display:flex;gap:13px;align-items:flex-start;padding:16px 18px;border:1.5px solid #e2e8f0;
+               border-radius:10px;cursor:pointer;transition:border-color .15s,background .15s;}
+    .ob-choice:hover{border-color:#cbd5e1;}
+    .ob-choice input{margin-top:3px;accent-color:#12305f;width:16px;height:16px;flex-shrink:0;}
+    .ob-choice-title{font-size:14.5px;font-weight:700;display:block;margin-bottom:3px;}
+    .ob-choice-desc{font-size:13px;color:#64748b;line-height:1.6;}
+    .ob-choice--selected{border-color:#12305f;background:#f8fafc;}
+
+    /* Consent tick box */
+    .ob-consent{display:flex;gap:12px;align-items:flex-start;padding:16px 18px;background:#f8fafc;
+                border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;line-height:1.6;cursor:pointer;}
+    .ob-consent input{margin-top:2px;accent-color:#12305f;width:17px;height:17px;flex-shrink:0;}
+
+    @media(max-width:900px){
+      body{flex-direction:column;}
+      .ob-rail{width:100%;padding:26px 24px;}
+      .ob-steps{flex-direction:row;overflow-x:auto;gap:6px;}
+      .ob-step{flex-direction:column;align-items:center;text-align:center;min-width:74px;gap:6px;}
+      .ob-step-label{font-size:11px;padding-top:0;}
+      .ob-rail-foot{display:none;}
+      .ob-main{padding:28px 22px 56px;}
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<aside class="ob-rail">
+  <a href="{% url 'monitor:home' %}" class="ob-logo">
+    <img src="{% static 'images/social_light_logo.png' %}" alt="Social Light"/>
+    <span class="ob-logo-name">SOCIAL<span class="lt">LIGHT</span></span>
+  </a>
+
+  <div class="ob-rail-title">Setting up your account</div>
+  <ol class="ob-steps">
+    {% for s in stage_rail %}
+    <li class="ob-step {% if s.is_done %}ob-step--done{% endif %} {% if s.is_current %}ob-step--current{% endif %}">
+      <span class="ob-dot">{% if s.is_done %}<i class="bi bi-check-lg"></i>{% else %}{{ s.number }}{% endif %}</span>
+      <span class="ob-step-label">{{ s.label }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+
+  <div class="ob-rail-foot">
+    Your progress is saved as you go — you can close this and pick up where you left off.
+    <br><br>
+    Stuck? <a href="mailto:support@sociallightbw.com">support@sociallightbw.com</a>
+  </div>
+</aside>
+
+<main class="ob-main">
+  <div class="ob-body">
+    <div class="ob-topbar">
+      <span>Step {{ step.stage }} of {{ stage_count }}</span>
+      <a href="{% url 'monitor:logout' %}">Sign out</a>
+    </div>
+
+    <div class="ob-eyebrow">{{ step.title|default:"Set up" }}</div>
+    <h1 class="ob-title">{% block heading %}{{ step.title }}{% endblock %}</h1>
+    <p class="ob-blurb">{% block blurb %}{{ step.blurb }}{% endblock %}</p>
+
+    {% block content %}{% endblock %}
+  </div>
+</main>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

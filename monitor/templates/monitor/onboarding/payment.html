@@ -1,0 +1,129 @@
+{% extends "monitor/onboarding/base.html" %}
+{% comment %}
+Renders in two modes.
+
+With a gateway configured, the provider's own hosted card field is mounted here
+and the form submits only the token the provider hands back — card details are
+typed into the provider's iframe and never touch this page's form or our server.
+
+With no gateway configured, the page says so plainly and offers a continue
+button, because onboarding completing must never depend on a payment integration
+existing.
+{% endcomment %}
+{% block title %}Payment method{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="ob-alert ob-alert--error">
+  <i class="bi bi-exclamation-circle-fill"></i>
+  <span>{{ error }}</span>
+</div>
+{% endif %}
+
+{% if existing_method %}
+<div class="ob-alert ob-alert--ok">
+  <i class="bi bi-credit-card"></i>
+  <span><strong>{{ existing_method.display_label }}</strong>
+    {% if existing_method.expiry_display %}· expires {{ existing_method.expiry_display }}{% endif %}
+    is already saved for this organisation.</span>
+</div>
+{% endif %}
+
+{% if payments_enabled %}
+
+  <div class="ob-alert ob-alert--info">
+    <i class="bi bi-shield-lock"></i>
+    <span>Your card is entered directly into {{ provider.label }}'s secure field. We receive only
+      their token for it — this application never sees or stores your card number, and never
+      stores a CVV at all.</span>
+  </div>
+
+  <form method="post" id="paymentForm" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="payment_token" id="paymentToken"/>
+    <input type="hidden" name="customer_id" value="{{ client_config.customer_id|default:'' }}"/>
+
+    <div class="ob-group">
+      <label class="ob-label">Card details</label>
+      {# The provider's hosted field mounts here. #}
+      <div id="cardElement" style="padding:14px;border:1.5px solid #e2e8f0;border-radius:8px;min-height:48px;"></div>
+      <span class="ob-hint">We do not take a payment now. The card is saved so your subscription can
+        start when you choose a plan.</span>
+    </div>
+
+    <div class="ob-actions">
+      <button type="submit" class="ob-btn ob-btn--primary" id="savePaymentBtn">Save card and continue</button>
+      <button type="submit" name="action" value="skip" class="ob-btn ob-btn--ghost"
+              formnovalidate>Skip for now</button>
+      {% if back_url %}<a href="{{ back_url }}" class="ob-back">Back</a>{% endif %}
+    </div>
+  </form>
+
+{% else %}
+
+  <div class="ob-alert ob-alert--info">
+    <i class="bi bi-info-circle"></i>
+    <span>Card payments are not switched on for this deployment. Subscriptions are arranged with
+      our team and settled by invoice or electronic transfer, so there is nothing to enter here.</span>
+  </div>
+
+  <p class="ob-blurb">
+    You can carry on and choose a plan on the next step. If the plan you pick is a paid one,
+    we'll raise it with our team and confirm the billing arrangement with you directly.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="skip"/>
+    <div class="ob-actions">
+      <button type="submit" class="ob-btn ob-btn--primary">Continue</button>
+      {% if back_url %}<a href="{{ back_url }}" class="ob-back">Back</a>{% endif %}
+    </div>
+  </form>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if payments_enabled and client_config.provider == 'stripe' %}
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+  // Stripe Elements: the card is collected inside Stripe's iframe and confirmed
+  // against a SetupIntent. All that reaches our form — and therefore our server —
+  // is the resulting payment-method id.
+  (function () {
+    var config = {{ client_config_json|safe }};
+    if (!config.publishable_key) { return; }
+
+    var stripe = Stripe(config.publishable_key);
+    var card = stripe.elements().create('card', {hidePostalCode: true});
+    card.mount('#cardElement');
+
+    var form = document.getElementById('paymentForm');
+    var button = document.getElementById('savePaymentBtn');
+
+    form.addEventListener('submit', function (event) {
+      // The "Skip for now" button posts straight through.
+      if (event.submitter && event.submitter.value === 'skip') { return; }
+      if (document.getElementById('paymentToken').value) { return; }
+
+      event.preventDefault();
+      button.disabled = true;
+      button.textContent = 'Saving…';
+
+      stripe.confirmCardSetup(config.client_secret, {payment_method: {card: card}})
+        .then(function (result) {
+          if (result.error) {
+            button.disabled = false;
+            button.textContent = 'Save card and continue';
+            window.alert(result.error.message);
+            return;
+          }
+          document.getElementById('paymentToken').value = result.setupIntent.payment_method;
+          form.submit();
+        });
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}

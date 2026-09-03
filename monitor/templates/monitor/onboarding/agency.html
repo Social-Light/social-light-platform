@@ -1,0 +1,113 @@
+{% extends "monitor/onboarding/base.html" %}
+{% block title %}Who is this account for?{% endblock %}
+
+{% block content %}
+{% if errors %}
+<div class="ob-alert ob-alert--error">
+  <i class="bi bi-exclamation-circle-fill"></i>
+  <span>Please fix the highlighted fields below.</span>
+</div>
+{% endif %}
+
+<form method="post" action="{% url 'monitor:onboarding_agency' %}" novalidate id="agencyForm">
+  {% csrf_token %}
+
+  <div class="ob-choices">
+    <label class="ob-choice {% if values.account_type == 'individual' %}ob-choice--selected{% endif %}"
+           data-choice="individual">
+      <input type="radio" name="account_type" value="individual"
+             {% if values.account_type == 'individual' %}checked{% endif %}/>
+      <span>
+        <span class="ob-choice-title">I'm using Social Light for myself</span>
+        <span class="ob-choice-desc">A personal workspace. You accept the terms in your own name
+          and nobody else is bound by them.</span>
+      </span>
+    </label>
+
+    <label class="ob-choice {% if values.account_type == 'organisation' %}ob-choice--selected{% endif %}"
+           data-choice="organisation">
+      <input type="radio" name="account_type" value="organisation"
+             {% if values.account_type == 'organisation' %}checked{% endif %}/>
+      <span>
+        <span class="ob-choice-title">I represent an organisation or agency</span>
+        <span class="ob-choice-desc">The workspace belongs to the organisation, and the terms you
+          accept next bind it as well as you.</span>
+      </span>
+    </label>
+  </div>
+  {% if errors.account_type %}<span class="ob-error" style="margin-bottom:16px;">{{ errors.account_type }}</span>{% endif %}
+
+  <div id="orgFields" {% if values.account_type != 'organisation' %}style="display:none;"{% endif %}>
+    <div class="ob-group">
+      <label class="ob-label" for="id_organisation_name">Organisation or agency name</label>
+      <input type="text" id="id_organisation_name" name="organisation_name"
+             class="ob-input {% if errors.organisation_name %}is-invalid{% endif %}"
+             value="{{ values.organisation_name|default:'' }}"/>
+      {% if errors.organisation_name %}<span class="ob-error">{{ errors.organisation_name }}</span>{% endif %}
+    </div>
+
+    <div class="ob-row">
+      <div class="ob-group">
+        <label class="ob-label" for="id_position">Your position there</label>
+        <input type="text" id="id_position" name="position"
+               class="ob-input {% if errors.position %}is-invalid{% endif %}"
+               placeholder="Head of Communications" value="{{ values.position|default:'' }}"/>
+        {% if errors.position %}<span class="ob-error">{{ errors.position }}</span>{% endif %}
+      </div>
+      <div class="ob-group">
+        <label class="ob-label" for="id_registration_number">Registration number</label>
+        <input type="text" id="id_registration_number" name="registration_number"
+               class="ob-input" value="{{ values.registration_number|default:'' }}"/>
+        <span class="ob-hint">Optional.</span>
+      </div>
+    </div>
+
+    <div class="ob-row">
+      <div class="ob-group">
+        <label class="ob-label" for="id_organisation_email">Organisation email</label>
+        <input type="email" id="id_organisation_email" name="organisation_email"
+               class="ob-input" value="{{ values.organisation_email|default:'' }}"/>
+        <span class="ob-hint">Where different from your own address.</span>
+      </div>
+      <div class="ob-group">
+        <label class="ob-label" for="id_organisation_phone">Organisation phone</label>
+        <input type="tel" id="id_organisation_phone" name="organisation_phone"
+               class="ob-input" value="{{ values.organisation_phone|default:'' }}"/>
+        <span class="ob-hint">Optional.</span>
+      </div>
+    </div>
+
+    <div class="ob-group">
+      <label class="ob-consent">
+        <input type="checkbox" name="is_authorised" {% if values.is_authorised %}checked{% endif %}/>
+        <span>I confirm that I am authorised to represent this organisation and to accept the
+          Social Light Terms &amp; Conditions on its behalf.</span>
+      </label>
+      {% if errors.is_authorised %}<span class="ob-error">{{ errors.is_authorised }}</span>{% endif %}
+      <span class="ob-hint">We record this confirmation, along with the date and your IP address.
+        We do not ask for documents today, but we may need to verify authority later.</span>
+    </div>
+  </div>
+
+  <div class="ob-actions">
+    <button type="submit" class="ob-btn ob-btn--primary">Continue</button>
+    {% if back_url %}<a href="{{ back_url }}" class="ob-back">Back</a>{% endif %}
+  </div>
+</form>
+
+<script>
+  // Reveal the organisation fields only when they are relevant, so an individual
+  // user is never shown a form asking which company they speak for.
+  (function () {
+    var fields = document.getElementById('orgFields');
+    document.querySelectorAll('input[name="account_type"]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        fields.style.display = radio.value === 'organisation' && radio.checked ? '' : 'none';
+        document.querySelectorAll('.ob-choice').forEach(function (card) {
+          card.classList.toggle('ob-choice--selected', card.dataset.choice === radio.value);
+        });
+      });
+    });
+  })();
+</script>
+{% endblock %}

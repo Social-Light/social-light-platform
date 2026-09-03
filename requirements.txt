@@ -1,6 +1,5 @@
 gunicorn
 whitenoise
-django-anymail[resend]
 psycopg2-binary
 anthropic==1.0.0
 groq==1.7.0

@@ -95,6 +95,26 @@ BILLING_PERIOD_CHOICES = [
     ('annual', 'Per year'),
 ]
 
+#: How many calendar months each billing period covers. Used to work out when a
+#: paid period ends, so the answer follows the calendar rather than a fixed
+#: number of days — a monthly subscription taken on 31 January renews on 28
+#: February, not on 2 March.
+BILLING_PERIOD_MONTHS = {'monthly': 1, 'quarterly': 3, 'annual': 12}
+
+
+def add_billing_period(start, billing_period):
+    """``start`` advanced by one whole billing period.
+
+    ``relativedelta`` is used rather than ``timedelta`` because months are not a
+    fixed length: it clamps 31 January + 1 month to the last day of February
+    instead of overflowing into March, which is the behaviour a customer expects
+    from a monthly subscription.
+    """
+    from dateutil.relativedelta import relativedelta
+
+    months = BILLING_PERIOD_MONTHS.get(billing_period, 1)
+    return start + relativedelta(months=months)
+
 
 CURRENCY_SYMBOLS = {'USD': '$', 'ZAR': 'R', 'GBP': '£', 'EUR': '€'}
 
@@ -143,8 +163,23 @@ class Package(models.Model):
         help_text='This tier is arranged with sales rather than picked self-service.')
 
     is_featured = models.BooleanField(default=False, help_text='Highlights this package as the recommended tier.')
-    is_active = models.BooleanField(default=True, help_text='Uncheck to hide from the price list without deleting it.')
+    is_active = models.BooleanField(default=True, help_text='Uncheck to retire the tier without deleting it. '
+                                                            'Inactive tiers cannot be chosen or assigned.')
+    is_public = models.BooleanField(
+        default=True,
+        help_text='Show on the published price list. Untick for a tier that is assignable '
+                  '(onboarding, admin) but not advertised — the Free tier, for example.')
     sort_order = models.IntegerField(default=0)
+
+    # ── Entitlements ──────────────────────────────────────────────────────
+    # What this tier actually unlocks, as codes from monitor.entitlements.FEATURES.
+    # Deliberately NOT `features` above: that is marketing copy shown on the price
+    # card and is reworded freely in the admin, so it must never decide access.
+    entitlements = models.JSONField(
+        default=list, blank=True,
+        help_text='Feature codes this package grants, e.g. ["report_download", "premium_reports"]. '
+                  'The Entitlements section of this page lists every available code.')
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -192,12 +227,32 @@ class Package(models.Model):
         return {'monthly': '/ month', 'quarterly': '/ quarter', 'annual': '/ year'}.get(self.billing_period, '')
 
     @property
-    def period_display(self):
+    def period_display(self): 
         return dict(BILLING_PERIOD_CHOICES).get(self.billing_period, self.billing_period)
 
     @property
     def button_label(self):
         return self.cta_label or ('Contact sales' if self.contact_only else 'Start free trial')
+
+    # ── Entitlements ──────────────────────────────────────────────────────
+    @property
+    def entitlement_codes(self):
+        """Valid feature codes this tier grants. Tolerates a comma/newline
+        separated string having been typed into the JSON field by hand in the
+        admin, and silently drops codes no longer in the registry."""
+        from .entitlements import FEATURES
+        raw = self.entitlements or []
+        if isinstance(raw, str):
+            raw = re.split(r'[,\n]', raw)
+        return [c for c in (str(x).strip() for x in raw) if c in FEATURES]
+
+    @property
+    def entitlement_labels(self):
+        from .entitlements import FEATURES
+        return [FEATURES[c].label for c in self.entitlement_codes]
+
+    def grants(self, code):
+        return code in self.entitlement_codes
 
 
 PLAN_STATUS_CHOICES = [
@@ -205,6 +260,12 @@ PLAN_STATUS_CHOICES = [
     ('active', 'Paid subscription'),
     ('pending', 'Awaiting activation'),
     ('expired', 'Trial ended'),
+    # Distinct from 'expired' on purpose. 'expired' means a trial ran out and
+    # nothing was ever paid; 'past_due' means an organisation *was* paying and a
+    # renewal did not go through. They need different wording in the admin and on
+    # the paywall, and they are recovered from differently — one is a first sale,
+    # the other is a card that needs replacing.
+    ('past_due', 'Payment overdue'),
 ]
 
 
@@ -242,6 +303,11 @@ class Organization(models.Model):
     trial_started_at = models.DateTimeField(null=True, blank=True)
     trial_ends_at = models.DateTimeField(null=True, blank=True)
     subscription_activated_at = models.DateTimeField(null=True, blank=True)
+    current_period_end = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the paid period runs out. Access stops here unless a renewal '
+                  'extends it. Left blank for a subscription activated by hand with no '
+                  'agreed end date, which never lapses on its own.')
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -260,21 +326,66 @@ class Organization(models.Model):
         self.trial_started_at = now
         self.trial_ends_at = now + timedelta(days=days)
 
-    def activate_package(self, package):
-        """Move the organisation onto a paid package — the manual step a platform
-        admin performs once payment for a requested package has landed."""
+    def activate_package(self, package, period_end=None, extend=False):
+        """Move the organisation onto a paid package.
+
+        Called from two places: a platform admin activating a package once an
+        off-platform payment has landed, and the payment gateway once a charge is
+        verified.
+
+        The paid period runs from now to one billing period ahead, so a
+        subscription actually lapses instead of staying active forever. Pass
+        ``period_end`` explicitly for a term agreed off-platform that does not
+        match the package's own period — an annual invoice against a monthly
+        tier, say — or ``None`` with ``extend=False`` on a package with no
+        billing period to leave it open-ended.
+
+        ``extend=True`` renews rather than restarts: the new period runs from the
+        end of the one being replaced, not from today, so a renewal charged a day
+        early does not cost the customer a day.
+        """
+        now = timezone.now()
         self.package = package
         self.plan_status = 'active'
-        self.subscription_activated_at = timezone.now()
-        self.save(update_fields=['package', 'plan_status', 'subscription_activated_at'])
+        self.subscription_activated_at = now
+
+        if period_end is not None:
+            self.current_period_end = period_end
+        elif package is not None:
+            start = self.current_period_end if (extend and self.current_period_end) else now
+            self.current_period_end = add_billing_period(start, package.billing_period)
+
+        self.save(update_fields=['package', 'plan_status', 'subscription_activated_at',
+                                 'current_period_end'])
+
+    @property
+    def paid_period_has_lapsed(self):
+        """Whether a paid subscription has run past the period it paid for.
+
+        An organisation with no ``current_period_end`` never lapses — that is how
+        a subscription activated by hand, with no agreed end date, keeps working.
+        """
+        return bool(self.current_period_end and timezone.now() >= self.current_period_end)
 
     @property
     def effective_plan_status(self):
-        """The real status right now. A trial flips to 'expired' the moment
-        ``trial_ends_at`` passes — computed on read, so access is cut off exactly
-        on time without a scheduled job having to run."""
-        if self.plan_status == 'trial' and self.trial_ends_at and timezone.now() >= self.trial_ends_at:
+        """The real status right now.
+
+        Two states are computed on read rather than stored, so access is cut off
+        exactly on time whether or not a scheduled job has run: a trial flips to
+        'expired' the moment ``trial_ends_at`` passes, and a paid subscription
+        flips to 'past_due' the moment ``current_period_end`` does.
+
+        Deriving the lapse here rather than in the middleware means every caller
+        — the access check, the templates, the admin — agrees about it, and a
+        renewal job that fails to run cannot leave an unpaid organisation with
+        access it has not paid for.
+        """
+        now = timezone.now()
+        if self.plan_status == 'trial' and self.trial_ends_at and now >= self.trial_ends_at:
             return 'expired'
+        if self.plan_status == 'active' and self.paid_period_has_lapsed:
+            return 'past_due'
         return self.plan_status
 
     @property
@@ -283,7 +394,10 @@ class Organization(models.Model):
 
     @property
     def trial_has_expired(self):
-        return self.effective_plan_status in ('expired', 'pending')
+        """Whether the organisation is currently behind the paywall and needs to
+        pay. Named for the trial because that was once the only way in, but a
+        lapsed paid subscription puts an organisation in the same place."""
+        return self.effective_plan_status in ('expired', 'pending', 'past_due')
 
     @property
     def trial_days_left(self):
@@ -309,6 +423,21 @@ class User(AbstractUser):
     )
     role = models.CharField(max_length=30, choices=ROLE_CHOICES, default='viewer')
 
+    # ── Profile ──────────────────────────────────────────────────────────────
+    # Collected at registration and on the onboarding profile step. Blank by
+    # default so every account that predates onboarding stays valid.
+    phone = models.CharField(max_length=50, blank=True)
+    job_title = models.CharField(max_length=150, blank=True)
+    country = models.CharField(max_length=100, blank=True)
+
+    # ── Email verification ───────────────────────────────────────────────────
+    # False for anyone who signs up from now on until they follow the link in
+    # their verification email. Every account that existed before verification
+    # was introduced is backfilled to True by migration — they were never asked,
+    # and must not be locked out retrospectively.
+    email_verified = models.BooleanField(default=False)
+    email_verified_at = models.DateTimeField(null=True, blank=True)
+
     def get_full_name(self):
         return f"{self.first_name} {self.last_name}".strip() or self.username
 
@@ -320,6 +449,34 @@ class User(AbstractUser):
 
     def get_role_display_name(self):
         return dict(ROLE_CHOICES).get(self.role, self.role)
+
+    # ── Entitlements ─────────────────────────────────────────────────────────
+    def has_feature(self, code):
+        """True when this account's plan entitles it to `code`. The one call the
+        whole application makes to decide access to a paid capability — see
+        monitor/entitlements.py for how it resolves."""
+        from .entitlements import user_has_feature
+        return user_has_feature(self, code)
+
+    @property
+    def entitlements(self):
+        from .entitlements import entitlements_for_user
+        return entitlements_for_user(self)
+
+    # ── Onboarding ───────────────────────────────────────────────────────────
+    @property
+    def onboarding_progress(self):
+        """This user's onboarding record, or None. A missing record means the
+        account predates onboarding entirely; callers treat that as complete."""
+        try:
+            return self.onboarding
+        except OnboardingProgress.DoesNotExist:
+            return None
+
+    @property
+    def onboarding_complete(self):
+        progress = self.onboarding_progress
+        return progress is None or progress.is_complete
 
 
 KEYWORD_CATEGORY_CHOICES = [
@@ -935,3 +1092,21 @@ class Publication(models.Model):
 
     def __str__(self):
         return self.title
+
+
+# ── Onboarding, legal consent and payment ────────────────────────────────────
+# Declared in their own modules to keep this file readable, and imported here so
+# Django registers them against the `monitor` app exactly as if they were inline.
+# They reference Organization and User by string, so this import is not circular.
+from .onboarding_models import (          # noqa: E402,F401
+    ACCOUNT_TYPE_CHOICES, CONSENT_DECISIONS, LEGAL_DOCUMENT_TYPES, ONBOARDING_STATES,
+    STATE_ORDER, AgencyDeclaration, ConsentRecord, EmailVerificationToken,
+    LegalDocument, OnboardingProgress,
+)
+from .payment_models import (             # noqa: E402,F401
+    PAYMENT_STATUS_CHOICES, Payment, PaymentMethod,
+)
+from .assessment_models import (          # noqa: E402,F401
+    ACTION_CHOICES, FIT_CHOICES, STATUS_CHOICES as ASSESSMENT_STATUS_CHOICES,
+    TIER_CHOICES, AssessmentSubmission,
+)

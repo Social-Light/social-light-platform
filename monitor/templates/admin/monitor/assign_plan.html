@@ -1,0 +1,60 @@
+{% extends "admin/base_site.html" %}
+{% comment %}
+The intermediate page for the "Assign a plan manually" admin action. This is the
+path the business uses when no payment gateway is switched on: the fee is settled
+off-platform and an administrator activates the plan here.
+{% endcomment %}
+{% block content %}
+<div style="max-width:720px;">
+
+  {% if not payments_enabled %}
+  <p class="help" style="background:#fffbeb;border:1px solid #fde68a;padding:12px 14px;border-radius:6px;">
+    <strong>Card payments are switched off on this deployment.</strong>
+    Manual assignment is the intended way to put an organisation on a plan — activate it here
+    once the invoice or transfer has settled.
+  </p>
+  {% endif %}
+
+  <p>Activating a plan sets the organisation to <strong>Paid subscription</strong>, stamps the
+    activation time, and immediately applies that plan's entitlements to everyone in it.</p>
+
+  <h2>Organisations</h2>
+  <ul>
+    {% for org in organizations %}
+    <li><strong>{{ org.name }}</strong> — currently
+      {{ org.get_plan_status_display }}{% if org.package %}, {{ org.package.name }}{% endif %}</li>
+    {% endfor %}
+  </ul>
+
+  <form method="post">
+    {% csrf_token %}
+    {% for org in organizations %}
+      <input type="hidden" name="{{ action_checkbox_name }}" value="{{ org.pk }}"/>
+    {% endfor %}
+    <input type="hidden" name="action" value="assign_plan"/>
+
+    <h2>Plan</h2>
+    <ul style="list-style:none;padding:0;">
+      {% for p in packages %}
+      <li style="margin-bottom:10px;">
+        <label>
+          <input type="radio" name="package" value="{{ p.pk }}"/>
+          <strong>{{ p.name }}</strong> — {{ p.price_display }}
+          {% if p.shows_period %}{{ p.period_suffix }}{% endif %}
+          {% if not p.is_public %}<em>(not on the public price list)</em>{% endif %}
+          <br>
+          <span class="help" style="margin-left:22px;">
+            Unlocks: {% for label in p.entitlement_labels %}{{ label }}{% if not forloop.last %}, {% endif %}{% empty %}nothing yet — set this tier's entitlements first{% endfor %}
+          </span>
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <div class="submit-row" style="margin-top:20px;">
+      <input type="submit" name="apply" value="Activate this plan" class="default"/>
+      <a href="{% url 'admin:monitor_organization_changelist' %}" class="button cancel-link">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

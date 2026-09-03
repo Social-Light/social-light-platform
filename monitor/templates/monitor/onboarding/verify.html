@@ -1,0 +1,87 @@
+{% extends "monitor/onboarding/base.html" %}
+{% block title %}Confirm your email{% endblock %}
+
+{% block content %}
+{% if error == 'expired' %}
+  <div class="ob-alert ob-alert--warn">
+    <i class="bi bi-clock-history"></i>
+    <span>That link has expired. Send yourself a new one below — it takes a moment.</span>
+  </div>
+{% elif error == 'used' %}
+  <div class="ob-alert ob-alert--warn">
+    <i class="bi bi-exclamation-circle"></i>
+    <span>That link has already been used. Send yourself a new one below.</span>
+  </div>
+{% elif error == 'unknown' %}
+  <div class="ob-alert ob-alert--error">
+    <i class="bi bi-exclamation-circle-fill"></i>
+    <span>We didn't recognise that link. It may have been truncated by your email client —
+      send yourself a new one below.</span>
+  </div>
+{% elif error == 'wrong_account' %}
+  <div class="ob-alert ob-alert--warn">
+    <i class="bi bi-person-exclamation"></i>
+    <span>That link belongs to a different account. Sign out and open it again, or verify
+      this account with a new link below.</span>
+  </div>
+{% elif resent %}
+  <div class="ob-alert ob-alert--ok">
+    <i class="bi bi-check-circle-fill"></i>
+    <span>Sent. Check your inbox — and your spam folder, which is where confirmation
+      emails usually end up.</span>
+  </div>
+{% endif %}
+
+{% if mail_error %}
+  {% comment %}
+    Never claim the email went out when it did not — that strands the user on a
+    step they cannot pass, with nothing to act on. But the user sees only the
+    plain sentence: a provider validation error or an exception class name reads
+    like the site is broken and gives them nothing to act on. The technical
+    detail is logged, and shown here only while DEBUG is on.
+  {% endcomment %}
+  <div class="ob-alert ob-alert--error">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <span><strong>{{ mail_error.message }}</strong><br>
+      You can try again below. If it still doesn't arrive, email
+      support@sociallightbw.com and we'll confirm your address for you.</span>
+  </div>
+
+  {% if debug %}
+  <div class="ob-alert ob-alert--warn" style="word-break:break-all;">
+    <i class="bi bi-tools"></i>
+    <span><strong>Development mode</strong> — this block appears only while
+      <code>DEBUG=True</code>.<br>
+      {% if mail_error.detail %}<br><code>{{ mail_error.detail }}</code><br>{% endif %}
+      {% if verification_url %}<br>Link that would have been sent:
+      <a href="{{ verification_url }}">{{ verification_url }}</a>{% endif %}</span>
+  </div>
+  {% endif %}
+{% else %}
+<div class="ob-alert ob-alert--info">
+  <i class="bi bi-envelope"></i>
+  <span>We sent a confirmation link to <strong>{{ email }}</strong>. Open it to continue.</span>
+</div>
+{% endif %}
+
+<p class="ob-blurb" style="margin-bottom:22px;">
+  We ask for this because everything the platform sends you — alert digests, reports,
+  password resets — goes to this address. Confirming it now means none of that ends up
+  somewhere you can't reach.
+</p>
+
+<form method="post" action="{% url 'monitor:onboarding_verify' %}">
+  {% csrf_token %}
+  <div class="ob-actions">
+    <button type="submit" class="ob-btn ob-btn--primary">
+      <i class="bi bi-arrow-repeat"></i> Send the link again
+    </button>
+    <a href="{% url 'monitor:onboarding_verify' %}" class="ob-back">I've confirmed it — continue</a>
+  </div>
+</form>
+
+<p class="ob-hint" style="margin-top:26px;">
+  Wrong address? <a href="{% url 'monitor:logout' %}" style="color:#3891C7;">Sign out</a> and
+  register again, or email support@sociallightbw.com and we'll change it for you.
+</p>
+{% endblock %}

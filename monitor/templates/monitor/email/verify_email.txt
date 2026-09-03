@@ -1,0 +1,13 @@
+Hello {{ full_name }},
+
+Confirm your email address to finish setting up your Social Light account:
+
+{{ verification_url }}
+
+The link is valid for {{ ttl_hours }} hours. If it expires, you can send yourself
+a new one from the setup page.
+
+If you did not create a Social Light account, you can ignore this email — nothing
+will happen until the link is opened.
+
+— Social Light

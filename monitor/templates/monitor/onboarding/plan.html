@@ -1,0 +1,88 @@
+{% extends "monitor/onboarding/base.html" %}
+{% block title %}Choose your plan{% endblock %}
+
+{% block extra_head %}
+<style>
+  .pl-grid{display:flex;flex-direction:column;gap:12px;margin-bottom:6px;}
+  .pl-card{display:flex;gap:14px;align-items:flex-start;padding:18px 20px;border:1.5px solid #e2e8f0;
+           border-radius:10px;cursor:pointer;transition:border-color .15s,background .15s;}
+  .pl-card:hover{border-color:#cbd5e1;}
+  .pl-card--selected{border-color:#12305f;background:#f8fafc;}
+  .pl-card input{margin-top:4px;accent-color:#12305f;width:16px;height:16px;flex-shrink:0;}
+  .pl-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  .pl-name{font-size:15.5px;font-weight:800;}
+  .pl-price{font-size:15px;font-weight:800;color:#12305f;white-space:nowrap;}
+  .pl-per{font-size:12px;font-weight:600;color:#94a3b8;}
+  .pl-tagline{font-size:13px;color:#64748b;margin:4px 0 10px;line-height:1.55;}
+  .pl-feats{display:flex;flex-wrap:wrap;gap:6px;}
+  .pl-feat{font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:999px;background:#eff6ff;color:#1e40af;}
+  .pl-feat--off{background:#f8fafc;color:#94a3b8;text-decoration:line-through;}
+  .pl-note{font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;
+           padding:7px 10px;margin-top:10px;line-height:1.55;}
+</style>
+{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="ob-alert ob-alert--error">
+  <i class="bi bi-exclamation-circle-fill"></i><span>{{ error }}</span>
+</div>
+{% endif %}
+
+{% if org and org.is_on_trial %}
+<div class="ob-alert ob-alert--info">
+  <i class="bi bi-clock"></i>
+  <span>You have <strong>{{ org.trial_days_left }} day{{ org.trial_days_left|pluralize }}</strong>
+    of full trial access left, whichever plan you pick now. Your choice takes effect when the
+    trial ends.</span>
+</div>
+{% endif %}
+
+<form method="post" novalidate id="planForm">
+  {% csrf_token %}
+  <div class="pl-grid">
+    {% for p in packages %}
+    <label class="pl-card {% if org and org.package_id == p.id %}pl-card--selected{% endif %}" data-slug="{{ p.slug }}">
+      <input type="radio" name="package" value="{{ p.slug }}"
+             {% if org and org.package_id == p.id %}checked{% endif %}/>
+      <span style="flex:1;">
+        <span class="pl-head">
+          <span class="pl-name">{{ p.name }}</span>
+          <span class="pl-price">{{ p.price_display }}{% if p.shows_period %}<span class="pl-per"> {{ p.period_suffix }}</span>{% endif %}</span>
+        </span>
+        {% if p.tagline %}<span class="pl-tagline">{{ p.tagline }}</span>{% endif %}
+
+        <span class="pl-feats">
+          {% for label in p.entitlement_labels %}<span class="pl-feat">{{ label }}</span>{% endfor %}
+        </span>
+
+        {% if p.contact_only %}
+          <span class="pl-note">Arranged with our sales team. Choosing this raises a request —
+            it does not activate the plan.</span>
+        {% elif p.price and not payments_enabled %}
+          <span class="pl-note">Card payments are not switched on, so choosing this raises a
+            request with our team. You keep your current access until it is settled.</span>
+        {% endif %}
+      </span>
+    </label>
+    {% empty %}
+    <p class="ob-blurb">No plans are configured yet. You can continue — our team will be in touch.</p>
+    {% endfor %}
+  </div>
+
+  <div class="ob-actions">
+    <button type="submit" class="ob-btn ob-btn--primary">Continue</button>
+    {% if back_url %}<a href="{{ back_url }}" class="ob-back">Back</a>{% endif %}
+  </div>
+</form>
+
+<script>
+  document.querySelectorAll('.pl-card input').forEach(function (radio) {
+    radio.addEventListener('change', function () {
+      document.querySelectorAll('.pl-card').forEach(function (card) {
+        card.classList.toggle('pl-card--selected', card.dataset.slug === radio.value);
+      });
+    });
+  });
+</script>
+{% endblock %}

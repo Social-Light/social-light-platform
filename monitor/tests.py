@@ -3,7 +3,7 @@ Tests for the event capture layer: emitters write Event rows, gather_events read
 them back with the right scoping, and build_and_send folds them into the digest.
 
 The email assertions run against Django's in-memory backend, so nothing here
-touches Resend, Celery or the development database.
+touches a real mail server, Celery or the development database.
 """
 import json
 from datetime import timedelta

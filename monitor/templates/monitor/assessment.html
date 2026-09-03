@@ -1,0 +1,676 @@
+{% load static %}<!DOCTYPE html>
+{% comment %}
+The free assessment, as its own page.
+
+It replaces the four-question widget that used to live inside landing.html as a
+JavaScript tab. Two reasons it moved: the questions and the scoring are now
+server-side, and a tab inside another page has no URL, which makes it useless to
+anyone running a campaign.
+
+Contact details are asked for after the last question, not before the first. The
+visitor sees their score, then decides whether the full read is worth an email
+address. Gating the front door would cost most of the people who would otherwise
+finish, and the assessment has always been sold as needing no sign-up.
+{% endcomment %}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Free media intelligence assessment — Social Light</title>
+  <meta name="description" content="Ten questions on how your organisation tracks its own coverage. Get a score, and a plain read of the gaps, across print, broadcast, online and social in Southern Africa.">
+  <link rel="icon" type="image/x-icon" href="{% static 'favicon/favicon.ico' %}?v=2">
+  <link rel="icon" type="image/svg+xml" href="{% static 'favicon/favicon.svg' %}?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}?v=2">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* Tokens are the landing page's, verbatim. Public pages here are each
+       self-contained templates rather than extending a shared base, so the
+       system is repeated rather than imported. */
+    :root{
+      --navy:#062E72; --navy-deep:#041F4D; --navy-lift:#0B4893;
+      --ink:#0C1420; --body:#4A5568; --muted:#5B6B7D; --faint:#7B8794;
+      --line:#E3E8ED; --line-soft:#EEF2F5; --wash:#F6F8FA; --white:#FFFFFF;
+      --orange:#EA8C13; --gold:#F5B01B; --lime:#7BA32C; --green:#1E9160; --teal:#0A8B8E; --blue:#0A6C9E;
+      --amber-ink:#8F5F0A; --green-ink:#17754E; --red-ink:#9B2C2C;
+      --on-navy:#C4D6E6; --on-navy-mute:#9BB3CC;
+      --spectrum:linear-gradient(90deg,#EA8C13,#F5B01B,#7BA32C,#1E9160,#0A8B8E,#0A6C9E);
+      --shell:1120px;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;background:var(--white);color:var(--ink);font-family:'Montserrat',system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+    a{color:var(--blue);text-decoration:none;} a:hover{color:var(--navy);}
+    h1,h2,h3{font-family:'Poppins',sans-serif;margin:0;}
+    button{font-family:'Montserrat',sans-serif;}
+    img{max-width:100%;}
+
+    .shell{max-width:var(--shell);margin:0 auto;padding:0 40px;}
+    .rule{width:96px;height:4px;border-radius:2px;background:var(--spectrum);margin-bottom:18px;}
+    .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:16px;color:var(--teal);}
+    .h1{font-family:'Poppins',sans-serif;font-weight:700;font-size:46px;line-height:1.06;letter-spacing:-.02em;margin:0 0 20px;}
+    .h2{font-weight:700;font-size:30px;line-height:1.14;letter-spacing:-.015em;margin:0 0 14px;}
+    .lede{margin:0;font-size:16px;line-height:1.7;color:var(--body);}
+
+    .btn{display:inline-block;font-size:14px;font-weight:600;border:0;border-radius:6px;padding:13px 22px;cursor:pointer;white-space:nowrap;text-align:center;}
+    .btn-navy{background:var(--navy);color:#fff;} .btn-navy:hover{background:var(--blue);}
+    .btn-gold{background:var(--gold);color:var(--navy);} .btn-gold:hover{background:var(--orange);color:#fff;}
+    .btn-ghost{background:none;border:1px solid #D6DCE2;color:var(--ink);}
+    .btn-ghost:hover{border-color:var(--blue);color:var(--blue);}
+    .btn-lg{font-size:15px;padding:16px 28px;}
+    .btn[disabled]{opacity:.55;cursor:default;}
+
+    /* ── header ────────────────────────────────────────────────────────── */
+    .site-header{position:sticky;top:0;z-index:60;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);}
+    .header-bar{height:96px;display:flex;align-items:center;justify-content:space-between;gap:20px;}
+    .lockup{display:block;height:74px;width:auto;}
+    .wordmark{font-family:'Poppins',sans-serif;font-weight:700;font-size:19px;color:var(--navy);letter-spacing:-.01em;}
+    .wordmark small{display:block;font-family:'Montserrat',sans-serif;font-weight:500;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-top:2px;}
+    .nav{display:flex;align-items:center;gap:6px;}
+    .nav a{font-size:14px;color:var(--body);padding:9px 12px;white-space:nowrap;}
+    .nav a:hover{color:var(--ink);}
+    .nav .start{font-weight:600;color:#fff;background:var(--navy);padding:11px 18px;border-radius:6px;}
+    .nav .start:hover{background:var(--blue);color:#fff;}
+
+    /* ── stages ────────────────────────────────────────────────────────── */
+    .stage{display:none;} .stage.on{display:block;}
+    .section{padding:64px 0;}
+
+    .intro-grid{display:grid;grid-template-columns:1.25fr 1fr;gap:56px;align-items:start;}
+    .intro-points{list-style:none;margin:26px 0 34px;padding:0;display:flex;flex-direction:column;gap:14px;}
+    .intro-points li{display:grid;grid-template-columns:8px 1fr;gap:14px;align-items:start;}
+    .intro-points .dot{width:8px;height:8px;border-radius:50%;background:var(--gold);margin-top:8px;}
+    .intro-points strong{display:block;font-size:14px;font-weight:600;color:var(--ink);}
+    .intro-points span{font-size:13.5px;color:var(--muted);line-height:1.6;}
+    .meta-note{margin-top:18px;font-size:12.5px;color:var(--faint);}
+
+    /* credibility, deliberately below the fold and modest */
+    .aside-card{background:var(--wash);border:1px solid var(--line);border-radius:10px;padding:22px;margin-bottom:16px;}
+.aside-head{display:flex;align-items:center;gap:13px;}
+.aside-portrait{width:56px;height:56px;border-radius:50%;object-fit:cover;object-position:center top;border:2px solid var(--navy);flex-shrink:0;background:var(--line);}
+    .aside-card h3{font-size:15px;font-weight:600;color:var(--navy);margin-bottom:4px;}
+    .aside-role{font-size:12px;color:var(--muted);}
+    .badge{display:inline-block;margin-top:10px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--amber-ink);background:#FDF3E1;border-radius:20px;padding:4px 11px;}
+    .aside-quote{margin:14px 0 0;padding-top:14px;border-top:1px solid var(--line);font-size:13.5px;line-height:1.65;color:var(--body);font-style:italic;}
+    .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+    .stat{background:var(--navy);border-radius:10px;padding:18px 12px;text-align:center;}
+    .stat .n{font-family:'Poppins',sans-serif;font-weight:700;font-size:21px;color:var(--gold);}
+    .stat .l{font-size:10.5px;color:var(--on-navy-mute);margin-top:5px;line-height:1.4;}
+
+    /* ── questions ─────────────────────────────────────────────────────── */
+    .quiz-wrap{max-width:660px;margin:0 auto;}
+    .progress-meta{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;}
+    .progress-meta .step{font-size:12.5px;color:var(--muted);font-weight:500;}
+    .progress-meta .pct{font-size:12.5px;color:var(--navy);font-weight:600;}
+    .track{height:4px;background:var(--line);border-radius:3px;overflow:hidden;}
+    .track .fill{height:4px;width:0;border-radius:3px;background:var(--spectrum);transition:width .35s ease;}
+    .qcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:34px;margin-top:22px;}
+    .qsection{font-size:10.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--teal);margin-bottom:10px;}
+    .qtext{font-family:'Poppins',sans-serif;font-weight:600;font-size:21px;line-height:1.32;color:var(--navy);margin-bottom:10px;}
+    .qhint{font-size:13px;color:var(--muted);line-height:1.6;padding:11px 14px;background:var(--wash);border-left:2px solid var(--line);border-radius:6px;margin-bottom:24px;}
+    .opts{display:flex;flex-direction:column;gap:9px;margin-bottom:26px;}
+    .opt{display:flex;align-items:center;gap:12px;background:#fff;border:1.5px solid var(--line);border-radius:8px;padding:14px 16px;font-size:14px;color:var(--ink);text-align:left;cursor:pointer;transition:border-color .15s,background .15s;}
+    .opt:hover{border-color:var(--navy);background:var(--wash);}
+    .opt.on{border-color:var(--navy);background:#EDF3FA;font-weight:600;color:var(--navy);}
+    .opt .mark{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line);flex:0 0 auto;}
+    .opt.multi .mark{border-radius:4px;}
+    .opt.on .mark{background:var(--navy);border-color:var(--navy);}
+    .yn{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:26px;}
+    .yn button{background:#fff;border:1.5px solid var(--line);border-radius:8px;padding:20px 16px;font-size:14.5px;font-weight:600;color:var(--ink);cursor:pointer;}
+    .yn button:hover{border-color:var(--navy);}
+    .yn button.on.yes{border-color:var(--orange);background:#FDF3E1;color:var(--amber-ink);}
+    .yn button.on.no{border-color:var(--green);background:#EAF5EE;color:var(--green-ink);}
+    .ta{width:100%;min-height:104px;resize:vertical;background:var(--wash);border:1.5px solid var(--line);border-radius:8px;padding:14px;font-family:'Montserrat',sans-serif;font-size:14px;color:var(--ink);margin-bottom:26px;}
+    .ta:focus,.field:focus{outline:none;border-color:var(--navy);background:#fff;}
+    .qnav{display:flex;justify-content:space-between;align-items:center;gap:14px;}
+
+    /* ── score + gate ──────────────────────────────────────────────────── */
+    .score-band{display:flex;align-items:center;gap:26px;margin:26px 0 30px;}
+    .ring{position:relative;width:118px;height:118px;flex:0 0 auto;}
+    .ring svg{width:118px;height:118px;transform:rotate(-90deg);}
+    .ring .num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Poppins',sans-serif;font-weight:700;font-size:30px;color:var(--navy);}
+    .tier{display:inline-block;font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:5px 13px;border-radius:20px;margin-bottom:9px;}
+    .tier.strong{background:#EAF5EE;color:var(--green-ink);}
+    .tier.growing{background:#FDF3E1;color:var(--amber-ink);}
+    .tier.attention{background:#FBEAEA;color:var(--red-ink);}
+
+    .gate{background:var(--wash);border:1px solid var(--line);border-radius:12px;padding:30px;}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+    .form-grid.single{grid-template-columns:1fr;}
+    .fgroup{display:flex;flex-direction:column;gap:6px;}
+    .flabel{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+    .field{width:100%;background:#fff;border:1px solid var(--line);border-radius:6px;padding:11px 13px;font-family:'Montserrat',sans-serif;font-size:14px;color:var(--ink);}
+    .err{font-size:13px;color:var(--red-ink);margin:4px 0 10px;}
+    .privacy{font-size:12px;color:var(--faint);margin-top:12px;line-height:1.6;}
+
+    /* ── report ────────────────────────────────────────────────────────── */
+    .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:12px;}
+    .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:17px 19px;}
+    .card .l{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+    .card .v{font-size:15px;font-weight:600;color:var(--navy);}
+    .card .s{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.5;}
+    .card.wide{grid-column:1/-1;}
+    .fit-card{border-radius:10px;padding:22px;margin-bottom:20px;border:1px solid;}
+    .fit-card.high_value{background:#EAF5EE;border-color:#A8D5BA;}
+    .fit-card.eligible{background:#FDF3E1;border-color:#F0CC88;}
+    .fit-card.early{background:var(--wash);border-color:var(--line);}
+    .fit-card h3{font-size:15px;font-weight:600;color:var(--navy);margin-bottom:5px;}
+    .fit-card p{margin:0;font-size:13.5px;color:var(--body);line-height:1.6;}
+    .insight{background:#fff;border:1px solid var(--line);border-radius:10px;padding:15px 18px;margin-bottom:9px;}
+    .insight strong{display:block;font-size:13.5px;color:var(--navy);margin-bottom:3px;}
+    .insight span{font-size:13.5px;color:var(--body);line-height:1.6;}
+    .subhead{font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:26px 0 11px;}
+    .final{background:var(--navy);border-radius:12px;padding:32px;text-align:center;margin-top:24px;}
+    .final h3{font-size:21px;color:#fff;margin-bottom:9px;}
+    .final p{margin:0 0 20px;font-size:13.5px;color:var(--on-navy);line-height:1.65;max-width:56ch;margin-left:auto;margin-right:auto;}
+    .final .after{margin-top:14px;font-size:13px;color:var(--on-navy-mute);}
+    .mailnote{margin-top:14px;font-size:12.5px;color:var(--faint);text-align:center;}
+
+    @media(max-width:860px){
+      .shell{padding:0 22px;}
+      .intro-grid{grid-template-columns:1fr;gap:36px;}
+      .h1{font-size:34px;}
+      .cards,.form-grid{grid-template-columns:1fr;}
+      .score-band{flex-direction:column;align-items:flex-start;gap:18px;}
+      .nav a:not(.start){display:none;}
+    }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="shell header-bar">
+    <a href="{% url 'monitor:home' %}" style="display:flex;align-items:center;gap:12px;">
+      {# The landing page's lockup. Falls back to a wordmark if the asset is missing. #}
+      <img src="{% static 'images/design/logo-lockup.png' %}" alt="Social Light" class="lockup"
+           onerror="this.style.display='none';document.getElementById('wordmark').style.display='block';">
+      <span class="wordmark" id="wordmark" style="display:none;">Social Light<small>Globally African</small></span>
+    </a>
+    <nav class="nav">
+      <a href="{% url 'monitor:home' %}">Home</a>
+      <a href="{% url 'monitor:pricing' %}">Pricing</a>
+      <a href="{% url 'monitor:login' %}">Sign in</a>
+      <a href="{% url 'monitor:signup' %}" class="start">Start free trial</a>
+    </nav>
+  </div>
+</header>
+
+{% csrf_token %}
+
+<!-- ═══════════ 1. INTRO ═══════════ -->
+<div class="stage on" id="stage-intro">
+  <section class="section">
+    <div class="shell intro-grid">
+      <div>
+        <div class="rule"></div>
+        <div class="eyebrow">Free assessment</div>
+        <h1 class="h1">Find out how much of your own coverage you are actually seeing.</h1>
+        <p class="lede">Ten questions, about three minutes. You will get a score, a plain read of where the gaps are, and what closing them would involve. No sign-up to start.</p>
+        <ul class="intro-points">
+          <li><span class="dot"></span><div><strong>Platform coverage</strong><span>Which channels you watch, and which you do not</span></div></li>
+          <li><span class="dot"></span><div><strong>Reputation readiness</strong><span>How quickly you find out when something moves</span></div></li>
+          <li><span class="dot"></span><div><strong>Intelligence maturity</strong><span>Whether coverage informs decisions or just arrives</span></div></li>
+        </ul>
+        <button class="btn btn-gold btn-lg" id="btn-start">Start the assessment</button>
+        <p class="meta-note">We ask for your details at the end, once you have seen your score.</p>
+      </div>
+
+      <aside>
+        <div class="aside-card">
+          <div class="aside-head">
+            {# Hides itself if the asset is missing, so a missing file never breaks the card. #}
+            <img class="aside-portrait" src="{% static 'images/design/founder.jpg' %}"
+                 alt="Tony Mautsu" width="56" height="56" loading="lazy"
+                 onerror="this.style.display='none';">
+            <div>
+              <h3>Tony Mautsu</h3>
+              <div class="aside-role">Founder and Managing Director, Social Light</div>
+            </div>
+          </div>
+          <span class="badge">Forbes 30 Under 30 Africa</span>
+          <p class="aside-quote">"Most brands are invisible online — not because they are not posting, but because they are not monitoring. You find out first, while it is still a decision."</p>
+        </div>
+        <div class="stat-row">
+          <div class="stat"><div class="n">1 300+</div><div class="l">Print titles monitored</div></div>
+          <div class="stat"><div class="n">158+</div><div class="l">Broadcast stations captured</div></div>
+          <div class="stat"><div class="n">SADC</div><div class="l">Markets covered in-region</div></div>
+        </div>
+        {% comment %}
+          TODO(content): a client testimonial belongs here. The one supplied in
+          the brief was attributed only to "Marketing Director, FMCG Brand". An
+          unattributed quote is not shippable — it needs a named client, or a
+          named role at a named organisation, who has agreed to be quoted.
+        {% endcomment %}
+      </aside>
+    </div>
+  </section>
+</div>
+
+<!-- ═══════════ 2. QUESTIONS ═══════════ -->
+<div class="stage" id="stage-quiz">
+  <section class="section">
+    <div class="shell quiz-wrap">
+      <div class="progress-meta">
+        <span class="step" id="q-step"></span>
+        <span class="pct" id="q-pct"></span>
+      </div>
+      <div class="track"><div class="fill" id="q-fill"></div></div>
+
+      <div class="qcard">
+        <div class="qsection" id="q-section"></div>
+        <div class="qtext" id="q-text"></div>
+        <div class="qhint" id="q-hint"></div>
+        <div id="q-body"></div>
+        <div class="qnav">
+          <button class="btn btn-ghost" id="btn-back">Back</button>
+          <button class="btn btn-navy" id="btn-next">Next</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ═══════════ 3. SCORE + GATE ═══════════ -->
+<div class="stage" id="stage-gate">
+  <section class="section">
+    <div class="shell quiz-wrap">
+      <div class="rule"></div>
+      <div class="eyebrow">Your result</div>
+      <h2 class="h2" id="g-headline"></h2>
+      <div class="score-band">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="43" fill="none" stroke="#E3E8ED" stroke-width="8"></circle>
+            <circle cx="50" cy="50" r="43" fill="none" stroke="#062E72" stroke-width="8"
+                    stroke-linecap="round" stroke-dasharray="270" stroke-dashoffset="270" id="g-arc"></circle>
+          </svg>
+          <div class="num" id="g-num">0</div>
+        </div>
+        <div>
+          <span class="tier" id="g-tier"></span>
+          <p class="lede" id="g-summary" style="max-width:44ch;"></p>
+        </div>
+      </div>
+
+      <div class="gate">
+        <h3 class="h2" style="font-size:20px;">Where should we send the full read?</h3>
+        <p class="lede" style="font-size:14px;margin-bottom:22px;">Your score is above. The rest — what each answer means, which channels matter most for you, and what we would suggest doing first — goes to your inbox.</p>
+        <div class="form-grid">
+          <div class="fgroup"><label class="flabel" for="f-first">First name *</label><input class="field" id="f-first" autocomplete="given-name"></div>
+          <div class="fgroup"><label class="flabel" for="f-last">Last name *</label><input class="field" id="f-last" autocomplete="family-name"></div>
+        </div>
+        <div class="form-grid single">
+          <div class="fgroup"><label class="flabel" for="f-email">Work email *</label><input class="field" id="f-email" type="email" autocomplete="email"></div>
+        </div>
+        <div class="form-grid">
+          <div class="fgroup"><label class="flabel" for="f-company">Company or organisation *</label><input class="field" id="f-company" autocomplete="organization"></div>
+          <div class="fgroup"><label class="flabel" for="f-industry">Industry *</label>
+            <select class="field" id="f-industry">
+              <option value="">Select…</option>
+              <option>Banking and financial services</option>
+              <option>Mining and resources</option>
+              <option>Government and public sector</option>
+              <option>Retail and FMCG</option>
+              <option>Telecoms and technology</option>
+              <option>Media and entertainment</option>
+              <option>NGO and development</option>
+              <option>Hospitality and tourism</option>
+              <option>Healthcare and pharmaceuticals</option>
+              <option>Agency or consultancy</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="fgroup"><label class="flabel" for="f-role">Your role</label>
+            <select class="field" id="f-role">
+              <option value="">Select…</option>
+              <option>CEO or founder</option>
+              <option>Marketing director or manager</option>
+              <option>PR and communications</option>
+              <option>Brand manager</option>
+              <option>Social media manager</option>
+              <option>Research and intelligence</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="fgroup"><label class="flabel" for="f-country">Country</label>
+            <select class="field" id="f-country">
+              <option value="">Select…</option>
+              <option>Botswana</option><option>South Africa</option><option>Zimbabwe</option>
+              <option>Zambia</option><option>Namibia</option><option>Mozambique</option>
+              <option>Tanzania</option><option>Kenya</option><option>Nigeria</option>
+              <option>Ghana</option><option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="err" id="g-err" style="display:none;"></div>
+        <button class="btn btn-navy btn-lg" id="btn-submit" style="width:100%;">Show me the full read</button>
+        <p class="privacy">Your details go to the Social Light team and nowhere else. We do not sell or share them.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ═══════════ 4. REPORT ═══════════ -->
+<div class="stage" id="stage-report">
+  <section class="section">
+    <div class="shell quiz-wrap">
+      <div class="rule"></div>
+      <div class="eyebrow" id="r-who"></div>
+      <h2 class="h2" id="r-headline"></h2>
+      <div class="score-band">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="43" fill="none" stroke="#E3E8ED" stroke-width="8"></circle>
+            <circle cx="50" cy="50" r="43" fill="none" stroke="#062E72" stroke-width="8"
+                    stroke-linecap="round" stroke-dasharray="270" stroke-dashoffset="270" id="r-arc"></circle>
+          </svg>
+          <div class="num" id="r-num">0</div>
+        </div>
+        <div>
+          <span class="tier" id="r-tier"></span>
+          <p class="lede" id="r-summary" style="max-width:44ch;"></p>
+        </div>
+      </div>
+
+      <div class="fit-card" id="r-fit">
+        <h3 id="r-fit-title"></h3>
+        <p id="r-fit-body"></p>
+      </div>
+
+      <div class="cards" id="r-cards"></div>
+
+      <div class="subhead">What this means for your organisation</div>
+      <div id="r-insights"></div>
+
+      <div class="final">
+        <h3 id="r-cta-title"></h3>
+        <p id="r-cta-body"></p>
+        <button class="btn btn-gold btn-lg" id="btn-cta"></button>
+        <div class="after" id="r-cta-after" style="display:none;"></div>
+      </div>
+      <p class="mailnote" id="r-mail"></p>
+    </div>
+  </section>
+</div>
+
+<script id="questions-data" type="application/json">{{ questions_json|safe }}</script>
+<script>
+(function () {
+  'use strict';
+  var QS = JSON.parse(document.getElementById('questions-data').textContent);
+  // Reversed with a placeholder id and swapped at call time, so the path stays
+  // owned by the URLconf rather than being spelled out here.
+  var BLANK_ID = '00000000-0000-0000-0000-000000000000';
+  var ACTION_URL = '{% url "monitor:assessment_action" "00000000-0000-0000-0000-000000000000" %}';
+  var answers = {};
+  var cur = 0;
+  var submissionId = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  function show(stage) {
+    ['intro', 'quiz', 'gate', 'report'].forEach(function (k) {
+      $('stage-' + k).classList.toggle('on', k === stage);
+    });
+    window.scrollTo(0, 0);
+  }
+
+  // ── questions ────────────────────────────────────────────────────────────
+  function render() {
+    var q = QS[cur];
+    var pct = Math.round(cur / QS.length * 100);
+    $('q-step').textContent = 'Question ' + (cur + 1) + ' of ' + QS.length;
+    $('q-pct').textContent = pct + '%';
+    $('q-fill').style.width = pct + '%';
+    $('q-section').textContent = q.section;
+    $('q-text').textContent = q.text;
+    $('q-hint').textContent = q.hint;
+    $('btn-back').style.visibility = cur === 0 ? 'hidden' : 'visible';
+    $('btn-next').textContent = cur === QS.length - 1 ? 'See my score' : 'Next';
+
+    var body = $('q-body');
+    body.innerHTML = '';
+
+    if (q.type === 'yn') {
+      var row = document.createElement('div');
+      row.className = 'yn';
+      [['yes', q.yes_label], ['no', q.no_label]].forEach(function (pair) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = pair[0] + (answers[q.key] === pair[0] ? ' on' : '');
+        b.textContent = pair[1];
+        b.onclick = function () { answers[q.key] = pair[0]; render(); };
+        row.appendChild(b);
+      });
+      body.appendChild(row);
+      return;
+    }
+
+    if (q.type === 'text') {
+      var ta = document.createElement('textarea');
+      ta.className = 'ta';
+      ta.placeholder = 'Optional.';
+      ta.value = answers[q.key] || '';
+      ta.oninput = function () { answers[q.key] = ta.value; };
+      body.appendChild(ta);
+      return;
+    }
+
+    var multi = q.type === 'multi';
+    if (multi && !Array.isArray(answers[q.key])) { answers[q.key] = []; }
+    var list = document.createElement('div');
+    list.className = 'opts';
+    q.options.forEach(function (text, i) {
+      var picked = multi ? answers[q.key].indexOf(i) !== -1 : answers[q.key] === i;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'opt' + (multi ? ' multi' : '') + (picked ? ' on' : '');
+      var mark = document.createElement('span');
+      mark.className = 'mark';
+      var label = document.createElement('span');
+      label.textContent = text;
+      b.appendChild(mark);
+      b.appendChild(label);
+      b.onclick = function () {
+        if (multi) {
+          var at = answers[q.key].indexOf(i);
+          if (at === -1) { answers[q.key].push(i); } else { answers[q.key].splice(at, 1); }
+        } else {
+          answers[q.key] = i;
+        }
+        render();
+      };
+      list.appendChild(b);
+    });
+    body.appendChild(list);
+  }
+
+  $('btn-start').onclick = function () { show('quiz'); render(); };
+  $('btn-back').onclick = function () { if (cur > 0) { cur--; render(); } };
+  $('btn-next').onclick = function () {
+    var q = QS[cur];
+    var unanswered = (q.type === 'yn' && !answers[q.key])
+                  || (q.type === 'mc' && answers[q.key] === undefined);
+    if (unanswered) { alert('Please choose an option to continue.'); return; }
+    if (cur === QS.length - 1) { preview(); return; }
+    cur++;
+    render();
+  };
+
+  // ── score preview ────────────────────────────────────────────────────────
+  // Shown before we ask for anything. Scored again on the server when the
+  // submission is posted; this is for the visitor's benefit, not a record.
+  function localScore() {
+    var raw = 0, max = 0;
+    QS.forEach(function (q) {
+      if (q.type === 'yn') {
+        max += Math.max(q.yes_score, q.no_score);
+        if (answers[q.key] === 'yes') { raw += q.yes_score; }
+        if (answers[q.key] === 'no') { raw += q.no_score; }
+      } else if (q.scores) {
+        max += Math.max.apply(null, q.scores);
+        if (answers[q.key] !== undefined) { raw += q.scores[answers[q.key]]; }
+      }
+    });
+    return max ? Math.round(raw / max * 100) : 0;
+  }
+
+  var TIERS = {
+    strong:    { label: 'Strong', head: 'Strong monitoring foundation.',
+                 sum: 'You are tracking coverage and can evidence it. The useful conversation is about breadth — the print and broadcast sources most tools miss — rather than starting from scratch.' },
+    growing:   { label: 'Growing', head: 'Gaps are holding you back.',
+                 sum: 'You have the right instincts. Structured monitoring would close the gaps you have just described.' },
+    attention: { label: 'Needs attention', head: 'Your brand has significant blind spots.',
+                 sum: 'Most of what is said about your organisation is currently reaching you late, or not at all.' }
+  };
+
+  function paintRing(arcId, numId, pct, tier) {
+    var arc = $(arcId);
+    arc.setAttribute('stroke', tier === 'strong' ? '#1E9160' : tier === 'growing' ? '#F5B01B' : '#EA8C13');
+    $(numId).textContent = pct;
+    setTimeout(function () {
+      arc.style.transition = 'stroke-dashoffset 1s ease';
+      arc.style.strokeDashoffset = Math.round(270 * (1 - pct / 100));
+    }, 80);
+  }
+
+  function preview() {
+    var pct = localScore();
+    var tier = pct >= 70 ? 'strong' : pct >= 40 ? 'growing' : 'attention';
+    $('g-headline').textContent = TIERS[tier].head;
+    $('g-summary').textContent = TIERS[tier].sum;
+    $('g-tier').className = 'tier ' + tier;
+    $('g-tier').textContent = TIERS[tier].label;
+    show('gate');
+    paintRing('g-arc', 'g-num', pct, tier);
+  }
+
+  // ── submission ───────────────────────────────────────────────────────────
+  function csrf() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  function post(url, payload) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify(payload)
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) { throw new Error(data.error || 'Something went wrong.'); }
+        return data;
+      });
+    });
+  }
+
+  $('btn-submit').onclick = function () {
+    var contact = {
+      first_name: $('f-first').value.trim(),
+      last_name:  $('f-last').value.trim(),
+      email:      $('f-email').value.trim(),
+      company:    $('f-company').value.trim(),
+      industry:   $('f-industry').value,
+      role:       $('f-role').value,
+      country:    $('f-country').value
+    };
+    var err = $('g-err');
+    if (!contact.first_name || !contact.last_name || !contact.email || !contact.company || !contact.industry) {
+      err.style.display = 'block';
+      err.textContent = 'Please fill in all required fields.';
+      return;
+    }
+    err.style.display = 'none';
+    var btn = $('btn-submit');
+    btn.disabled = true;
+    btn.textContent = 'Working…';
+
+    post('{% url "monitor:assessment_submit" %}', { contact: contact, answers: answers })
+      .then(function (data) { submissionId = data.id; paintReport(data, contact); })
+      .catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = 'Show me the full read';
+        err.style.display = 'block';
+        err.textContent = e.message;
+      });
+  };
+
+  function card(label, value, sub) {
+    var d = document.createElement('div');
+    d.className = 'card';
+    var l = document.createElement('div'); l.className = 'l'; l.textContent = label;
+    var v = document.createElement('div'); v.className = 'v'; v.textContent = value || 'Not given';
+    d.appendChild(l); d.appendChild(v);
+    if (sub) { var s = document.createElement('div'); s.className = 's'; s.textContent = sub; d.appendChild(s); }
+    return d;
+  }
+
+  function paintReport(data, contact) {
+    var r = data.result;
+    $('r-who').textContent = contact.first_name + ' · ' + contact.company;
+    $('r-headline').textContent = data.headline;
+    $('r-summary').textContent = data.summary;
+    $('r-tier').className = 'tier ' + r.tier;
+    $('r-tier').textContent = r.tier_label;
+    $('r-fit').className = 'fit-card ' + r.fit;
+    $('r-fit-title').textContent = r.fit_label + ' for Social Light';
+    $('r-fit-body').textContent = data.fit_message;
+
+    var cards = $('r-cards');
+    cards.innerHTML = '';
+    cards.appendChild(card('Investment range', r.budget));
+    cards.appendChild(card('Urgency', r.urgency));
+    cards.appendChild(card('Decision timeline', r.timeline));
+    cards.appendChild(card('Team size', r.team_size));
+    if (r.platforms.length) {
+      var wide = card('Channels you need covered',
+                      r.platforms.length + (r.platforms.length === 1 ? ' channel' : ' channels'),
+                      r.platforms.join(' · '));
+      wide.className = 'card wide';
+      cards.appendChild(wide);
+    }
+
+    var host = $('r-insights');
+    host.innerHTML = '';
+    data.insights.forEach(function (ins) {
+      var d = document.createElement('div');
+      d.className = 'insight';
+      var t = document.createElement('strong'); t.textContent = ins.title;
+      var b = document.createElement('span'); b.textContent = ins.body;
+      d.appendChild(t); d.appendChild(b);
+      host.appendChild(d);
+    });
+
+    $('r-cta-title').textContent = data.cta.title;
+    $('r-cta-body').textContent = data.cta.body;
+    var cta = $('btn-cta');
+    cta.textContent = data.cta.button;
+    cta.style.display = '';
+    $('r-cta-after').style.display = 'none';
+    cta.onclick = function () {
+      cta.disabled = true;
+      post(ACTION_URL.replace(BLANK_ID, submissionId), { action: data.cta.action })
+        .then(function () {
+          cta.style.display = 'none';
+          $('r-cta-after').style.display = 'block';
+          $('r-cta-after').textContent = data.cta.confirmation;
+        })
+        .catch(function () {
+          cta.disabled = false;
+          alert('We could not record that just now. Please try again, or email admin@sociallightbw.com.');
+        });
+    };
+
+    // Never claim an email went out when it did not.
+    $('r-mail').textContent = data.report_sent
+      ? 'A copy of this is on its way to ' + contact.email + '. Check your spam folder if it has not arrived shortly.'
+      : 'We could not email your copy just now, so read it here. Your results are saved and the team has your details.';
+
+    show('report');
+    paintRing('r-arc', 'r-num', r.score, r.tier);
+  }
+})();
+</script>
+</body>
+</html>

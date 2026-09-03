@@ -1,0 +1,56 @@
+{% extends 'monitor/email/base_email.html' %}
+
+{% block title %}Your media intelligence assessment{% endblock %}
+{% block subtitle %}Your Assessment Results{% endblock %}
+
+{% block content %}
+<p>Hi {{ submission.first_name }},</p>
+
+<p>Here is the full read on how {{ submission.company }} is tracking its own coverage,
+based on the ten questions you answered.</p>
+
+<div style="text-align:center;background:#062E72;border-radius:6px;padding:26px 20px;margin:24px 0;">
+    <div style="font-size:44px;font-weight:bold;color:#F5B01B;line-height:1;">{{ result.score }}%</div>
+    <div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#9BB3CC;margin-top:8px;">{{ result.tier_label }}</div>
+</div>
+
+<p><strong>{{ headline }}</strong><br>{{ summary }}</p>
+
+<div class="notice" style="background:#f1f5f9;border-color:#dbe3ec;color:#333;">
+    <strong>{{ result.fit_label }} for Social Light</strong><br>
+    {{ fit_message }}
+</div>
+
+<p><strong>What you told us</strong></p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="border-collapse:collapse;font-size:14px;margin-bottom:20px;">
+    <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;color:#666;">Investment range</td>
+        <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;"><strong>{{ result.budget }}</strong></td></tr>
+    <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;color:#666;">Urgency</td>
+        <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;"><strong>{{ result.urgency }}</strong></td></tr>
+    <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;color:#666;">Decision timeline</td>
+        <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;"><strong>{{ result.timeline }}</strong></td></tr>
+    {% if result.team_size %}
+    <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;color:#666;">Team size</td>
+        <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;"><strong>{{ result.team_size }}</strong></td></tr>
+    {% endif %}
+    {% if result.platforms %}
+    <tr><td style="padding:8px 0;color:#666;">Channels you need covered</td>
+        <td style="padding:8px 0;text-align:right;"><strong>{{ result.platforms|join:" · " }}</strong></td></tr>
+    {% endif %}
+</table>
+
+{% if insights %}
+<p><strong>What this means</strong></p>
+{% for insight in insights %}
+<p style="margin:0 0 14px;"><strong>{{ insight.title }}</strong><br>{{ insight.body }}</p>
+{% endfor %}
+{% endif %}
+
+<div class="btn-wrap">
+    <a href="{{ site_url }}{% url 'monitor:signup' %}" class="button button--blue">See what we are already picking up in your market</a>
+</div>
+
+<p style="font-size:13px;color:#666;">Someone from the team will follow up on this. If you would
+rather get on with it, reply to this email and tell us what you need watched.</p>
+{% endblock %}

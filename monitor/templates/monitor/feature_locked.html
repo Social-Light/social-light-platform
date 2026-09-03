@@ -1,0 +1,50 @@
+{% extends "monitor/base.html" %}
+{% comment %}
+Shown when a browser navigation reaches a capability the account's plan does not
+include. API and XHR callers get the same message as JSON instead (see
+monitor.entitlements.locked_response), so the two can never say different things.
+{% endcomment %}
+{% block title %}Upgrade required{% endblock %}
+
+{% block content %}
+<style>
+  .fl-wrap{max-width:620px;margin:64px auto;padding:0 20px;text-align:center;}
+  .fl-badge{width:64px;height:64px;border-radius:16px;background:#fef3c7;color:#b45309;
+            display:flex;align-items:center;justify-content:center;margin:0 auto 24px;}
+  .fl-title{font-size:26px;font-weight:800;letter-spacing:-.02em;margin:0 0 12px;color:#0f172a;}
+  .fl-msg{font-size:15px;line-height:1.7;color:#475569;margin:0 0 8px;}
+  .fl-what{font-size:13.5px;line-height:1.7;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;
+           border-radius:10px;padding:16px 18px;margin:24px 0 28px;text-align:left;}
+  .fl-what strong{color:#0f172a;}
+  .fl-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+  .fl-btn{padding:12px 22px;border-radius:8px;font-size:14.5px;font-weight:700;text-decoration:none;
+          display:inline-block;transition:transform .15s,box-shadow .15s;}
+  .fl-btn--primary{background:#12305f;color:#fff;box-shadow:0 4px 16px rgba(18,48,95,.26);}
+  .fl-btn--primary:hover{background:#0d2547;transform:translateY(-1px);color:#fff;}
+  .fl-btn--ghost{background:#fff;color:#334155;border:1.5px solid #e2e8f0;}
+  .fl-btn--ghost:hover{border-color:#cbd5e1;color:#0f172a;}
+</style>
+
+<div class="fl-wrap">
+  <div class="fl-badge">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+  </div>
+
+  <h1 class="fl-title">{% if feature %}{{ feature.label }}{% else %}This feature{% endif %} is not on your plan</h1>
+  <p class="fl-msg">{{ message }}</p>
+
+  {% if feature %}
+  <div class="fl-what">
+    <strong>What this unlocks —</strong> {{ feature.description }}
+    {% if org and org.package %}<br><br>You are currently on the <strong>{{ org.package.name }}</strong> package.{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="fl-actions">
+    <a href="{{ upgrade_url }}" class="fl-btn fl-btn--primary">See plans and upgrade</a>
+    {% if org %}<a href="{% url 'monitor:dashboard' org.id %}" class="fl-btn fl-btn--ghost">Back to dashboard</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

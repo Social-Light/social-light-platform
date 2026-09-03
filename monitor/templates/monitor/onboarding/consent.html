@@ -1,0 +1,70 @@
+{% extends "monitor/onboarding/base.html" %}
+{% comment %}
+One consent page, used for all three documents. The document itself — title,
+version, explanation, body and the exact wording of the tick box — comes from the
+LegalDocument row, so replacing the text with legally approved wording is an admin
+change and not a template change.
+{% endcomment %}
+{% block title %}{{ document.title }}{% endblock %}
+{% block heading %}{{ document.title }}{% endblock %}
+{% block blurb %}{{ document.summary|default:step.blurb }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .cn-meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;}
+  .cn-chip{font-size:11.5px;font-weight:600;letter-spacing:.04em;padding:5px 10px;border-radius:999px;
+           background:#f1f5f9;color:#475569;}
+  .cn-chip--draft{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}
+  .cn-doc{max-height:380px;overflow-y:auto;border:1.5px solid #e2e8f0;border-radius:10px;
+          padding:22px 24px;background:#fff;margin-bottom:22px;}
+  .cn-doc p{font-size:13.5px;line-height:1.75;color:#334155;margin:0 0 14px;white-space:pre-line;}
+  .cn-doc p:last-child{margin-bottom:0;}
+  .cn-doc p.cn-h{font-weight:700;color:#0f172a;font-size:14px;margin-top:20px;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cn-meta">
+  <span class="cn-chip">Version {{ document.version }}</span>
+  <span class="cn-chip">Drafted for {{ document.jurisdiction }}</span>
+  {% if document.is_draft %}
+  <span class="cn-chip cn-chip--draft">Draft — pending legal review</span>
+  {% endif %}
+</div>
+
+{% if error %}
+<div class="ob-alert ob-alert--error">
+  <i class="bi bi-exclamation-circle-fill"></i>
+  <span>{{ error }}</span>
+</div>
+{% endif %}
+
+{% if already_accepted %}
+<div class="ob-alert ob-alert--ok">
+  <i class="bi bi-check-circle-fill"></i>
+  <span>You have already accepted version {{ document.version }} of this document. Accepting again
+    records a new entry; your earlier acceptance is kept.</span>
+</div>
+{% endif %}
+
+<div class="cn-doc" tabindex="0">
+  {% for para in document.paragraphs %}<p>{{ para }}</p>{% endfor %}
+</div>
+
+<form method="post" novalidate>
+  {% csrf_token %}
+  <label class="ob-consent">
+    <input type="checkbox" name="accept" {% if already_accepted %}checked{% endif %}/>
+    <span>{{ document.consent_label }}</span>
+  </label>
+  <span class="ob-hint" style="margin-top:10px;">
+    We record which version you accepted, when, and the IP address you accepted it from.
+    Publishing a later version does not erase this record.
+  </span>
+
+  <div class="ob-actions">
+    <button type="submit" class="ob-btn ob-btn--primary">Accept and continue</button>
+    {% if back_url %}<a href="{{ back_url }}" class="ob-back">Back</a>{% endif %}
+  </div>
+</form>
+{% endblock %}

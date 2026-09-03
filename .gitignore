@@ -97,6 +97,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 socialmonitor/settings_local.py
 .venv
 env/

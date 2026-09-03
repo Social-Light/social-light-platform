@@ -1,0 +1,66 @@
+{% extends "monitor/onboarding/base.html" %}
+{% block title %}About you{% endblock %}
+
+{% block content %}
+{% if errors %}
+<div class="ob-alert ob-alert--error">
+  <i class="bi bi-exclamation-circle-fill"></i>
+  <span>Please fix the highlighted fields below.</span>
+</div>
+{% endif %}
+
+<form method="post" action="{% url 'monitor:onboarding_profile' %}" novalidate>
+  {% csrf_token %}
+
+  <div class="ob-row">
+    <div class="ob-group">
+      <label class="ob-label" for="id_first_name">First name</label>
+      <input type="text" id="id_first_name" name="first_name" autocomplete="given-name"
+             class="ob-input {% if errors.first_name %}is-invalid{% endif %}"
+             value="{{ values.first_name|default:'' }}" autofocus/>
+      {% if errors.first_name %}<span class="ob-error">{{ errors.first_name }}</span>{% endif %}
+    </div>
+    <div class="ob-group">
+      <label class="ob-label" for="id_last_name">Last name</label>
+      <input type="text" id="id_last_name" name="last_name" autocomplete="family-name"
+             class="ob-input {% if errors.last_name %}is-invalid{% endif %}"
+             value="{{ values.last_name|default:'' }}"/>
+      {% if errors.last_name %}<span class="ob-error">{{ errors.last_name }}</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="ob-group">
+    <label class="ob-label" for="id_job_title">Job title or role</label>
+    <input type="text" id="id_job_title" name="job_title" autocomplete="organization-title"
+           class="ob-input {% if errors.job_title %}is-invalid{% endif %}"
+           placeholder="Communications Manager" value="{{ values.job_title|default:'' }}"/>
+    <span class="ob-hint">Reports are addressed to you by name and role, and it tells us which
+      parts of the product to put in front of you first.</span>
+    {% if errors.job_title %}<span class="ob-error">{{ errors.job_title }}</span>{% endif %}
+  </div>
+
+  <div class="ob-row">
+    <div class="ob-group">
+      <label class="ob-label" for="id_phone">Phone number</label>
+      <input type="tel" id="id_phone" name="phone" autocomplete="tel"
+             class="ob-input" placeholder="+267 71 234 567" value="{{ values.phone|default:'' }}"/>
+      <span class="ob-hint">Optional. Used only if we need to reach you about your account.</span>
+    </div>
+    <div class="ob-group">
+      <label class="ob-label" for="id_country">Country</label>
+      <select id="id_country" name="country" class="ob-select {% if errors.country %}is-invalid{% endif %}">
+        {% for c in countries %}
+        <option value="{{ c }}" {% if values.country == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+      <span class="ob-hint">Sets the markets we monitor by default.</span>
+      {% if errors.country %}<span class="ob-error">{{ errors.country }}</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="ob-actions">
+    <button type="submit" class="ob-btn ob-btn--primary">Continue</button>
+    {% if back_url %}<a href="{{ back_url }}" class="ob-back">Back</a>{% endif %}
+  </div>
+</form>
+{% endblock %}
