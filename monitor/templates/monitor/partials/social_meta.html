@@ -1,0 +1,31 @@
+{% load static %}{% comment %}
+Open Graph and Twitter card tags.
+
+Without these, a link to this site pasted into Facebook, LinkedIn, WhatsApp or
+Slack renders as a bare grey rectangle with a URL in it — and a Meta ad pointing
+at an untagged page has nothing to pull a preview from either. That is a real
+cost per click on paid traffic, not a cosmetic one.
+
+Include inside <head>, after the page's own <title>, passing the page's title,
+description and — where the page has a better one than the default — an image:
+
+  {% include "monitor/partials/social_meta.html" with og_title="…" og_description="…" %}
+
+og:image must be an absolute URL; the crawlers do not resolve relative paths.
+{% endcomment %}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Social Light">
+<meta property="og:locale" content="en_GB">
+<meta property="og:title" content="{{ og_title }}">
+<meta property="og:description" content="{{ og_description }}">
+<meta property="og:url" content="{{ site_url }}{{ request.get_full_path }}">
+<meta property="og:image" content="{{ site_url }}{% if og_image %}{% static og_image %}{% else %}{% static og_default_image %}{% endif %}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{{ og_title }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@SocialLightBW">
+<meta name="twitter:title" content="{{ og_title }}">
+<meta name="twitter:description" content="{{ og_description }}">
+<meta name="twitter:image" content="{{ site_url }}{% if og_image %}{% static og_image %}{% else %}{% static og_default_image %}{% endif %}">
+<link rel="canonical" href="{{ site_url }}{{ request.path }}">

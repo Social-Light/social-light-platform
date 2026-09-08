@@ -46,3 +46,26 @@ def onboarding(request):
         'onboarding_next_url': flow.next_url(user) if incomplete else None,
         'outstanding_documents': outstanding,
     }
+
+
+def marketing(request):
+    """Everything the tracking and cookie-banner partials need, in one place.
+
+    Kept in a context processor rather than passed from each view because the
+    partials are included by public templates that are rendered from half a
+    dozen views, and a view that forgot to pass the pixel id would silently stop
+    measuring rather than fail.
+    """
+    from . import meta_pixel
+
+    return {
+        'meta_pixel_id': getattr(settings, 'META_PIXEL_ID', ''),
+        'ga4_measurement_id': getattr(settings, 'GA4_MEASUREMENT_ID', ''),
+        'tracking_configured': bool(getattr(settings, 'META_PIXEL_ID', '')
+                                    or getattr(settings, 'GA4_MEASUREMENT_ID', '')),
+        'cookie_consent': meta_pixel.consent_state(request),
+        'cookie_consent_max_age': meta_pixel.CONSENT_MAX_AGE,
+        'site_url': getattr(settings, 'SITE_URL', ''),
+        'og_default_image': getattr(settings, 'OG_DEFAULT_IMAGE',
+                                    'images/design/hero-image.jpg'),
+    }

@@ -667,17 +667,21 @@ class AssessmentSubmissionAdmin(admin.ModelAdmin):
     only the two fields the team actually works — status and requested action —
     stay editable.
     """
-    list_display = ('created_at', 'full_name', 'company', 'score', 'fit', 'urgency',
-                    'budget', 'timeline', 'requested_action', 'status', 'delivery')
-    list_filter = ('fit', 'tier', 'status', 'requested_action', 'industry', 'country',
-                   'created_at')
+    list_display = ('created_at', 'full_name', 'company', 'source', 'score', 'fit',
+                    'urgency', 'budget', 'timeline', 'requested_action', 'status',
+                    'delivery')
+    list_filter = ('channel', 'utm_campaign', 'fit', 'tier', 'status', 'requested_action',
+                   'industry', 'country', 'created_at')
     list_editable = ('status',)
-    search_fields = ('first_name', 'last_name', 'email', 'company', 'note')
+    search_fields = ('first_name', 'last_name', 'email', 'company', 'note',
+                     'utm_campaign', 'utm_source', 'referrer')
     date_hierarchy = 'created_at'
     readonly_fields = ('id', 'created_at', 'first_name', 'last_name', 'email', 'company',
                        'industry', 'role', 'country', 'score', 'tier', 'fit', 'urgency',
                        'budget', 'timeline', 'platforms', 'note', 'report_sent_at',
-                       'sales_notified_at', 'requested_action_at', 'answer_sheet')
+                       'sales_notified_at', 'requested_action_at', 'answer_sheet',
+                       'channel', 'utm_source', 'utm_medium', 'utm_campaign',
+                       'utm_content', 'utm_term', 'click_id', 'referrer', 'landing_path')
     fieldsets = (
         ('Lead', {
             'fields': ('id', 'created_at', 'first_name', 'last_name', 'email', 'company',
@@ -688,6 +692,15 @@ class AssessmentSubmissionAdmin(admin.ModelAdmin):
                        'note')
         }),
         ('Their answers', {'fields': ('answer_sheet',)}),
+        ('Where they came from', {
+            'fields': ('channel', 'utm_source', 'utm_medium', 'utm_campaign',
+                       'utm_content', 'utm_term', 'click_id', 'referrer', 'landing_path'),
+            'description': ('Read off the first page of their visit and carried through '
+                            'to submission. A <b>channel</b> of "direct" means they arrived '
+                            'with no campaign tag and no referring site — typed the '
+                            'address, followed a bookmark, or came from a link an app '
+                            'stripped the referrer from.'),
+        }),
         ('Follow-up', {
             'fields': ('status', 'requested_action', 'requested_action_at',
                        'report_sent_at', 'sales_notified_at'),
@@ -698,6 +711,18 @@ class AssessmentSubmissionAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+    @admin.display(description='Source', ordering='channel')
+    def source(self, obj):
+        """Origin as one cell, so the list answers "where are leads coming from"
+        without opening a row."""
+        if obj.channel == 'meta':
+            colour = '#1877F2'
+        elif obj.channel in ('', 'direct'):
+            colour = '#9B9B9B'
+        else:
+            colour = '#17754E'
+        return format_html('<span style="color:{};">{}</span>', colour, obj.source_label)
 
     @admin.display(description='Report')
     def delivery(self, obj):

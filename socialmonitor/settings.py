@@ -49,6 +49,9 @@ MIDDLEWARE = [
     # free-trial paywall. Must sit after AuthenticationMiddleware (needs
     # request.user).
     'monitor.middleware.OrganizationAccessMiddleware',
+    # Records the campaign a visitor arrived on so the lead they eventually
+    # become can be traced back to it. Must sit after SessionMiddleware.
+    'monitor.middleware.AttributionMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -84,6 +87,7 @@ TEMPLATES = [
                 'monitor.context_processors.external_links',
                 'monitor.context_processors.entitlements',
                 'monitor.context_processors.onboarding',
+                'monitor.context_processors.marketing',
             ],
         },
     },
@@ -175,6 +179,34 @@ MEDIAHOST_TIMEOUT = int(os.getenv('MEDIAHOST_TIMEOUT', '120'))  # per-request re
 
 
 SITE_URL = os.getenv('SITE_URL', 'https://sociallight.africa')
+
+# ── Marketing measurement ────────────────────────────────────────────────────
+# Campaign attribution (monitor/attribution.py) is always on and needs no
+# configuration: it is our own session, our own form, our own database.
+#
+# The Meta Pixel is opt-in and off until an id is set here. It is the half that
+# writes cookies to a visitor's device, so it also waits on the cookie banner —
+# an id alone does not make it fire.
+META_PIXEL_ID = os.getenv('META_PIXEL_ID', '')
+# The Conversions API reports the same events from the server, which is what
+# recovers the conversions ad blockers and iOS would otherwise lose. Generate
+# the token in Events Manager → Settings → Conversions API. It is a credential:
+# keep it in the environment, never in the repository.
+META_CAPI_ACCESS_TOKEN = os.getenv('META_CAPI_ACCESS_TOKEN', '')
+# Set while testing so events land in Events Manager's test tool instead of the
+# ad account's real numbers. Must be empty in production.
+META_CAPI_TEST_EVENT_CODE = os.getenv('META_CAPI_TEST_EVENT_CODE', '')
+# Server-side events carry no cookies, only what a visitor typed into our own
+# form, so by default they are not gated on the banner. Set True for the
+# stricter reading — and set it True before doing business in the EU.
+META_CAPI_REQUIRE_CONSENT = _flag('META_CAPI_REQUIRE_CONSENT', 'False')
+
+# Google Analytics 4, same arrangement: off until a measurement id is set, and
+# gated on the same banner.
+GA4_MEASUREMENT_ID = os.getenv('GA4_MEASUREMENT_ID', '')
+
+# The image shown when a page is shared or run as an ad. Meta wants 1200x630.
+OG_DEFAULT_IMAGE = os.getenv('OG_DEFAULT_IMAGE', 'images/design/hero-image.jpg')
 
 # ── Free trial & billing ─────────────────────────────────────────────────────
 # Length of the self-service free trial started from the public signup page.

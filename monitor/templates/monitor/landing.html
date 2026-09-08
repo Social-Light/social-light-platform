@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Social Light — You find out first.</title>
   <meta name="description" content="Media monitoring and market intelligence across Southern Africa — print, broadcast, online and social — delivered while you can still act on it.">
+  {% include "monitor/partials/social_meta.html" with og_title="Social Light — You find out first." og_description="Media monitoring and market intelligence across Southern Africa — print, broadcast, online and social — delivered while you can still act on it." %}
+  {% include "monitor/partials/tracking.html" %}
   <link rel="icon" type="image/x-icon" href="{% static 'favicon/favicon.ico' %}?v=2">
   <link rel="icon" type="image/svg+xml" href="{% static 'favicon/favicon.svg' %}?v=2">
   <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon/favicon-96x96.png' %}?v=2">
@@ -909,6 +911,7 @@
         <a href="{% url 'monitor:legal_document' 'privacy' %}">Privacy notice</a>
         <a href="{% url 'monitor:legal_document' 'refund' %}">Refunds &amp; cancellation</a>
         <a href="{% url 'monitor:legal_document' 'disclaimer' %}">Disclaimer</a>
+        <a href="{% url 'monitor:legal_document' 'cookies' %}">Cookie notice</a>
       </div>
     </div>
 
@@ -1054,5 +1057,6 @@
 })();
 </script>
 
+{% include "monitor/partials/cookie_banner.html" %}
 </body>
 </html>
