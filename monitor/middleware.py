@@ -173,3 +173,29 @@ class OrganizationAccessMiddleware:
                 status=402,
             )
         return redirect(billing_url)
+
+
+class AttributionMiddleware:
+    """Remember where each visit came from, for the length of the session.
+
+    Sits on every request rather than on the assessment view alone, because the
+    campaign parameters are on the *first* URL a visitor opens and that is
+    usually the landing page, not the form they eventually fill in.
+
+    Deliberately cheap and deliberately quiet. It reads the query string, writes
+    at most one small dict to the session, and skips anything that is not an
+    ordinary page load: API calls, the admin, and static files carry no campaign
+    parameters and writing a session for them would create a cookie for
+    machines.
+    """
+    SKIP_PREFIXES = ('/api/', '/admin/', '/static/', '/media/', '/payments/')
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if (request.method == 'GET'
+                and not request.path.startswith(self.SKIP_PREFIXES)):
+            from . import attribution
+            attribution.capture(request)
+        return self.get_response(request)

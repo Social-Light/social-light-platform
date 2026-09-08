@@ -281,7 +281,66 @@ bulk data fixes (management commands), or a Postgres major-version change.
 
 ---
 
-## 7. Escalation
+## 7. Marketing measurement
+
+Two independent layers. The first always runs and needs no configuration; the
+second is off until someone sets the environment variables below.
+
+### 7.1 Campaign attribution (always on)
+
+Every assessment lead records where the visit came from — the channel, the UTM
+tags, the ad click id, the referrer and the first page opened. It is captured
+from the landing URL into the session by `monitor/attribution.py` and written
+onto the row at submit time.
+
+**To read it:** Django admin → *Assessment submissions*. The **Source** column
+shows `channel · medium · campaign` per lead; the **Channel** and **Campaign**
+filters in the sidebar answer "how many leads did Meta produce" directly, and
+the date hierarchy narrows it to a month.
+
+**To tag a campaign,** point the ad at the assessment with the campaign named on
+the URL:
+
+```
+https://sociallight.africa/assessment/?utm_source=meta&utm_medium=cpc&utm_campaign=<name>&utm_content=<creative>
+```
+
+Use the same `utm_campaign` value on every creative in one campaign, and a
+different `utm_content` per creative, so the admin can separate which creative
+worked. Untagged Meta clicks are still bucketed as `meta` from `fbclid` and the
+referrer, but the campaign name will be blank — so tag them.
+
+This layer survives ad blockers and refused cookies, which is why it, and not
+the pixel, is the number to report on.
+
+### 7.2 Meta Pixel, Conversions API and GA4 (opt-in)
+
+| Variable | What it does |
+| --- | --- |
+| `META_PIXEL_ID` | Turns on the browser pixel **and** the cookie banner. Unset means neither exists. |
+| `META_CAPI_ACCESS_TOKEN` | Enables server-side conversions. Events Manager → Settings → Conversions API. A credential — environment only. |
+| `META_CAPI_TEST_EVENT_CODE` | Routes events to the Events Manager test tool. **Must be empty in production.** |
+| `META_CAPI_REQUIRE_CONSENT` | `True` also gates the server-side events on the banner. Set this before doing business in the EU. |
+| `GA4_MEASUREMENT_ID` | Turns on Google Analytics 4, behind the same banner. |
+
+Events sent: `PageView` on the public pages, `Lead` when an assessment is
+completed, `Schedule` when a lead asks for the follow-up. The browser and server
+copies of each carry one shared `event_id`, so Meta counts one conversion
+however many arrive.
+
+**To verify after setting the variables:** open the site in a private window,
+accept the banner, complete an assessment, then check Events Manager → *Test
+events* with `META_CAPI_TEST_EVENT_CODE` set. Both a browser and a server copy of
+`Lead` should appear, deduplicated into one.
+
+**Before going live:** the Cookie Notice at `/legal/cookies/` is seeded as a
+**draft** and names both Meta Pixel and GA4. Any tool named there but not used —
+or used but not named — makes the notice wrong. Correct it and approve it in the
+admin (*Legal documents*) before the pixel is switched on in production.
+
+---
+
+## 8. Escalation
 
 - **Anthropic AI report errors** — non-fatal by design; reports omit AI sections. Check
   `ANTHROPIC_API_KEY` and `report_ai.py` logs (`docker-compose logs web | grep -i anthropic`).

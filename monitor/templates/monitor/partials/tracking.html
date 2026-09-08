@@ -1,0 +1,46 @@
+{% comment %}
+The browser half of measurement: Meta Pixel and, if configured, GA4.
+
+Included in <head> on the public pages only. Three things gate it, and all three
+must pass before a single third-party script loads:
+
+  1. An id is configured. With META_PIXEL_ID unset this renders nothing at all,
+     which is how every environment behaves until someone deliberately turns it on.
+  2. The visitor accepted the cookie banner. `cookie_consent` is read from their
+     own cookie by the marketing context processor. Until it is "all", no script
+     is written to the page — not loaded-and-idle, not present.
+  3. Nothing here runs in the application area. This partial is for /,
+     /assessment/ and /pricing/ — pages a stranger sees.
+
+The pixel is *not* the source of truth for how many people did the assessment.
+That is the AssessmentSubmission row, which no ad blocker can touch. What the
+pixel buys is the retargeting audience and the optimisation signal, neither of
+which can be produced from the database.
+
+Consenting from the banner reloads the page rather than injecting the scripts,
+which keeps this block the single place tracking can ever start.
+{% endcomment %}
+{% if cookie_consent == 'all' %}
+{% if meta_pixel_id %}
+<script>
+  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+  n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+  document,'script','https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '{{ meta_pixel_id }}');
+  fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none" alt=""
+  src="https://www.facebook.com/tr?id={{ meta_pixel_id }}&ev=PageView&noscript=1"/></noscript>
+{% endif %}
+{% if ga4_measurement_id %}
+<script async src="https://www.googletagmanager.com/gtag/js?id={{ ga4_measurement_id }}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', '{{ ga4_measurement_id }}');
+</script>
+{% endif %}
+{% endif %}

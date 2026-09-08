@@ -18,6 +18,8 @@ finish, and the assessment has always been sold as needing no sign-up.
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Free media intelligence assessment — Social Light</title>
   <meta name="description" content="Ten questions on how your organisation tracks its own coverage. Get a score, and a plain read of the gaps, across print, broadcast, online and social in Southern Africa.">
+  {% include "monitor/partials/social_meta.html" with og_title="Free media intelligence assessment" og_description="Ten questions on how your organisation tracks its own coverage. Get a score, and a plain read of the gaps, across print, broadcast, online and social in Southern Africa." %}
+  {% include "monitor/partials/tracking.html" %}
   <link rel="icon" type="image/x-icon" href="{% static 'favicon/favicon.ico' %}?v=2">
   <link rel="icon" type="image/svg+xml" href="{% static 'favicon/favicon.svg' %}?v=2">
   <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}?v=2">
@@ -546,6 +548,17 @@ finish, and the assessment has always been sold as needing no sign-up.
     paintRing('g-arc', 'g-num', pct, tier);
   }
 
+  // ── conversion tracking ──────────────────────────────────────────────────
+  // Fires only if the visitor accepted the banner, because fbq is not defined
+  // otherwise. The same event has already been sent from the server with this
+  // event_id, so Meta counts one Lead whichever copies arrive.
+  function track(event, eventId, params) {
+    if (typeof fbq !== 'function') { return; }
+    try {
+      fbq('track', event, params || {}, eventId ? { eventID: eventId } : undefined);
+    } catch (e) { /* never let a tracking call break the results page */ }
+  }
+
   // ── submission ───────────────────────────────────────────────────────────
   function csrf() {
     var input = document.querySelector('input[name=csrfmiddlewaretoken]');
@@ -587,7 +600,16 @@ finish, and the assessment has always been sold as needing no sign-up.
     btn.textContent = 'Working…';
 
     post('{% url "monitor:assessment_submit" %}', { contact: contact, answers: answers })
-      .then(function (data) { submissionId = data.id; paintReport(data, contact); })
+      .then(function (data) {
+        submissionId = data.id;
+        track('Lead', data.event_id, {
+          content_name: 'Media intelligence assessment',
+          content_category: contact.industry || 'unspecified',
+          value: (data.result && data.result.score) || 0,
+          currency: 'BWP'
+        });
+        paintReport(data, contact);
+      })
       .catch(function (e) {
         btn.disabled = false;
         btn.textContent = 'Show me the full read';
@@ -651,7 +673,8 @@ finish, and the assessment has always been sold as needing no sign-up.
     cta.onclick = function () {
       cta.disabled = true;
       post(ACTION_URL.replace(BLANK_ID, submissionId), { action: data.cta.action })
-        .then(function () {
+        .then(function (res) {
+          track('Schedule', res && res.event_id, { content_name: data.cta.action });
           cta.style.display = 'none';
           $('r-cta-after').style.display = 'block';
           $('r-cta-after').textContent = data.cta.confirmation;
@@ -672,5 +695,6 @@ finish, and the assessment has always been sold as needing no sign-up.
   }
 })();
 </script>
+{% include "monitor/partials/cookie_banner.html" %}
 </body>
 </html>
