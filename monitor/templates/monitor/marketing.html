@@ -1,0 +1,149 @@
+{% extends 'monitor/base.html' %}
+{% load static humanize %}
+{% comment %}
+Social Light's own marketing numbers — not a client's coverage.
+
+Written for whoever decides whether an advert runs again, which is why the
+conversion column is the one given weight rather than the visit count. A channel
+that sends four hundred people and produces nothing is worse than one that sends
+forty and produces six, and a page that leads with visits would say the opposite.
+
+Uses the app's own components (stat-card, table-card, data-table) so it reads as
+part of the platform rather than as a report bolted on.
+{% endcomment %}
+{% block title %}Marketing{% endblock %}
+
+{% block content %}
+<div class="page-header page-header--flex">
+  <div>
+    <h1 class="page-title">Marketing</h1>
+    <p class="page-subtitle">Where visitors come from, and which of them complete the assessment</p>
+  </div>
+  <div class="header-actions">
+    <div class="dropdown-wrap">
+      <select class="btn-dropdown" onchange="window.location='?days='+this.value">
+        <option value="7" {% if days == 7 %}selected{% endif %}>Last 7 days</option>
+        <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 days</option>
+        <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 days</option>
+        <option value="365" {% if days == 365 %}selected{% endif %}>Last 12 months</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="stats-grid stats-grid--4">
+  <div class="stat-card stat-card--blue">
+    <div class="stat-card-inner">
+      <div class="stat-label">Visitors</div>
+      <div class="stat-value">{{ total_visits|intcomma }}</div>
+      <div class="stat-trend {% if visits_change > 0 %}trend-up{% elif visits_change < 0 %}trend-down{% else %}trend-flat{% endif %}">
+        {% if visits_change is not None %}
+          {{ visits_change }}% vs previous {{ days }} days
+        {% else %}
+          No earlier period to compare
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-inner">
+      <div class="stat-label">Assessments completed</div>
+      <div class="stat-value">{{ total_leads|intcomma }}</div>
+      <div class="stat-trend trend-flat">Leads in the pipeline</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-inner">
+      <div class="stat-label">Worth a call</div>
+      <div class="stat-value">{{ qualified_leads|intcomma }}</div>
+      <div class="stat-trend trend-flat">Scored eligible or high value</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-inner">
+      <div class="stat-label">Visitors who convert</div>
+      <div class="stat-value">{{ total_rate }}%</div>
+      <div class="stat-trend trend-flat">{{ start }} to {{ end }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="table-card">
+  <h3 class="table-section-title">By channel</h3>
+  {% if channels %}
+  <table class="data-table table table-hover">
+    <thead>
+      <tr>
+        <th>Channel</th>
+        <th class="text-end">Visitors</th>
+        <th class="text-end">Completed</th>
+        <th class="text-end">Conversion</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in channels %}
+      <tr>
+        <td style="font-weight:600;text-transform:capitalize;">{{ c.name }}</td>
+        <td class="text-end">{{ c.visits|intcomma }}</td>
+        <td class="text-end">{{ c.leads|intcomma }}</td>
+        <td class="text-end" style="font-weight:600;{% if c.rate >= 5 %}color:#17754E;{% elif c.rate == 0 and c.visits > 30 %}color:#9B2C2C;{% endif %}">
+          {{ c.rate }}%
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p style="margin:14px 18px 4px;font-size:12px;color:#6b7280;line-height:1.6;">
+    Conversion is the column to read. A channel sending a lot of visitors who never
+    complete the assessment is costing money without producing leads.
+    <strong>Direct</strong> is everyone who arrived with no campaign tag, no referring
+    site and no app to identify them — WhatsApp, typed addresses, bookmarks and
+    desktop email. Facebook and Instagram both count under <strong>meta</strong>.
+  </p>
+  {% else %}
+  <div class="empty-state">
+    <p>No visits recorded for this period.</p>
+    <p style="font-size:13px;color:#6b7280;">
+      Counting began when this feature was deployed, so earlier traffic is not here.
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+<div class="table-card" style="margin-top:22px;">
+  <h3 class="table-section-title">By campaign</h3>
+  {% if campaigns %}
+  <table class="data-table table table-hover">
+    <thead>
+      <tr>
+        <th>Campaign</th>
+        <th>Channel</th>
+        <th class="text-end">Visitors</th>
+        <th class="text-end">Completed</th>
+        <th class="text-end">Conversion</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in campaigns %}
+      <tr>
+        <td style="font-weight:600;">{{ c.utm_campaign }}</td>
+        <td style="text-transform:capitalize;color:#6b7280;">{{ c.channel|default:"direct" }}</td>
+        <td class="text-end">{{ c.v|intcomma }}</td>
+        <td class="text-end">{{ c.leads|intcomma }}</td>
+        <td class="text-end" style="font-weight:600;{% if c.rate >= 5 %}color:#17754E;{% endif %}">{{ c.rate }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <p>No tagged campaigns in this period.</p>
+    <p style="font-size:13px;color:#6b7280;">
+      A campaign appears here once its links carry a <code>utm_campaign</code> tag.
+      Untagged traffic is still counted by channel above — tagging is what separates
+      one advert from another.
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

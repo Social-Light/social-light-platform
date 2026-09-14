@@ -205,6 +205,14 @@ META_CAPI_REQUIRE_CONSENT = _flag('META_CAPI_REQUIRE_CONSENT', 'False')
 # gated on the same banner.
 GA4_MEASUREMENT_ID = os.getenv('GA4_MEASUREMENT_ID', '')
 
+# Meta requires the domain to be verified before an ad account may set event
+# priorities, which is what makes iOS conversions attribute at all. Verification
+# is a code Meta issues in Business Settings → Brand safety → Domains; paste it
+# here and it is rendered into the <head> of every public page. Unrelated to the
+# pixel and to consent: it is a proof of ownership, not a tracker, so it renders
+# whether or not anyone accepted the banner.
+META_DOMAIN_VERIFICATION = os.getenv('META_DOMAIN_VERIFICATION', '')
+
 # The image shown when a page is shared or run as an ad. Meta wants 1200x630.
 OG_DEFAULT_IMAGE = os.getenv('OG_DEFAULT_IMAGE', 'images/design/hero-image.jpg')
 

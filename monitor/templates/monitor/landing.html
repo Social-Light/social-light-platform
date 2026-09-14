@@ -971,6 +971,19 @@
     b.addEventListener('click', function () { showPage(b.getAttribute('data-page')); });
   });
 
+  /* section links (#services, #about…) target the landing page, which is hidden
+     while a subpage is open — bring it back, then scroll to the section */
+  $$('a[href^="#"]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      var target = document.getElementById(a.getAttribute('href').slice(1));
+      if (!target || !pages.landing || pages.landing.style.display !== 'none') return;
+      e.preventDefault();
+      showPage('landing');
+      history.pushState(null, '', a.getAttribute('href'));
+      target.scrollIntoView();
+    });
+  });
+
 })();
 </script>
 

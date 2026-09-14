@@ -10,7 +10,7 @@ from .entitlements import FEATURES, feature_choices
 from .models import (AgencyDeclaration, AssessmentSubmission, CommodityQuote, ConsentRecord,
                      EmailVerificationToken, Event, LegalDocument, OnboardingProgress,
                      Organization, Package, Payment, PaymentMethod, Publication, Sector,
-                     SectorStory, SubscriptionRequest, User)
+                     SectorStory, SubscriptionRequest, User, VisitCount)
 
 @admin.register(Organization)
 class OrganizationAdmin(admin.ModelAdmin):
@@ -747,3 +747,81 @@ class AssessmentSubmissionAdmin(admin.ModelAdmin):
              for q in assessment.QUESTIONS),
         )
         return format_html('<table style="border-collapse:collapse;">{}</table>', rows)
+
+
+# ── Where the traffic comes from ─────────────────────────────────────────────
+
+@admin.register(VisitCount)
+class VisitCountAdmin(admin.ModelAdmin):
+    """How many people arrived, by source and by day.
+
+    The companion to the assessment leads: that table is everyone who converted,
+    this one is everyone who came. Read together they give the number that
+    actually decides whether a campaign was worth running — visits from a source
+    against leads from the same source.
+
+    Entirely read-only. These are counts written by the middleware; a hand-edited
+    tally is worse than no tally, because it looks equally authoritative.
+    """
+    list_display = ('date', 'source', 'utm_campaign', 'landing_path', 'visits')
+    list_filter = ('channel', 'utm_source', 'utm_medium', 'date')
+    search_fields = ('utm_campaign', 'utm_source', 'landing_path')
+    date_hierarchy = 'date'
+    change_list_template = 'admin/monitor/visit_summary.html'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description='Source', ordering='channel')
+    def source(self, obj):
+        colour = '#1877F2' if obj.channel == 'meta' else (
+            '#9B9B9B' if obj.channel in ('', 'direct') else '#17754E')
+        return format_html('<span style="color:{};">{}</span>', colour, obj.source_label)
+
+    def changelist_view(self, request, extra_context=None):
+        """Add a per-channel summary above the day-by-day rows.
+
+        The raw rows answer "what happened on Tuesday", which is rarely the
+        question. The question is "how many people has Facebook sent us this
+        month, and how many of them became leads" — so that is computed here and
+        rendered above the list, against whatever filter is applied.
+        """
+        from django.db.models import Count, Max, Min, Sum
+
+        response = super().changelist_view(request, extra_context)
+        try:
+            queryset = response.context_data['cl'].queryset
+        except (AttributeError, KeyError):
+            return response         # a redirect or an invalid filter; nothing to add
+
+        totals = list(queryset.values('channel')
+                              .annotate(visits=Sum('visits'))
+                              .order_by('-visits'))
+
+        # Leads over the same span, so the two numbers are comparable rather
+        # than merely adjacent. The date range is taken from the visits actually
+        # being shown, so filtering the list filters this too.
+        span = queryset.aggregate(first=Min('date'), last=Max('date'))
+        leads = {}
+        if span['first'] and span['last']:
+            leads = {
+                row['channel']: row['leads']
+                for row in AssessmentSubmission.objects
+                .filter(created_at__date__gte=span['first'],
+                        created_at__date__lte=span['last'])
+                .values('channel').annotate(leads=Count('id'))
+            }
+
+        for row in totals:
+            row['leads'] = leads.get(row['channel'], 0)
+            row['rate'] = (round(row['leads'] / row['visits'] * 100, 1)
+                           if row['visits'] else 0)
+
+        response.context_data['visit_totals'] = totals
+        response.context_data['visit_span'] = span
+        response.context_data['visit_grand_total'] = sum(r['visits'] for r in totals)
+        response.context_data['lead_grand_total'] = sum(r['leads'] for r in totals)
+        return response
