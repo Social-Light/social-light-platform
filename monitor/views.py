@@ -233,6 +233,103 @@ def manage_organizations(request):
 
 
 @login_required
+def marketing(request):
+    """Where the site's visitors come from, and which of them become leads.
+
+    Social Light's own marketing, not a client's coverage — so it is gated to
+    platform admins and sits outside the organisation scoping every other app
+    page uses. Anyone else is sent back to their own dashboard.
+
+    Exists because the numbers were previously only readable in the Django
+    admin, which is a developer tool. The person deciding whether an advert is
+    worth repeating should not need a staff account to see whether it worked.
+    """
+    if request.user.role != 'platform_admin' and not request.user.is_superuser:
+        return redirect('monitor:organizations')
+
+    from datetime import timedelta
+
+    from django.db.models import Count, Sum
+
+    from .assessment_models import AssessmentSubmission
+    from .visit_models import VisitCount
+
+    # Default to the last 30 days. Long enough that a slow week does not read as
+    # a collapse, short enough to still reflect what is running now.
+    days = 30
+    try:
+        days = max(1, min(365, int(request.GET.get('days', days))))
+    except (TypeError, ValueError):
+        pass
+    end = timezone.localdate()
+    start = end - timedelta(days=days - 1)
+    previous_start = start - timedelta(days=days)
+
+    visits = VisitCount.objects.filter(date__gte=start, date__lte=end)
+    leads = AssessmentSubmission.objects.filter(
+        created_at__date__gte=start, created_at__date__lte=end)
+
+    lead_counts = {row['channel'] or 'direct': row['n'] for row in
+                   leads.values('channel').annotate(n=Count('id'))}
+
+    channels = []
+    for row in visits.values('channel').annotate(v=Sum('visits')).order_by('-v'):
+        name = row['channel'] or 'direct'
+        seen, became = row['v'] or 0, lead_counts.get(name, 0)
+        channels.append({
+            'name': name,
+            'visits': seen,
+            'leads': became,
+            # The number that decides whether a channel is worth more money.
+            # Visits alone flatter a channel that sends the wrong people.
+            'rate': round(became / seen * 100, 1) if seen else 0.0,
+        })
+
+    # Campaigns, so a specific advert can be judged rather than a whole channel.
+    campaigns = list(
+        visits.exclude(utm_campaign='')
+              .values('utm_campaign', 'channel')
+              .annotate(v=Sum('visits'))
+              .order_by('-v')[:10]
+    )
+    campaign_leads = {row['utm_campaign']: row['n'] for row in
+                      leads.exclude(utm_campaign='')
+                           .values('utm_campaign').annotate(n=Count('id'))}
+    for row in campaigns:
+        row['leads'] = campaign_leads.get(row['utm_campaign'], 0)
+        row['rate'] = round(row['leads'] / row['v'] * 100, 1) if row['v'] else 0.0
+
+    total_visits = sum(c['visits'] for c in channels)
+    total_leads = leads.count()
+
+    # The same span immediately before this one, so a total has something to be
+    # read against. A bare number says nothing about whether it is going up.
+    prior_visits = (VisitCount.objects
+                    .filter(date__gte=previous_start, date__lt=start)
+                    .aggregate(v=Sum('visits'))['v'] or 0)
+
+    return render(request, 'monitor/marketing.html', {
+        'page': 'marketing',
+        'org': visible_organizations(request.user).first(),
+        'days': days,
+        'start': start,
+        'end': end,
+        'channels': channels,
+        'campaigns': campaigns,
+        'total_visits': total_visits,
+        'total_leads': total_leads,
+        'total_rate': round(total_leads / total_visits * 100, 1) if total_visits else 0.0,
+        'prior_visits': prior_visits,
+        'visits_change': (round((total_visits - prior_visits) / prior_visits * 100)
+                          if prior_visits else None),
+        # The two fit tiers worth a sales call. 'early' leads are real people
+        # with a real problem, but not ones to spend an ad budget chasing.
+        'qualified_leads': leads.filter(fit__in=('high_value', 'eligible')).count(),
+        'daily': list(visits.values('date').annotate(v=Sum('visits')).order_by('date')),
+    })
+
+
+@login_required
 def settings_view(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     all_orgs = Organization.objects.all().order_by('name')

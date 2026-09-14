@@ -113,6 +113,15 @@
       </a>
 
       <div class="nav-section-label" style="margin-top:8px;">MANAGEMENT</div>
+      {# Matches the view's own rule, which admits superusers as well as the
+         platform_admin role — otherwise a superuser can open the page but
+         cannot see the link to it. #}
+      {% if user.role == 'platform_admin' or user.is_superuser %}
+      <a href="{% url 'monitor:marketing' %}" class="nav-item {% if page == 'marketing' %}active{% endif %}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><polyline points="7 14 11 10 15 13 21 7"/></svg>
+        Marketing
+      </a>
+      {% endif %}
       {% if user.role == 'platform_admin' %}
       <a href="{% url 'monitor:manage_organizations' %}" class="nav-item {% if page == 'manage_organizations' %}active{% endif %}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>

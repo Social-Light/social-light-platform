@@ -61,6 +61,7 @@ def marketing(request):
     return {
         'meta_pixel_id': getattr(settings, 'META_PIXEL_ID', ''),
         'ga4_measurement_id': getattr(settings, 'GA4_MEASUREMENT_ID', ''),
+        'meta_domain_verification': getattr(settings, 'META_DOMAIN_VERIFICATION', ''),
         'tracking_configured': bool(getattr(settings, 'META_PIXEL_ID', '')
                                     or getattr(settings, 'GA4_MEASUREMENT_ID', '')),
         'cookie_consent': meta_pixel.consent_state(request),

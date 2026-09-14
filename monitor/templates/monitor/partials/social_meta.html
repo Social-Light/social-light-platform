@@ -13,7 +13,8 @@ description and — where the page has a better one than the default — an imag
 
 og:image must be an absolute URL; the crawlers do not resolve relative paths.
 {% endcomment %}
-<meta property="og:type" content="website">
+{% if meta_domain_verification %}<meta name="facebook-domain-verification" content="{{ meta_domain_verification }}">
+{% endif %}<meta property="og:type" content="website">
 <meta property="og:site_name" content="Social Light">
 <meta property="og:locale" content="en_GB">
 <meta property="og:title" content="{{ og_title }}">

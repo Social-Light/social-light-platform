@@ -313,7 +313,80 @@ referrer, but the campaign name will be blank — so tag them.
 This layer survives ad blockers and refused cookies, which is why it, and not
 the pixel, is the number to report on.
 
-### 7.2 Meta Pixel, Conversions API and GA4 (opt-in)
+### 7.2 Who reads the numbers
+
+Two ways in, for two audiences.
+
+**The Marketing page — `/app/marketing/`.** For Social Light staff. Visible in the
+sidebar under MANAGEMENT to anyone with the `platform_admin` role (and to
+superusers), so they sign in at sociallight.africa as normal — no Django admin
+account. Shows visitors, assessments completed, leads worth a call, and the
+conversion rate, broken down by channel and by campaign, over 7/30/90/365 days.
+
+To give someone access: `admin → Users → <person> → Role → Platform Admin`.
+Note this role also grants Organisations and Users management, so it is for staff,
+not for a contractor.
+
+**A view-only Django admin account.** For someone who needs the raw rows. Create a
+group `Marketing (read-only)` holding exactly two permissions — *Can view visit
+count* and *Can view assessment submission* — then create the user with **Staff
+status** ticked, **Superuser** unticked, and that group assigned. They see those
+two tables and nothing else, and can change nothing.
+
+⚠️ Assessment submissions hold leads' names and email addresses. Either route
+exposes the whole prospect list, so decide per person rather than per role.
+
+### 7.3 Visitor counts (always on)
+
+`admin → Visit counts` and the Marketing page answer "how many people came", which the leads table
+cannot: someone who lands, reads and leaves never becomes a lead. A summary
+above the list shows **visits, leads and conversion rate per channel** for
+whatever date range is filtered.
+
+It is a daily tally per source, not a log of individuals — no IP, no user agent,
+no identifier, so there is no personal data in it, nothing to disclose and
+nothing to delete on request. It keeps counting for visitors who decline the
+cookie banner, which is why its numbers will always exceed the pixel's.
+
+Not counted: crawlers, the `/app/` area, signed-in users, and API calls. One
+person reading five pages counts once.
+
+**Reading "direct":** three signals decide a channel, in order — the campaign
+tag, the referring site, then the app whose in-app browser it is. Instagram and
+Facebook send no referrer, but their apps name themselves in the User-Agent, so
+untagged traffic from either is still recorded as `meta` with the account as its
+source and `in-app` as its medium.
+
+What stays in `direct` is genuinely unattributable: WhatsApp (its links open in
+the system browser with no referrer and no marker), typed addresses, bookmarks,
+and desktop email clients. A large `direct` is normal; a *growing* one usually
+means a new untagged placement somewhere.
+
+### 7.4 Tagging the links you have already published
+
+Links already posted cannot be re-tagged. Referrers carry Facebook, LinkedIn and
+X; in-app browser detection covers Instagram and the Facebook app. So untagged
+traffic is already bucketed by channel — what tagging adds is *which link*: the
+bio versus a specific post versus a particular ad creative.
+
+Bio links are editable at any time and are the highest-volume placement, so
+change those first:
+
+| Placement | URL |
+| --- | --- |
+| Facebook Page → About → Website | `https://sociallight.africa/assessment/?utm_source=facebook&utm_medium=bio` |
+| Instagram bio link | `…/assessment/?utm_source=instagram&utm_medium=bio` |
+| LinkedIn company page → Website | `…/assessment/?utm_source=linkedin&utm_medium=bio` |
+| X profile → Website | `…/assessment/?utm_source=x&utm_medium=bio` |
+| New organic post | `…/assessment/?utm_source=<platform>&utm_medium=organic&utm_content=<topic>` |
+| Paid ad | `…/assessment/?utm_source=facebook&utm_medium=cpc&utm_campaign=<name>&utm_content=<creative>` |
+| Email signature | `…/assessment/?utm_source=email&utm_medium=signature` |
+| WhatsApp to a prospect | `…/assessment/?utm_source=whatsapp&utm_medium=direct` |
+
+`facebook` and `instagram` both roll up to the `meta` channel, so Meta totals
+stay one number while the two accounts remain separable underneath.
+
+### 7.5 Meta Pixel, Conversions API and GA4 (opt-in)
 
 | Variable | What it does |
 | --- | --- |
@@ -322,6 +395,7 @@ the pixel, is the number to report on.
 | `META_CAPI_TEST_EVENT_CODE` | Routes events to the Events Manager test tool. **Must be empty in production.** |
 | `META_CAPI_REQUIRE_CONSENT` | `True` also gates the server-side events on the banner. Set this before doing business in the EU. |
 | `GA4_MEASUREMENT_ID` | Turns on Google Analytics 4, behind the same banner. |
+| `META_DOMAIN_VERIFICATION` | The content value from Business Settings → Brand safety → Domains. Renders into every public page's head. Not a tracker — renders regardless of consent. |
 
 Events sent: `PageView` on the public pages, `Lead` when an assessment is
 completed, `Schedule` when a lead asks for the follow-up. The browser and server
