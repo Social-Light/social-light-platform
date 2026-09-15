@@ -470,24 +470,27 @@ def _clean_quotes(quotes, names):
 
 
 def _generate_commodity_quotes_free(names):
-    """Free fallback: one SearXNG search per commodity, Groq extracts a
-    price/change from those results only (never invents one). Unlike stories,
+    """Free fallback: one SearXNG search per commodity (they're genuinely
+    different topics, so — unlike stories' single broad query — can't be
+    collapsed into one search without hurting per-commodity relevance), but
+    a SINGLE Groq call extracts price/change for every commodity that turned
+    up results, mirroring _generate_sector_stories_free's one-call-for-
+    everything shape instead of one Groq call per commodity. Unlike stories,
     this never raises — a commodity search finding nothing is not an error
-    (see generate_commodity_quotes' docstring) — UNLESS every single one
-    fails for a real reason (bad key, rate limit, etc.), in which case that's
+    (see generate_commodity_quotes' docstring) — UNLESS the one Groq call
+    itself hard-fails (bad key, rate limit, etc.), in which case that's
     surfaced rather than silently reported as 'nothing found'.
 
     Known weak spot (confirmed live 2026-08-30, several query phrasings
     tried): SearXNG's own snippets on this instance run ~120-150 chars and
     rarely carry a clean numeric price, unlike headline+snippet being enough
-    for stories above. Groq correctly returns found=False rather than
+    for stories above. Groq correctly omits a commodity rather than
     fabricate a number from a vague snippet, so this path often comes back
-    empty — that's it working as designed, not a bug. Fetching each result's
-    full article text (like media-monitor's fetcher does) would likely fix
-    this, at the cost of being a real fetch pipeline rather than a search
-    call; not built here since it wasn't asked for."""
-    quotes = []
-    errors = []
+    partial or empty — that's it working as designed, not a bug. Fetching
+    each result's full article text (like media-monitor's fetcher does)
+    would likely fix this, at the cost of being a real fetch pipeline rather
+    than a search call; not built here since it wasn't asked for."""
+    sections = []
     for name in names:
         # categories='general' returns nothing on this SearXNG instance (no
         # engines enabled for it, confirmed live 2026-08-30) — 'news' does.
@@ -495,37 +498,38 @@ def _generate_commodity_quotes_free(names):
                                    time_range='day', categories='news')
         if not results:
             continue
-
         listing = "\n\n".join(
             f"[{i}] {r['title']}\nExcerpt: {r['content'][:400]}"
             for i, r in enumerate(results)
         )
-        user_prompt = f"""Below are real, current web search results for "{name} price today":
+        sections.append(f'### {name}\n{listing}')
 
-{listing}
+    if not sections:
+        return []
 
-From ONLY the text above, extract today's real market price and day-over-day (or most recent \
-trading session) percentage change for {name}. Return a JSON object: {{"found": true or false, \
-"price_display": "...", "change_percent": number}}. "price_display" must be the price as it \
-would actually be quoted, with currency/unit (e.g. "$2,412.30/oz" or "$185/tonne"). If nothing \
-above gives a solid current figure, return {{"found": false}} — do not estimate or invent."""
+    sections_block = "\n\n".join(sections)
+    user_prompt = f"""Below are real, current web search results for several commodities, one \
+section per commodity:
 
-        try:
-            data = _groq_extract_json(user_prompt, max_tokens=800)
-        except SectorAIError as exc:
-            logger.warning('sector_ai: free fallback quote extraction failed for %s: %s', name, exc)
-            errors.append(exc)
-            continue
-        if not data.get('found'):
-            continue
-        quotes.append({
-            'name': name,
-            'price_display': data.get('price_display'),
-            'change_percent': data.get('change_percent'),
-        })
+{sections_block}
 
-    if not quotes and errors and len(errors) == len(names):
-        # every attempt hard-failed (config/auth/rate-limit) — that's a real
+From ONLY the text in each commodity's own section, extract today's real market price and \
+day-over-day (or most recent trading session) percentage change for that commodity. Return a \
+JSON object: {{"quotes": [{{"name": "...", "price_display": "...", "change_percent": number}}, \
+...]}} with one entry per commodity you found a solid current figure for — "name" must exactly \
+match the commodity's section heading above. "price_display" must be the price as it would \
+actually be quoted, with currency/unit (e.g. "$2,412.30/oz" or "$185/tonne"). Omit a commodity \
+entirely if its section gives no solid current figure — do not estimate or invent."""
+
+    try:
+        data = _groq_extract_json(user_prompt, max_tokens=800 * len(sections))
+    except SectorAIError as exc:
+        # The one Groq call hard-failed (config/auth/rate-limit) — a real
         # problem, not "the market has nothing to report today".
-        raise SectorAIError(f'Free fallback failed for every commodity: {errors[0]}')
-    return quotes
+        raise SectorAIError(f'Free fallback failed: {exc}')
+
+    return [
+        {'name': q.get('name'), 'price_display': q.get('price_display'),
+         'change_percent': q.get('change_percent')}
+        for q in (data.get('quotes') or [])
+    ]

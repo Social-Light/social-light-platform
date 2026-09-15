@@ -59,8 +59,16 @@ _VALID_SENTIMENTS = {'positive', 'negative', 'neutral'}
 # See date_ai.py's identically-named helpers/constants for why this exists —
 # a short "try again in Xms/Xs" TPM cooldown is worth one inline retry on
 # the same key rather than immediately falling through the whole chain.
+#
+# Was 3.0 until 2026-09 — too tight, on the same measurement report_ai.py's
+# own _MAX_SHORT_RETRY_SECONDS docstring describes: a real rolling-TPM wait
+# has been observed as high as ~6s, so a 3s cutoff was rejecting a genuine
+# wait a few more seconds would have carried through, and falling through to
+# another key instead. Matched to report_ai.py's 20.0s here too — comfortably
+# above any real TPM wait, nowhere near report_ai.py's observed daily-cap
+# (TPD) waits of 1300s+, so this still can't be mistaken for one of those.
 _RETRY_AFTER_RE = re.compile(r'try again in ([\d.]+)(ms|s)\b')
-_MAX_SHORT_RETRY_SECONDS = 3.0
+_MAX_SHORT_RETRY_SECONDS = 20.0
 
 
 def _short_retry_after(exc) -> float | None:
@@ -157,12 +165,10 @@ Return a JSON object with exactly these keys:
                     ],
                     response_format={"type": "json_object"},
                 )
-                choice = completion.choices[0]
-                if choice.finish_reason == 'length':
-                    return None
-                data = _parse_json(choice.message.content)
-                break  # success — exit the retry-same-key loop
             except Exception as exc:
+                # Only the request itself lands here — a malformed response is
+                # handled separately below, so a key/network problem is the
+                # only thing that triggers the wait-or-next-key logic.
                 wait = None if retried_after_wait else _short_retry_after(exc)
                 if wait is not None:
                     retried_after_wait = True
@@ -177,6 +183,22 @@ Return a JSON object with exactly these keys:
                 if is_last_key:
                     return None
                 break  # give up on this key — move to the next one
+
+            choice = completion.choices[0]
+            if choice.finish_reason == 'length':
+                return None
+            try:
+                data = _parse_json(choice.message.content)
+            except ValueError as exc:
+                # A malformed/truncated response is a model-response-quality
+                # issue, not a key issue — return None immediately rather
+                # than burning through the rest of the shared key pool on a
+                # retry that wouldn't help (see the comment above this loop).
+                logger.warning(
+                    "sentiment_ai.analyze_sentiment: unparseable response for org=%s: %s",
+                    org_name, exc)
+                return None
+            break  # success — exit the retry-same-key loop
         if data is not None:
             break  # a key succeeded
 

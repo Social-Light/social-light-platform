@@ -27,6 +27,7 @@ from .models import (
 from .entitlements import enforce_feature, require_feature
 from .relevancy import compute_relevancy, filter_relevant
 from .print_metrics import estimate_print_reach as _print_reach
+from .online_metrics import calculate_online_ave
 from .alert_email import build_and_send, start_of_today, gather, MAX_PUBLISH_AGE_DAYS, DEFAULT_MAX_PUBLISH_AGE_DAYS
 from .alert_xlsx import build_workbook
 from .org_email import send_org_disabled_email, send_org_enabled_email
@@ -3125,16 +3126,21 @@ def alert_create(request, org_id):
     multipart = request.content_type and 'multipart' in request.content_type
     data = request.POST if multipart else json.loads(request.body)
     recipients = _clean_recipients(data.get('recipients', '') or data.get('email', ''))
+    frequency = data.get('frequency', 'daily')
+    # A daily alert fires at the fixed DAILY_SLOT_TIMES (alert_email.py) and
+    # never consults delivery_time — leave it unset rather than store a value
+    # that would misleadingly suggest it still controls anything.
+    delivery_time = (data.get('delivery_time') or None) if frequency != 'daily' else None
     alert = Alert.objects.create(
         organization=org,
         name=(data.get('name', '') or '').strip(),
         keywords=(data.get('keywords', '') or '').strip(),
         recipients=recipients,
         email=recipients.split(',')[0].strip() if recipients else '',
-        frequency=data.get('frequency', 'daily'),
+        frequency=frequency,
         email_subject=(data.get('email_subject', '') or '').strip(),
         start_date=data.get('start_date') or None,
-        delivery_time=data.get('delivery_time') or None,
+        delivery_time=delivery_time,
         categories=_clean_categories(data, multipart),
     )
     if multipart and 'banner_image' in request.FILES:
@@ -3166,7 +3172,10 @@ def alert_update(request, org_id, alert_id):
     if 'start_date' in data:
         alert.start_date = data['start_date'] or None
     if 'delivery_time' in data:
-        alert.delivery_time = data['delivery_time'] or None
+        # See alert_create: daily alerts fire at fixed slots and never consult
+        # delivery_time, so switching an alert to daily clears any stale value
+        # rather than keep one that would misleadingly suggest it still applies.
+        alert.delivery_time = (data['delivery_time'] or None) if alert.frequency != 'daily' else None
     if 'is_active' in data:
         alert.is_active = str(data['is_active']).lower() in ('1', 'true', 'on', 'yes')
     if multipart and 'banner_image' in request.FILES:
@@ -4256,6 +4265,7 @@ def media_monitor_webhook(request, org_id):
         country       = country,
         sentiment     = sentiment,
         relevancy     = compute_relevancy(title, summary, org=org),
+        ave           = calculate_online_ave(source or url_val, sentiment),
     )
     return JsonResponse({'ok': True, 'id': article.id})
 
@@ -4300,8 +4310,7 @@ def print_cover_webhook(request, org_id):
     url_val       = (request.POST.get('url') or '').strip()
     summary       = (request.POST.get('summary') or '').strip()
     country       = (request.POST.get('country') or '').strip()
-    raw_sentiment = (request.POST.get('sentiment') or 'neutral').lower()
-    sentiment     = raw_sentiment if raw_sentiment in ('positive', 'neutral', 'negative') else 'neutral'
+    sentiment = _SENTIMENT_MAP.get((request.POST.get('sentiment') or '').strip().lower(), 'neutral')
 
     pub_date = _parse_csv_date(request.POST.get('date_published'))
     if pub_date is None:
@@ -4374,9 +4383,8 @@ def extractor_push_webhook(request, org_id):
     section       = (request.POST.get('section') or '').strip()
     author        = (request.POST.get('author') or '').strip()
     summary       = (request.POST.get('summary') or '').strip()
-    raw_sentiment = (request.POST.get('sentiment') or 'neutral').lower()
-    sentiment     = raw_sentiment if raw_sentiment in ('positive', 'neutral', 'negative') else 'neutral'
-    rationale     = (request.POST.get('sentiment_rationale') or '').strip()
+    sentiment = _SENTIMENT_MAP.get((request.POST.get('sentiment') or '').strip().lower(), 'neutral')
+    rationale = (request.POST.get('sentiment_rationale') or '').strip()
 
     pub_date = _parse_csv_date(request.POST.get('date_published'))
     if pub_date is None:

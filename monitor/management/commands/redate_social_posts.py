@@ -35,6 +35,7 @@ import time
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import F
 from django.db.models.functions import TruncDate
+from django.utils import timezone
 
 from monitor.date_ai import extract_published_date
 from monitor.models import Organization, SocialMediaPost
@@ -89,7 +90,10 @@ class Command(BaseCommand):
 
         for post in qs:
             processed += 1
-            ingested_date = post.created_at.date()
+            # created_at comes back UTC from the DB; TruncDate('created_at')
+            # above buckets by the local (Africa/Gaborone) calendar date, so
+            # this must too or the two disagree near local midnight.
+            ingested_date = timezone.localtime(post.created_at).date()
             result = extract_published_date(post.headline, post.summary, ingested_date)
 
             if result is None or result['published_date'] == post.date_published:

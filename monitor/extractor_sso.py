@@ -24,6 +24,7 @@ import secrets
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core import signing
+from django.core.exceptions import ImproperlyConfigured
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
 
@@ -37,7 +38,17 @@ SSO_SIGNING_SALT = 'extractor-sso'
 
 
 def _signer():
-    return signing.TimestampSigner(key=settings.EXTRACTOR_SSO_SECRET, salt=SSO_SIGNING_SALT)
+    # TimestampSigner falls back to SECRET_KEY when key='' — exactly the
+    # thing this setting exists to avoid (see the module docstring: rotating
+    # one app's SECRET_KEY must not silently break the other side's handoff).
+    # An unset EXTRACTOR_SSO_SECRET must fail loudly here, not sign tokens
+    # article-extractor can never verify and fail mysteriously over there.
+    secret = settings.EXTRACTOR_SSO_SECRET
+    if not secret:
+        raise ImproperlyConfigured(
+            'EXTRACTOR_SSO_SECRET is not set — required for the Newspaper '
+            'Extractor SSO handoff (see monitor/extractor_sso.py).')
+    return signing.TimestampSigner(key=secret, salt=SSO_SIGNING_SALT)
 
 
 @login_required

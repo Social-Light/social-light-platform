@@ -43,6 +43,7 @@ import json
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from django.conf import settings
 from django.urls import reverse
@@ -355,8 +356,18 @@ Output ONLY the JSON object, no markdown, no commentary."""
     # risks + opportunities + kpi_insights, each a variable-length list) measured
     # meaningfully heavier than esg_prompt's two fixed-count sections (8 ESG
     # issues + 7 stakeholders) at the same mention count — see MAX_MENTIONS' note.
-    esg_data = _groq_json_call(api_keys, SYSTEM_PROMPT, esg_prompt, max_tokens=3500)
-    comp_data = _groq_json_call(api_keys, SYSTEM_PROMPT, comp_prompt, max_tokens=5500)
+    #
+    # Run concurrently: neither prompt depends on the other's output, and
+    # this is a synchronous view the browser waits on (report_ai_generate) —
+    # each call can loop through every configured key with inline waits up
+    # to _MAX_SHORT_RETRY_SECONDS per key, so running them in parallel keeps
+    # a gunicorn worker tied up for roughly the slower of the two instead of
+    # the sum of both.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        esg_future = pool.submit(_groq_json_call, api_keys, SYSTEM_PROMPT, esg_prompt, max_tokens=3500)
+        comp_future = pool.submit(_groq_json_call, api_keys, SYSTEM_PROMPT, comp_prompt, max_tokens=5500)
+        esg_data = esg_future.result()
+        comp_data = comp_future.result()
     return {**esg_data, **comp_data}
 
 

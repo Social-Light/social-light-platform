@@ -76,14 +76,20 @@ class SignupTests(TestCase):
         self.assertIn('_auth_user_id', self.client.session)
 
     def test_signup_emails_the_new_user(self):
-        """Two emails now: the trial welcome, and the address confirmation the
-        account needs before it can reach the application."""
+        """Three emails now: the trial welcome and the address confirmation
+        to the new user, plus a staff copy of the signup
+        (subscription_views._notify_new_signup, gated on
+        SIGNUP_NOTIFICATION_EMAILS, which defaults on)."""
         self.client.post(reverse('monitor:signup'), SIGNUP_POST)
-        self.assertEqual(len(mail.outbox), 2)
-        subjects = [m.subject for m in mail.outbox]
-        self.assertTrue(all(m.to == ['naledi@ministry.co.bw'] for m in mail.outbox))
+        self.assertEqual(len(mail.outbox), 3)
+        user_emails = [m for m in mail.outbox if m.to == ['naledi@ministry.co.bw']]
+        staff_emails = [m for m in mail.outbox if m.to != ['naledi@ministry.co.bw']]
+        self.assertEqual(len(user_emails), 2)
+        self.assertEqual(len(staff_emails), 1)
+        subjects = [m.subject for m in user_emails]
         self.assertTrue(any('14-day' in s for s in subjects), subjects)
         self.assertTrue(any('Confirm your email' in s for s in subjects), subjects)
+        self.assertIn('New trial signup', staff_emails[0].subject)
 
     def test_password_must_be_ten_characters_with_a_number(self):
         for bad in ('short1', 'no-numbers-here'):

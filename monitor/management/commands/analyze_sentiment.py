@@ -78,21 +78,46 @@ TYPE_WEIGHTS = {
 
 
 def _split_limit(limit, keys):
-    """Divide `limit` across `keys` proportional to TYPE_WEIGHTS, each type
-    getting at least 1. The last key absorbs any rounding remainder so the
-    shares always sum to exactly `limit` (or close under it, adjusted down
-    only if the floor-of-1 minimums alone would exceed it)."""
-    total_weight = sum(TYPE_WEIGHTS.get(k, 1) for k in keys)
-    shares = {}
-    remaining = limit
+    """Divide `limit` across `keys` proportional to TYPE_WEIGHTS via
+    largest-remainder apportionment. Shares always sum to exactly `limit`
+    and never exceed it — bounding total Groq calls per run is this
+    function's whole purpose, so that cap always wins over "every type gets
+    at least 1", which only holds when `limit` is large enough to afford one
+    per key in scope (otherwise the smallest-weighted keys legitimately get
+    0 rather than pushing the total over budget)."""
     key_list = list(keys)
-    for i, key in enumerate(key_list):
-        if i == len(key_list) - 1:
-            shares[key] = max(1, remaining)
-        else:
-            share = max(1, round(limit * TYPE_WEIGHTS.get(key, 1) / total_weight))
-            shares[key] = share
-            remaining -= share
+    n = len(key_list)
+    if limit <= 0 or n == 0:
+        return {k: 0 for k in key_list}
+
+    total_weight = sum(TYPE_WEIGHTS.get(k, 1) for k in key_list) or n
+    raw = {k: limit * TYPE_WEIGHTS.get(k, 1) / total_weight for k in key_list}
+    shares = {k: int(raw[k]) for k in key_list}
+
+    min_each = 1 if limit >= n else 0
+    if min_each:
+        for k in key_list:
+            if shares[k] == 0:
+                shares[k] = 1
+
+    overflow = sum(shares.values()) - limit
+    if overflow > 0:
+        # The min-1 bump above can push the total over `limit` — trim back
+        # down starting from the largest shares, never below min_each.
+        for k in sorted(key_list, key=lambda k: shares[k], reverse=True):
+            while overflow > 0 and shares[k] > min_each:
+                shares[k] -= 1
+                overflow -= 1
+    elif overflow < 0:
+        # Rounding down left `limit` short — hand the remainder to the keys
+        # with the largest fractional share first.
+        remainder = -overflow
+        for k in sorted(key_list, key=lambda k: raw[k] - int(raw[k]), reverse=True):
+            if remainder <= 0:
+                break
+            shares[k] += 1
+            remainder -= 1
+
     return shares
 
 # A short pause between calls — comfortably inside Groq's free-tier rate
