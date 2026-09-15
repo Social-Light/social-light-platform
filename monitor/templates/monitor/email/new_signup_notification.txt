@@ -1,0 +1,14 @@
+Hi Support,
+
+{{ org_name }} just started a free trial.
+
+Organisation:    {{ org_name }}
+Contact:         {{ contact_name }} <{{ contact_email }}>
+Phone:           {{ contact_phone|default:"—" }}
+Country:         {{ country|default:"—" }}
+Registration ID: {{ registration_id }}
+Trial ends:      {% if trial_ends_at %}{{ trial_ends_at|date:"j F Y" }}{% else %}n/a{% endif %}
+
+Open in admin: {{ admin_url }}
+
+— The Social Light Team

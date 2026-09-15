@@ -13,6 +13,7 @@ from django.urls import reverse
 from django.utils import timezone
 from importlib import import_module
 
+from monitor import onboarding
 from monitor.models import Organization, Package, SubscriptionRequest, User
 
 # The migration module's leading digits make it un-importable with a plain
@@ -61,6 +62,14 @@ class SignupTests(TestCase):
         self.assertEqual(org.plan_status, 'trial')
         self.assertEqual(org.trial_days_left, 14)
         self.assertTrue(org.has_platform_access)
+
+    def test_signup_does_not_ask_for_a_card_yet(self):
+        """A fresh trial owes nothing for 14 days, so the onboarding wizard's
+        payment step (onboarding.py:_payments_configured) must not apply — a
+        card is only ever asked for once the trial has actually run out."""
+        self.client.post(reverse('monitor:signup'), SIGNUP_POST)
+        user = User.objects.get(email='naledi@ministry.co.bw')
+        self.assertNotIn('payment', [s.key for s in onboarding.applicable_steps(user)])
 
     def test_signup_logs_the_new_user_in(self):
         self.client.post(reverse('monitor:signup'), SIGNUP_POST)
@@ -151,9 +160,9 @@ class PaywallTests(TestCase):
             organization=self.org, role='org_admin')
         self.client.force_login(self.user)
 
-    def test_dashboard_redirects_to_billing(self):
+    def test_dashboard_redirects_to_the_demo_expired_page(self):
         response = self.client.get(reverse('monitor:dashboard', args=[self.org.id]))
-        self.assertRedirects(response, reverse('monitor:billing'))
+        self.assertRedirects(response, reverse('monitor:demo_expired'))
 
     def test_api_calls_return_402_with_the_billing_url(self):
         response = self.client.get(reverse('monitor:org_details', args=[self.org.id]))
@@ -185,11 +194,18 @@ class PaywallTests(TestCase):
                                     follow=True)
         self.assertIn('_auth_user_id', self.client.session)
         # Login sends them to the org picker, which the paywall then bounces to
-        # billing. Two hops — assert the chain settles rather than looping.
+        # the demo-expired page. Two hops — assert the chain settles rather than
+        # looping.
         self.assertEqual(response.status_code, 200)
         self.assertEqual([url for url, _ in response.redirect_chain],
-                         ['/app/organizations/', reverse('monitor:billing')])
-        self.assertContains(response, 'Your free trial has ended')
+                         ['/app/organizations/', reverse('monitor:demo_expired')])
+        self.assertContains(response, 'Your demo has expired')
+
+    def test_the_demo_expired_page_leads_to_billing_and_stays_reachable(self):
+        response = self.client.get(reverse('monitor:demo_expired'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Your demo has expired')
+        self.assertContains(response, reverse('monitor:billing'))
 
     def test_password_reset_stays_reachable_when_expired(self):
         self.assertEqual(self.client.get(reverse('password_reset')).status_code, 200)
@@ -207,6 +223,47 @@ class PaywallTests(TestCase):
         self.client.force_login(admin)
         response = self.client.get(reverse('monitor:dashboard', args=[self.org.id]))
         self.assertEqual(response.status_code, 200)
+
+
+class TrialFeatureScopeTests(TestCase):
+    """What a *live* (not expired) trial may actually reach: online and social
+    monitoring, and nothing that creates, downloads or exports a report, reaches
+    broadcast/print, configures alerts, or manages media sources — see
+    monitor/entitlements.py:DEFAULT_TRIAL_ENTITLEMENTS."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='Trial Org')
+        self.org.start_trial()
+        self.org.save()
+        self.user = User.objects.create_user(
+            username='trial@org.bw', email='trial@org.bw', password='pw-for-tests-1',
+            organization=self.org, role='org_admin')
+        self.client.force_login(self.user)
+
+    def test_online_and_social_monitoring_stay_reachable(self):
+        for url_name in ('media_online', 'media_social', 'dashboard'):
+            response = self.client.get(reverse(f'monitor:{url_name}', args=[self.org.id]))
+            self.assertEqual(response.status_code, 200, url_name)
+
+    def test_broadcast_and_print_are_locked(self):
+        for url_name in ('media_print', 'media_broadcast'):
+            response = self.client.get(reverse(f'monitor:{url_name}', args=[self.org.id]))
+            self.assertEqual(response.status_code, 403, url_name)
+
+    def test_alerts_and_media_sources_are_locked(self):
+        for url_name in ('alerts', 'media_sources'):
+            response = self.client.get(reverse(f'monitor:{url_name}', args=[self.org.id]))
+            self.assertEqual(response.status_code, 403, url_name)
+
+    def test_report_creation_is_locked(self):
+        response = self.client.get(reverse('monitor:report_full', args=[self.org.id]))
+        self.assertEqual(response.status_code, 403)
+
+        response = self.client.post(
+            reverse('monitor:report_save', args=[self.org.id]),
+            data='{"report_type": "Custom Report", "modules": []}',
+            content_type='application/json')
+        self.assertEqual(response.status_code, 403)
 
 
 @override_settings(EMAIL_BACKEND=LOCMEM, SALES_NOTIFICATION_EMAILS=['sales@sociallight.africa'])
@@ -242,7 +299,7 @@ class PackageRequestTests(TestCase):
         self.assertEqual(self.org.effective_plan_status, 'pending')
         self.assertFalse(self.org.has_platform_access)
         self.assertRedirects(self.client.get(reverse('monitor:dashboard', args=[self.org.id])),
-                             reverse('monitor:billing'))
+                             reverse('monitor:demo_expired'))
 
     def test_access_returns_once_an_admin_activates_the_package(self):
         self.client.post(reverse('monitor:package_request'), {'package': 'professional'})

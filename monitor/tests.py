@@ -6,14 +6,16 @@ The email assertions run against Django's in-memory backend, so nothing here
 touches a real mail server, Celery or the development database.
 """
 import json
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from monitor.alert_email import build_and_send, gather, gather_events, start_of_today
+from monitor.alert_email import (
+    build_and_send, daily_alert_due, gather, gather_events, start_of_today,
+)
 from monitor.models import Alert, Event, Organization, OnlineArticle, User
 
 LOCMEM = 'django.core.mail.backends.locmem.EmailBackend'
@@ -195,14 +197,12 @@ class AlertCategoryTests(TestCase):
 
 
 @override_settings(MENTION_RELEVANCY_THRESHOLD=0)
-class DailyDigestDateScopeTests(TestCase):
-    """A daily alert must only ever carry the queried day's own coverage — never
-    a backlog from days before, however far behind last_sent_at has drifted (the
-    scenario that motivated this: Resend rejecting sends for days on end, see
-    2026-09-03 conversation with Tony). Covers both the mention-level scoping
-    (MAX_PUBLISH_AGE_DAYS['daily'] == 0, an exact date_published match) and the
-    command-level scoping (send_daily_alerts always using start_of_today() for
-    daily alerts, regardless of last_sent_at)."""
+class GatherPublishAgeGraceTests(TestCase):
+    """gather()'s max_publish_age_days guard, exercised directly. 0 is still a
+    special case (exact date_published match, used to be the 'daily' default —
+    see DailySlotTests below for what daily uses now); a positive value is a
+    grace window, not a strict bound, so a several-day-old publish date can
+    still pass. Callers choose the value; gather() itself is unchanged."""
 
     def setUp(self):
         self.org = Organization.objects.create(name='Scope Org', country='Botswana')
@@ -219,7 +219,7 @@ class DailyDigestDateScopeTests(TestCase):
             date_published=date_published, relevancy=100,
         )
 
-    def test_gather_excludes_yesterdays_article_for_a_daily_alert(self):
+    def test_exact_zero_excludes_yesterdays_article(self):
         self._article(self.yesterday, 'Yesterday piece')
         self._article(self.today, 'Today piece')
 
@@ -227,31 +227,93 @@ class DailyDigestDateScopeTests(TestCase):
 
         self.assertEqual([a.headline for a in online], ['Today piece'])
 
-    def test_stale_watermark_does_not_resurrect_a_backlog(self):
-        """Even with `since` pinned to days ago (simulating a stuck last_sent_at
-        after repeated failed sends), max_publish_age_days=0 still drops
-        yesterday's article — the publish-date bound, not `since`, is what
-        enforces day-scoping."""
-        self._article(self.yesterday, 'Old backlog piece')
+    def test_grace_window_includes_yesterdays_article(self):
+        self._article(self.yesterday, 'Yesterday piece')
         self._article(self.today, 'Today piece')
-        stale_since = timezone.now() - timedelta(days=3)
 
-        online, _, _, _ = gather(self.org, stale_since, self.alert, max_publish_age_days=0)
+        online, _, _, _ = gather(self.org, start_of_today() - timedelta(days=1), self.alert,
+                                  max_publish_age_days=3)
 
-        self.assertEqual([a.headline for a in online], ['Today piece'])
+        self.assertEqual({a.headline for a in online}, {'Yesterday piece', 'Today piece'})
 
-    def test_send_daily_alerts_ignores_a_stale_last_sent_at(self):
-        self._article(self.yesterday, 'Old backlog piece')
+
+@override_settings(MENTION_RELEVANCY_THRESHOLD=0)
+class DailySlotTests(TestCase):
+    """Daily alerts fire twice a day at fixed times, 08:00 + 15:00 CAT
+    (DAILY_SLOT_TIMES), each covering everything since the previous slot via
+    the last_sent_at watermark — replacing the old exact-date_published,
+    always-since-midnight design (2026-09-14, Tony): that design silently and
+    permanently dropped relevant coverage whenever a source's own
+    date_published lagged its ingestion date (see the 2026-09-14 audit). A
+    missed slot now self-heals: the next due slot's `since` still reaches back
+    to the last successful send, so nothing in the gap is lost."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='Slot Org', country='Botswana')
+        self.alert = Alert.objects.create(
+            organization=self.org, name='Daily digest',
+            recipients='someone@example.com', frequency='daily',
+        )
+        self.today = timezone.localdate()
+
+    def _at(self, hour, minute=0):
+        return timezone.make_aware(datetime.combine(self.today, time(hour, minute)))
+
+    def _article(self, date_published, headline):
+        return OnlineArticle.objects.create(
+            organization=self.org, headline=headline, url='https://example.com/' + headline,
+            date_published=date_published, relevancy=100,
+        )
+
+    def test_not_due_before_the_morning_slot(self):
+        self.assertFalse(daily_alert_due(self.alert, self._at(7, 59)))
+
+    def test_due_at_the_morning_slot(self):
+        self.assertTrue(daily_alert_due(self.alert, self._at(8, 0)))
+
+    def test_not_due_again_between_slots_once_the_morning_one_was_sent(self):
+        self.alert.last_sent_at = self._at(8, 0)
+        self.assertFalse(daily_alert_due(self.alert, self._at(12, 0)))
+
+    def test_due_at_the_afternoon_slot_after_the_morning_one_was_sent(self):
+        self.alert.last_sent_at = self._at(8, 0)
+        self.assertTrue(daily_alert_due(self.alert, self._at(15, 0)))
+
+    def test_missed_morning_slot_is_still_due_and_caught_up_by_the_afternoon_run(self):
+        """If the 08:00 run never sent (e.g. mail outage), last_sent_at is still
+        stuck at yesterday afternoon's send — the 15:00 run is due, and one email
+        covers the whole gap back to that watermark, rather than losing the
+        missed slot's coverage."""
+        yesterday_afternoon = self._at(15, 0) - timedelta(days=1)
+        self.alert.last_sent_at = yesterday_afternoon
+        self.alert.save()
+        self._article(self.today - timedelta(days=1), 'Late last night')
+        self._article(self.today, 'This morning')
+
+        self.assertTrue(daily_alert_due(self.alert, self._at(15, 0)))
+
+        online, _, _, _ = gather(self.org, yesterday_afternoon, self.alert, max_publish_age_days=3)
+        self.assertEqual({a.headline for a in online}, {'Late last night', 'This morning'})
+
+    def test_send_daily_alerts_catches_up_a_stale_watermark_instead_of_dropping_it(self):
+        """The inverse of the old exact-day behavior: a stale last_sent_at (a
+        previous send that failed) now means the next real send reports
+        everything back to that watermark, not just the current day.
+
+        Uses --alert (targets this one alert directly) rather than --frequency
+        daily, since the latter's due-check depends on the real wall clock
+        relative to the fixed 08:00/15:00 slots — daily_alert_due()'s own slot
+        logic is covered deterministically by the tests above."""
+        self._article(self.today - timedelta(days=1), 'Old backlog piece')
         self._article(self.today, 'Today piece')
-        self.alert.last_sent_at = timezone.now() - timedelta(days=3)
-        self.alert.delivery_time = timezone.localtime().time().replace(second=0, microsecond=0)
+        self.alert.last_sent_at = timezone.now() - timedelta(days=1, hours=1)
         self.alert.save()
 
         with override_settings(EMAIL_BACKEND=LOCMEM):
             from django.core.management import call_command
-            call_command('send_daily_alerts', frequency='daily')
+            call_command('send_daily_alerts', alert=str(self.alert.id))
 
         self.assertEqual(len(mail.outbox), 1)
         body = mail.outbox[0].alternatives[0][0]
         self.assertIn('Today piece', body)
-        self.assertNotIn('Old backlog piece', body)
+        self.assertIn('Old backlog piece', body)

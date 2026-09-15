@@ -234,7 +234,7 @@
           </div>
           <div class="form-group">
             <label class="form-label">Schedule <span style="color:#ef4444">*</span></label>
-            <select id="alertFreq" class="form-select">
+            <select id="alertFreq" class="form-select" onchange="updateFreqUI()">
               <option value="immediate">Immediate</option>
               <option value="daily" selected>Daily</option>
               <option value="weekly">Weekly</option>
@@ -242,9 +242,13 @@
             </select>
           </div>
         </div>
-        <div class="form-group">
+        <div class="form-group" id="alertTimeGroup">
           <label class="form-label">Delivery Time</label>
           <select id="alertTime" class="form-select"></select>
+        </div>
+        <div class="form-group" id="alertDailyNote" style="display:none;">
+          <label class="form-label">Delivery Time</label>
+          <p class="page-subtitle" style="margin:0;">Sent twice a day, fixed at 08:00 and 15:00 CAT — each covering everything new since the previous send.</p>
         </div>
       </div>
 
@@ -319,6 +323,15 @@ let _removeBanner = false;
   sel.value = '08:00';
 })();
 
+// Daily alerts send at two fixed times (08:00 + 15:00 CAT, see
+// DAILY_SLOT_TIMES in monitor/alert_email.py) and ignore delivery_time — swap
+// the picker for a static note so nothing here implies it's still adjustable.
+function updateFreqUI() {
+  const isDaily = document.getElementById('alertFreq').value === 'daily';
+  document.getElementById('alertTimeGroup').style.display = isDaily ? 'none' : '';
+  document.getElementById('alertDailyNote').style.display = isDaily ? '' : 'none';
+}
+
 // ── Recipients tag input ────────────────────────────
 function renderRecipients() {
   const wrap = document.getElementById('recipChips');
@@ -387,6 +400,7 @@ function resetAlertForm() {
   document.getElementById('alertStartDate').value = '';
   document.getElementById('alertFreq').value = 'daily';
   document.getElementById('alertTime').value = '08:00';
+  updateFreqUI();
   document.getElementById('recipInput').value = '';
   document.getElementById('catMention').checked = true;
   document.getElementById('catReport').checked = true;
@@ -427,6 +441,7 @@ function editAlert(btn) {
   document.getElementById('alertStartDate').value = row.dataset.start;
   document.getElementById('alertFreq').value = row.dataset.frequency || 'daily';
   if (row.dataset.time) document.getElementById('alertTime').value = row.dataset.time;
+  updateFreqUI();
   _recipients = (row.dataset.recipients || '').split(',').map(s => s.trim()).filter(Boolean);
   renderRecipients();
   setCategoryCheckboxes(row.dataset.categories);

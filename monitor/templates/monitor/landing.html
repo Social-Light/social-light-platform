@@ -968,6 +968,26 @@
     b.addEventListener('click', function () { showPage(b.getAttribute('data-page')); });
   });
 
+  /* ── in-page section links (header/drawer/footer) ──────────────────────
+     #services/#product/#coverage/#about/#getting-started all live inside
+     #landing, which showPage() hides whenever a subpage (sectors,
+     publications) is active. A plain <a href="#coverage"> then just moves
+     the URL hash while #landing stays display:none — nothing visibly
+     happens. Leave the subpage first, then scroll to the section. */
+  var sectionIds = ['services', 'product', 'coverage', 'about', 'getting-started'];
+  $$('a[href^="#"]').forEach(function (a) {
+    var id = a.getAttribute('href').slice(1);
+    if (sectionIds.indexOf(id) === -1) return;
+    a.addEventListener('click', function (e) {
+      var target = document.getElementById(id);
+      if (!target) return;
+      e.preventDefault();
+      showPage('landing');
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      history.replaceState(null, '', '#' + id);
+    });
+  });
+
 })();
 </script>
 

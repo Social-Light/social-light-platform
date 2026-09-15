@@ -76,6 +76,26 @@ def analyze_sentiment_task(limit=300):
     return f'analyze_sentiment ran (limit={limit})'
 
 
+@shared_task(name='monitor.pull_facebook_schedule')
+def pull_facebook_schedule_task():
+    """
+    Pull the latest run of Tony's personal Apify Facebook-posts schedule
+    (FNBB + Botswana Power Corporation's own pages) into SocialMediaPost.
+
+    Added 2026-09-11: this command existed since 2026-09-04 but had no
+    scheduled caller at all (no Celery Beat entry, no task) — it only ever
+    ran when someone typed it by hand. It silently went un-run from
+    2026-09-08 until discovered during a BPC backsearch, losing several
+    days of owned Facebook coverage (the Apify actor's own @daily schedule
+    kept running and collecting posts; nothing was pulling them into the
+    platform). Scheduled daily now so that gap can't reopen silently.
+
+    Also can be triggered ad-hoc: pull_facebook_schedule_task.delay().
+    """
+    call_command('pull_facebook_schedule')
+    return 'pull_facebook_schedule ran'
+
+
 @shared_task(name='monitor.renew_subscriptions')
 def renew_subscriptions(grace_hours=0):
     """Charge saved cards for subscriptions whose paid period has run out.

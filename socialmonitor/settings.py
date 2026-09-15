@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'crispy_forms',
     'crispy_bootstrap5',
     'widget_tweaks',
+    'anymail',
     'monitor',
 ]
 
@@ -161,26 +162,37 @@ MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN', '')
 # 2026-09-03: sociallightbw.com is not a verified sending domain in Resend
 # (only sociallight.africa is — see resend.com/domains) — sending from it 403s
 # on every attempt, so DEFAULT_FROM_EMAIL's fallback below matches the verified
-# domain. Switched off the vendor HTTP-API backend onto plain SMTP as part of
-# the payments/onboarding merge (origin/main PR #36) — Resend's SMTP relay
-# (smtp.resend.com, user "resend") works as a drop-in here.
-# Onboarding depends on outbound email: a new account cannot reach the product
-# until it follows a verification link. Delivery goes over SMTP, and which mail
-# server is used is a .env question rather than a code one — nothing here names a
-# provider. Run `manage.py test_email you@example.com` to check what is live and
-# whether it actually delivers.
+# domain. That was the only real bug; it is fixed regardless of transport.
 #
-#   1. Any SMTP provider — a hosted mail service or your own mail server
+# 2026-09-04: this host cannot reach outbound SMTP at all — ports 587/465 to
+# smtp.resend.com time out (confirmed: a raw socket connect hangs the full
+# EMAIL_TIMEOUT and never completes), while HTTPS/443 is wide open. The
+# payments/onboarding merge (origin/main PR #36) had defaulted this deployment
+# onto plain SMTP, which is what turned a pre-existing, unrelated firewall fact
+# into a broken signup — every registration hung for EMAIL_TIMEOUT seconds
+# before the mail attempt gave up. Back on the vendor HTTP-API backend
+# (`anymail`, reaching Resend over 443) for that reason. Which mail path is
+# used is still a .env decision, never a code one — set EMAIL_BACKEND to
+# whichever of the options below the deployment can actually reach:
+#
+#   1. Resend's HTTP API — works anywhere plain HTTPS does, including here
+#        EMAIL_BACKEND=anymail.backends.resend.EmailBackend
+#        RESEND_API_KEY=...
+#
+#   2. Any SMTP provider — a hosted mail service or your own mail server
 #        EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 #        EMAIL_HOST=smtp.your-provider.example
 #        EMAIL_PORT=587
 #        EMAIL_USE_TLS=True          ← port 587; use EMAIL_USE_SSL on port 465
 #        EMAIL_HOST_USER=...  EMAIL_HOST_PASSWORD=...
 #
-#   2. The console, for development — the whole message, link included, is
+#   3. The console, for development — the whole message, link included, is
 #      printed to the terminal and nothing is sent anywhere
 #        EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <noreply@sociallight.africa>')
+#
+# Run `manage.py test_email you@example.com` to check what is live and whether
+# it actually delivers.
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <support@sociallight.africa>')
 SERVER_EMAIL = os.getenv('SERVER_EMAIL', DEFAULT_FROM_EMAIL)
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 
@@ -199,12 +211,32 @@ EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '20'))
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
     EMAIL_USE_SSL = False
 
+# What the anymail backend needs when EMAIL_BACKEND selects it (option 1 above).
+# Harmless and unused otherwise — anymail is always installed (INSTALLED_APPS),
+# but nothing reads ANYMAIL unless EMAIL_BACKEND actually points at it.
+RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+ANYMAIL = {
+    'RESEND_API_KEY': RESEND_API_KEY,
+}
+
 MEDIA_MONITOR_WEBHOOK_SECRET = os.getenv('MEDIA_MONITOR_WEBHOOK_SECRET', '')
 # Distinct from MEDIA_MONITOR_WEBHOOK_SECRET, which already authenticates a
 # different (outbound alert) integration — see print_cover_webhook docstring.
 PRINT_COVER_WEBHOOK_SECRET = os.getenv('PRINT_COVER_WEBHOOK_SECRET', '')
 
 ARTICLE_EXTRACTOR_URL = os.getenv('ARTICLE_EXTRACTOR_URL', 'https://extractor.sociallight.africa/')
+# Signs the short-lived, single-use handoff token that lets a logged-in org
+# member land signed-in on the extractor with no separate account there — see
+# monitor/extractor_sso.py. Deliberately its own secret, not either app's
+# SECRET_KEY: rotating one app's SECRET_KEY must not silently break the other
+# side's handoff. Must be identical in both apps' .env, same as
+# PRINT_COVER_WEBHOOK_SECRET above.
+EXTRACTOR_SSO_SECRET = os.getenv('EXTRACTOR_SSO_SECRET', '')
+# Verifies a "My Extracts" push from the extractor (monitor/views.py:
+# extractor_push_webhook) — must be identical to that app's own
+# EXTRACTOR_PUSH_WEBHOOK_SECRET. Distinct from EXTRACTOR_SSO_SECRET (that one
+# proves a login came from here; this one proves an article came from there).
+EXTRACTOR_PUSH_WEBHOOK_SECRET = os.getenv('EXTRACTOR_PUSH_WEBHOOK_SECRET', '')
 
 # ── mediahost clips API ───────────────────────────────────────────────────────
 # Single global API key (x-api-key header). Imported clips route to organisations
@@ -223,6 +255,11 @@ TRIAL_PERIOD_DAYS = int(os.getenv('TRIAL_PERIOD_DAYS', '14'))
 SALES_NOTIFICATION_EMAILS = [
     e.strip() for e in os.getenv('SALES_NOTIFICATION_EMAILS', 'sales@sociallight.africa').split(',') if e.strip()
 ]
+# Where new trial signups are emailed as they happen. Comma-separated; empty
+# disables the notification entirely (see _notify_new_signup).
+SIGNUP_NOTIFICATION_EMAILS = [
+    e.strip() for e in os.getenv('SIGNUP_NOTIFICATION_EMAILS', 'support@sociallight.africa').split(',') if e.strip()
+]
 
 # ── Onboarding & email verification ──────────────────────────────────────────
 # How long a verification link stays valid. A user whose link has expired can ask
@@ -234,7 +271,8 @@ EMAIL_VERIFICATION_TTL_HOURS = int(os.getenv('EMAIL_VERIFICATION_TTL_HOURS', '48
 # monitor/entitlements.py (basic monitoring, dashboard, alerts). Set to a
 # comma-separated list of feature codes to widen or narrow the free tier without
 # a release. TRIAL_ENTITLEMENTS does the same for the free trial; unset means the
-# trial unlocks everything, which is how it has always behaved.
+# trial is monitoring only (basic monitoring, dashboard) — the 14-day clock is
+# the trial's limit, not an unrestricted feature set.
 _free_entitlements = os.getenv('FREE_PLAN_ENTITLEMENTS', '')
 if _free_entitlements:
     FREE_PLAN_ENTITLEMENTS = [c.strip() for c in _free_entitlements.split(',') if c.strip()]
@@ -322,7 +360,9 @@ CELERY_TASK_TIME_LIMIT = 600
 CELERY_BEAT_SCHEDULE = {
     'send-daily-digests': {
         'task': 'monitor.send_alerts',
-        'schedule': crontab(minute='*/15'),          # 08:00 Africa/Gaborone, daily
+        # Ticks every 15 min; daily_alert_due() (alert_email.py) gates the
+        # actual send to the two fixed slots, 08:00 + 15:00 Africa/Gaborone.
+        'schedule': crontab(minute='*/15'),
         'kwargs': {'frequency': 'daily'},
     },
     'send-immediate-alerts': {
@@ -337,6 +377,17 @@ CELERY_BEAT_SCHEDULE = {
     'analyze-sentiment': {
         'task': 'monitor.analyze_sentiment',
         'schedule': crontab(minute='*/30'),              # every 30 min, picks up newly-ingested mentions
+    },
+    # Pulls Tony's personal Apify Facebook-posts schedule (FNBB + BPC's own
+    # pages) into SocialMediaPost. The Apify actor itself runs @daily and its
+    # last run typically finishes ~02:40 UTC; 05:00 UTC gives it comfortable
+    # room to finish before this pulls the dataset. Added 2026-09-11 — this
+    # command had run manually-only since 2026-09-04, and un-noticed silence
+    # after 2026-09-08 lost several days of owned Facebook coverage. See
+    # monitor/management/commands/pull_facebook_schedule.py for the full story.
+    'pull-facebook-schedule': {
+        'task': 'monitor.pull_facebook_schedule',
+        'schedule': crontab(hour=5, minute=0),
     },
     # Charges saved cards for subscriptions whose paid period has run out.
     # Hourly rather than daily so a renewal lands close to the moment it falls

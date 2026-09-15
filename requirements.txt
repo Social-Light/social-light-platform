@@ -27,6 +27,7 @@ cron-descriptor==1.4.5
 cssselect==1.4.0
 cymem==2.0.13
 Django==5.2.14
+django-anymail==15.1
 django-celery-beat==2.9.0
 django-crispy-forms==2.6
 django-environ==0.11.2

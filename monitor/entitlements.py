@@ -65,8 +65,11 @@ def _f(code, label, description, upgrade, category):
 FEATURES = {f.code: f for f in [
     # Monitoring
     _f('basic_monitoring', 'Basic monitoring',
-       'View online, print, social and broadcast coverage collected for the organisation.',
+       'View online and social media coverage collected for the organisation.',
        'Media monitoring is not included on your current plan.', 'Monitoring'),
+    _f('broadcast_print_monitoring', 'Broadcast & print monitoring',
+       'View manually-logged television, radio and print coverage collected for the organisation.',
+       'Broadcast and print monitoring is not included on your current plan.', 'Monitoring'),
     _f('dashboard', 'Dashboard',
        'The coverage overview, headline figures and recent-mentions feed.',
        'The dashboard is not available on your current plan.', 'Monitoring'),
@@ -120,6 +123,17 @@ DEFAULT_FREE_ENTITLEMENTS = (
     'alerts',
 )
 
+# What the free trial unlocks with no override configured. Deliberately narrower
+# than "everything": a trial account may view its own online and social coverage
+# on the dashboard, and nothing else — no reports (created or downloaded), no
+# broadcast/print (an add-on even paying tiers below Enterprise don't get), no
+# analysis, no export. The 14-day clock is enforced separately; this is what the
+# trial is actually *for* while it runs.
+DEFAULT_TRIAL_ENTITLEMENTS = (
+    'basic_monitoring',
+    'dashboard',
+)
+
 
 def feature_choices():
     """``(code, label)`` pairs for form/admin widgets."""
@@ -142,12 +156,12 @@ def free_entitlements():
 
 
 def trial_entitlements():
-    """What the free trial unlocks. Defaults to everything, which is what a trial
-    has always granted here — the trial is a full-product evaluation, and its
-    limit is the 14-day clock, not the feature set."""
+    """What the free trial unlocks. Defaults to :data:`DEFAULT_TRIAL_ENTITLEMENTS`
+    — monitoring only, no reports — overridable per-deployment with
+    TRIAL_ENTITLEMENTS the same way the free tier is."""
     configured = getattr(settings, 'TRIAL_ENTITLEMENTS', None)
     if configured is None:
-        return set(ALL_FEATURES)
+        return set(DEFAULT_TRIAL_ENTITLEMENTS)
     return set(configured)
 
 
@@ -165,7 +179,7 @@ def entitlements_for_organization(org):
     The rules, in order:
 
     * No organisation at all → the free set.
-    * A live trial → :func:`trial_entitlements` (everything, by default).
+    * A live trial → :func:`trial_entitlements` (monitoring only, by default).
     * A paid subscription with a package → that package's entitlements.
     * A paid subscription with **no** package → everything. This is the state
       every organisation that predates self-signup is in (``plan_status``

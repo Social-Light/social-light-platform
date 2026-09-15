@@ -111,13 +111,32 @@ services:
     build: ../article-extractor
     container_name: sociallight_extractor
     restart: always
-    command: gunicorn article_extractor.wsgi:application --bind 0.0.0.0:8001
+    # 2026-09-08: was a single default sync worker (no --workers/--threads at
+    # all) — the whole app served one request at a time, so a slow OCR/PDF
+    # extraction job blocked every other visitor's page load until it
+    # finished. gthread + 2 workers/2 threads gives up to 4 concurrent
+    # in-flight requests without quadrupling memory the way 4 plain sync
+    # workers would (this box is 2 vCPU / ~4GB shared across the whole
+    # sociallight stack) — threads specifically help the common case here,
+    # which is a request blocked waiting on the (remote, cross-continental)
+    # DB rather than doing real CPU work.
+    command: gunicorn article_extractor.wsgi:application --bind 0.0.0.0:8001 --workers 2 --worker-class gthread --threads 2
     volumes:
       - ../article-extractor:/app
       - ../article-extractor/static:/app/static
     working_dir: /app
+    # 2026-09-04: was `- .env` (this file's own directory), which meant every
+    # env var this service actually reads — SITE_URL, DEFAULT_FROM_EMAIL,
+    # DJANGO_SECRET_KEY, EXTRACTOR_MEDIA_ROOT — silently came from
+    # social-light-platform's .env instead of the extractor's own. Some names
+    # coincide (RESEND_API_KEY happened to match), but SITE_URL didn't:
+    # article-extractor's own activation/reset/verification links were being
+    # built against https://sociallight.africa instead of the extractor's own
+    # domain. Found while wiring up EXTRACTOR_SSO_SECRET — that variable
+    # exists correctly in both .env files, which is what masked this for so
+    # long, but nothing else did.
     env_file:
-      - .env
+      - ../article-extractor/.env
     environment:
       - POSTGRES_HOST=db
     depends_on:

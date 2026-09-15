@@ -36,18 +36,20 @@ def _pub_ordinal(obj):
 # just happened. Values are generous grace windows around each cadence, not a
 # strict window equal to it, so a slightly-delayed same-cycle item still shows.
 #
-# 'daily' is 0 — an EXACT match on today's date_published, not a grace window —
-# by design (2026-09-03, Tony): a daily digest must only ever carry the queried
-# day's own coverage, never days before it. This is deliberately independent of
-# `since`/last_sent_at: if delivery has been failing (e.g. a broken mail-provider
-# domain) and last_sent_at is stuck days in the past, the digest still must not
-# balloon into a multi-day backlog dump once sending recovers — each day's
-# content is scoped to that day alone, and an undelivered day's coverage is not
-# carried forward. See send_daily_alerts.Command.handle(), which pins `since` to
-# start_of_today() for frequency='daily' for the same reason.
+# 'daily' has no entry (falls back to DEFAULT_MAX_PUBLISH_AGE_DAYS below) as of
+# 2026-09-14 (Tony): it used to be 0 — an EXACT match on today's date_published —
+# to stop a stuck watermark from ever ballooning into a multi-day backlog dump.
+# That's now handled instead by daily_alert_due()/send_daily_alerts sending
+# twice a day (08:00 + 15:00 CAT) off the `last_sent_at` watermark, which caps
+# any gap at one missed slot and self-heals on the next tick — so the
+# exact-day rule was pure downside: it silently and *permanently* dropped
+# genuinely relevant coverage whenever a source's own date_published lagged its
+# ingestion date by so much as a day (e.g. wire-syndicated stories, or social
+# mentions the crawler only discovers after the fact) — see the 2026-09-14
+# audit for BPC/L'Oréal SA examples. A grace window (like immediate's) still
+# guards against an old backfill reading as "new" without that permanent loss.
 MAX_PUBLISH_AGE_DAYS = {
     'immediate': 3,
-    'daily':     0,
     'weekly':    10,
     'monthly':   35,
 }
@@ -117,30 +119,38 @@ def start_of_today():
     return timezone.make_aware(datetime.combine(timezone.localdate(), time.min))
 
 
-# Used when a daily alert has no delivery_time set on the form.
-DEFAULT_DELIVERY_TIME = time(8, 0)
+# Fixed twice-daily send times, Africa/Gaborone (CAT) — 2026-09-14 (Tony);
+# evening slot moved 18:00 -> 15:00 same day: every daily alert fires at both,
+# regardless of any per-alert delivery_time (that field is no longer consulted
+# for frequency='daily'; it's still used, unchanged, by other frequencies).
+# Each slot's digest covers everything since the *previous* slot via the
+# last_sent_at watermark — 08:00 carries what came in overnight since the day
+# before's 15:00 send, 15:00 carries what came in since that morning's 08:00
+# send.
+DAILY_SLOT_TIMES = [time(8, 0), time(15, 0)]
 
 
 def daily_alert_due(alert, now=None):
     """
-    True when a daily alert should be sent on this run: the current local time has
-    reached the alert's delivery_time today (default 08:00 when unset), it hasn't
-    already been sent since that time today, and we're on/after its start_date.
+    True when a daily alert should be sent on this run: at least one of today's
+    fixed slots (DAILY_SLOT_TIMES) has already passed and hasn't been sent yet,
+    and we're on/after the alert's start_date.
 
     The beat job runs every ~15 min and calls this for each daily alert, so each
-    one fires once per day at its chosen time. The last_sent_at watermark stops
-    repeats and gives automatic catch-up if a scheduled tick was missed.
+    slot fires once, at or shortly after its clock time. The last_sent_at
+    watermark stops repeats and gives automatic catch-up if a tick was missed:
+    e.g. if 08:00 failed to send, by 15:00 that slot is still "due" (last_sent_at
+    predates it), so the 15:00 run sends one digest covering the whole gap back
+    to the last successful send, rather than losing that slot's coverage.
     """
     now = now or timezone.localtime()
     if alert.start_date and now.date() < alert.start_date:
         return False
-    delivery = alert.delivery_time or DEFAULT_DELIVERY_TIME
-    scheduled = timezone.make_aware(datetime.combine(now.date(), delivery))
-    if now < scheduled:
-        return False
-    if alert.last_sent_at and alert.last_sent_at >= scheduled:
-        return False
-    return True
+    for slot in DAILY_SLOT_TIMES:
+        scheduled = timezone.make_aware(datetime.combine(now.date(), slot))
+        if now >= scheduled and (not alert.last_sent_at or alert.last_sent_at < scheduled):
+            return True
+    return False
 
 
 def build_and_send(alert, *, since=None, force=False, update_watermark=True,

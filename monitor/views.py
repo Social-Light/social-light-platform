@@ -415,11 +415,17 @@ def dashboard(request, org_id):
     # Keyword trend data (from keywords + article counts this month)
     keyword_trends = _keyword_trends(org, month_start, today)
 
-    # Latest articles (8 each)
-    latest_online = online_qs[:8]
-    latest_print = print_qs[:8]
-    latest_social = social_qs[:8]
-    latest_broadcast = broadcast_qs[:8]
+    # Latest articles (8 each) — by created_at (ingest date), deliberately NOT
+    # the model default (-date_published, -created_at): 2026-09-14 (Tony). A
+    # source can backfill/discover older-dated content (e.g. an Apify social
+    # actor's lookback window), and this widget should answer "what just
+    # arrived," not "what's dated most recently" — those aren't the same
+    # thing, and sorting by date_published let a batch of genuinely new posts
+    # go entirely unseen behind older-arriving but more-recently-dated ones.
+    latest_online = online_qs.order_by('-created_at')[:8]
+    latest_print = print_qs.order_by('-created_at')[:8]
+    latest_social = social_qs.order_by('-created_at')[:8]
+    latest_broadcast = broadcast_qs.order_by('-created_at')[:8]
 
     # Distinct lists for dashboard filters
     print_countries = list(print_qs.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
@@ -716,6 +722,7 @@ def online_article_delete(request, org_id, article_id):
 # ── Media: Print Articles ─────────────────────────────────────────────────────
 
 @login_required
+@require_feature('broadcast_print_monitoring')
 def media_print(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     qs = filter_relevant(org.print_articles.all())
@@ -767,6 +774,7 @@ def media_print(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('broadcast_print_monitoring')
 def print_article_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
@@ -789,6 +797,7 @@ def print_article_create(request, org_id):
 
 @login_required
 @require_http_methods(['PUT'])
+@require_feature('broadcast_print_monitoring')
 def print_article_update(request, org_id, article_id):
     org = get_object_or_404(Organization, id=org_id)
     article = get_object_or_404(PrintArticle, id=article_id, organization=org)
@@ -808,6 +817,7 @@ def print_article_update(request, org_id, article_id):
 
 @login_required
 @require_http_methods(['DELETE'])
+@require_feature('broadcast_print_monitoring')
 def print_article_delete(request, org_id, article_id):
     org = get_object_or_404(Organization, id=org_id)
     article = get_object_or_404(PrintArticle, id=article_id, organization=org)
@@ -899,6 +909,7 @@ def _parse_csv_date(value):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('broadcast_print_monitoring')
 def print_article_csv_upload(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     upload = request.FILES.get('file')
@@ -1115,6 +1126,7 @@ def social_post_csv_upload(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('broadcast_print_monitoring')
 def broadcast_csv_upload(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     upload = request.FILES.get('file')
@@ -1294,6 +1306,7 @@ def social_post_delete(request, org_id, post_id):
 # ── Media: Broadcast ──────────────────────────────────────────────────────────
 
 @login_required
+@require_feature('broadcast_print_monitoring')
 def media_broadcast(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     qs = filter_relevant(org.broadcast_mentions.all())
@@ -1343,6 +1356,7 @@ def media_broadcast(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('broadcast_print_monitoring')
 def broadcast_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
@@ -1370,6 +1384,7 @@ def broadcast_create(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('broadcast_print_monitoring')
 def broadcast_update(request, org_id, mention_id):
     org = get_object_or_404(Organization, id=org_id)
     mention = get_object_or_404(BroadcastMention, id=mention_id, organization=org)
@@ -1393,6 +1408,7 @@ def broadcast_update(request, org_id, mention_id):
 
 @login_required
 @require_http_methods(['DELETE'])
+@require_feature('broadcast_print_monitoring')
 def broadcast_delete(request, org_id, mention_id):
     org = get_object_or_404(Organization, id=org_id)
     mention = get_object_or_404(BroadcastMention, id=mention_id, organization=org)
@@ -2267,6 +2283,7 @@ def reports_view(request, org_id):
 
 
 @login_required
+@require_feature('premium_reports')
 def report_save(request, org_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
@@ -2958,6 +2975,7 @@ def report_source(request, org_id):
 # ── Alerts ────────────────────────────────────────────────────────────────────
 
 @login_required
+@require_feature('alerts')
 def alerts_view(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     alerts = org.alerts.all()
@@ -3004,6 +3022,7 @@ def _clean_categories(data, multipart):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('alerts')
 def alert_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     multipart = request.content_type and 'multipart' in request.content_type
@@ -3029,6 +3048,7 @@ def alert_create(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('alerts')
 def alert_update(request, org_id, alert_id):
     org = get_object_or_404(Organization, id=org_id)
     alert = get_object_or_404(Alert, id=alert_id, organization=org)
@@ -3062,6 +3082,7 @@ def alert_update(request, org_id, alert_id):
 
 @login_required
 @require_http_methods(['DELETE'])
+@require_feature('alerts')
 def alert_delete(request, org_id, alert_id):
     org = get_object_or_404(Organization, id=org_id)
     alert = get_object_or_404(Alert, id=alert_id, organization=org)
@@ -3071,6 +3092,7 @@ def alert_delete(request, org_id, alert_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('alerts')
 def alert_test_send(request, org_id, alert_id):
     """Send a test digest for one alert to the logged-in user only (not the real recipients)."""
     org = get_object_or_404(Organization, id=org_id)
@@ -3099,6 +3121,7 @@ def alert_test_send(request, org_id, alert_id):
 
 @login_required
 @require_http_methods(['GET'])
+@require_feature('alerts')
 def alert_download_xlsx(request, org_id, alert_id):
     """On-demand .xlsx download for one alert — the same workbook that used to
     be auto-attached to every digest email. Digest emails are HTML-only now
@@ -3923,6 +3946,7 @@ def report_competitor_pptx(request, org_id):
 # ── Media Sources ─────────────────────────────────────────────────────────────
 
 @login_required
+@require_feature('media_sources')
 def media_sources(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     all_orgs = Organization.objects.all().order_by('name')
@@ -3938,6 +3962,7 @@ def media_sources(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('media_sources')
 def media_source_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
@@ -3963,6 +3988,7 @@ def media_source_create(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('media_sources')
 def media_source_csv_upload(request, org_id):
     """Bulk-import media sources from a CSV.
 
@@ -4032,6 +4058,7 @@ def media_source_csv_upload(request, org_id):
 
 @login_required
 @require_http_methods(['PUT'])
+@require_feature('media_sources')
 def media_source_update(request, org_id, source_id):
     org = get_object_or_404(Organization, id=org_id)
     source = get_object_or_404(MediaSource, id=source_id, organization=org)
@@ -4048,6 +4075,7 @@ def media_source_update(request, org_id, source_id):
 
 @login_required
 @require_http_methods(['DELETE'])
+@require_feature('media_sources')
 def media_source_delete(request, org_id, source_id):
     org = get_object_or_404(Organization, id=org_id)
     source = get_object_or_404(MediaSource, id=source_id, organization=org)
@@ -4207,6 +4235,79 @@ def print_cover_webhook(request, org_id):
         reach         = _print_reach(source),
         relevancy     = relevancy,
         cover_image   = request.FILES.get('image'),
+    )
+    return JsonResponse({'ok': True, 'id': article.id})
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def extractor_push_webhook(request, org_id):
+    """Receive one article a demo account pushed from "My Extracts" on the
+    Newspaper Extractor (article-extractor's organisations/views.py:
+    push_to_platform) and store it as a PrintArticle for the given
+    organisation.
+
+    Multipart form fields: headline (required), source, section, author,
+    date_published, sentiment, sentiment_rationale, summary, ave, reach.
+    File field: image (optional — the extraction's own page screenshot).
+
+    Security: requests must include X-Webhook-Secret matching
+    settings.EXTRACTOR_PUSH_WEBHOOK_SECRET (ignored when the secret is
+    empty). Distinct from EXTRACTOR_SSO_SECRET — that one proves a *login*
+    came from social-light-platform; this one proves an *article* came from
+    the extractor. A leak of either must not let someone forge the other.
+
+    Deliberately skips compute_relevancy's gate, unlike print_cover_webhook:
+    the article was already deliberately keyword-matched on the extractor
+    side against this org's own ad-hoc keywords there — re-filtering by
+    whatever this organisation's own (likely empty, for a demo org) Keyword
+    set contains would wrongly drop a result the user just chose to push.
+    """
+    secret = settings.EXTRACTOR_PUSH_WEBHOOK_SECRET
+    if secret and request.headers.get('X-Webhook-Secret') != secret:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    org = get_object_or_404(Organization, id=org_id)
+
+    headline = (request.POST.get('headline') or '').strip()
+    if not headline:
+        return JsonResponse({'error': 'Missing headline'}, status=400)
+
+    source        = (request.POST.get('source') or '').strip() or 'Print'
+    section       = (request.POST.get('section') or '').strip()
+    author        = (request.POST.get('author') or '').strip()
+    summary       = (request.POST.get('summary') or '').strip()
+    raw_sentiment = (request.POST.get('sentiment') or 'neutral').lower()
+    sentiment     = raw_sentiment if raw_sentiment in ('positive', 'neutral', 'negative') else 'neutral'
+    rationale     = (request.POST.get('sentiment_rationale') or '').strip()
+
+    pub_date = _parse_csv_date(request.POST.get('date_published'))
+    if pub_date is None:
+        pub_date = date.today()
+
+    try:
+        reach = int(float(request.POST.get('reach') or 0))
+    except ValueError:
+        reach = 0
+    try:
+        ave = float(request.POST.get('ave') or 0)
+    except ValueError:
+        ave = 0
+
+    article = PrintArticle.objects.create(
+        organization=org,
+        source=source[:200],
+        headline=headline,
+        summary=summary,
+        author=author[:200],
+        section=section[:100],
+        date_published=pub_date,
+        sentiment=sentiment,
+        sentiment_rationale=rationale,
+        ave=ave,
+        reach=reach or _print_reach(source),
+        relevancy=100,
+        cover_image=request.FILES.get('image'),
     )
     return JsonResponse({'ok': True, 'id': article.id})
 

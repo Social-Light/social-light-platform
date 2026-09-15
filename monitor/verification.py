@@ -69,6 +69,10 @@ def email_configuration_problem():
     message.
     """
     backend = getattr(settings, 'EMAIL_BACKEND', '')
+    if 'anymail' in backend:
+        if not (getattr(settings, 'ANYMAIL', {}) or {}).get('RESEND_API_KEY'):
+            return 'RESEND_API_KEY is not set, so no email can be sent.'
+        return None
     if 'smtp' not in backend:
         return None                                  # console/locmem/file — nothing to check
 
@@ -151,17 +155,19 @@ USER_FACING_MAIL_FAILURE = (
 
 
 def redact_smtp_credentials(text):
-    """Blank out the SMTP password anywhere it appears in a message.
+    """Blank out the SMTP password (or the anymail provider key) anywhere it
+    appears in a message.
 
     Mail servers do not normally echo a password back, but a misconfigured relay
     or a chatty library can, and the detail string travels to the log, the admin
     and the DEBUG panel. Cheap insurance against printing the one value in the
-    configuration that must never be printed.
+    configuration that must never be printed — whichever transport is active.
     """
     text = str(text)
-    secret = getattr(settings, 'EMAIL_HOST_PASSWORD', '') or ''
-    if secret:
-        text = text.replace(secret, '[redacted]')
+    for secret in (getattr(settings, 'EMAIL_HOST_PASSWORD', '') or '',
+                  (getattr(settings, 'ANYMAIL', {}) or {}).get('RESEND_API_KEY', '') or ''):
+        if secret:
+            text = text.replace(secret, '[redacted]')
     return text
 
 
