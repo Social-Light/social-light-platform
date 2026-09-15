@@ -52,7 +52,7 @@ def unbackfill(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('monitor', '0017_user_country_user_email_verified_and_more'),
+        ('monitor', '0025_user_country_user_email_verified_and_more'),
     ]
 
     operations = [

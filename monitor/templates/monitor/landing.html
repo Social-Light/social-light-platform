@@ -781,7 +781,7 @@
         <div>
           <div class="rule wide"></div>
           <div class="eyebrow">Sector intelligence</div>
-          <h2 class="h2">Top news by sector, updated weekly</h2>
+          <h2 class="h2">Top news by sector, updated daily</h2>
         </div>
         <p>The stories moving each sector, ranked by reach and sentiment impact, drawn from the same verified feed that powers your dashboard. Included on every tier.</p>
       </div>
@@ -971,16 +971,23 @@
     b.addEventListener('click', function () { showPage(b.getAttribute('data-page')); });
   });
 
-  /* section links (#services, #about…) target the landing page, which is hidden
-     while a subpage is open — bring it back, then scroll to the section */
+  /* ── in-page section links (header/drawer/footer) ──────────────────────
+     #services/#product/#coverage/#about/#getting-started all live inside
+     #landing, which showPage() hides whenever a subpage (sectors,
+     publications) is active. A plain <a href="#coverage"> then just moves
+     the URL hash while #landing stays display:none — nothing visibly
+     happens. Leave the subpage first, then scroll to the section. */
+  var sectionIds = ['services', 'product', 'coverage', 'about', 'getting-started'];
   $$('a[href^="#"]').forEach(function (a) {
+    var id = a.getAttribute('href').slice(1);
+    if (sectionIds.indexOf(id) === -1) return;
     a.addEventListener('click', function (e) {
-      var target = document.getElementById(a.getAttribute('href').slice(1));
-      if (!target || !pages.landing || pages.landing.style.display !== 'none') return;
+      var target = document.getElementById(id);
+      if (!target) return;
       e.preventDefault();
       showPage('landing');
-      history.pushState(null, '', a.getAttribute('href'));
-      target.scrollIntoView();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      history.replaceState(null, '', '#' + id);
     });
   });
 

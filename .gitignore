@@ -144,6 +144,16 @@ Thumbs.db
 # Local development
 *.local
 *.tmp
+*.save
+
+# Runtime data & local dumps — never committed (was accumulating untracked
+# on the live server: DB backups, media uploads, a live searxng secret_key)
+db.sqlite3.backup
+media/
+searxng/settings.yml
+data.json
+media_sources_*.csv
+decode_urls.txt
 
 # Node modules (if using any frontend tools)
 node_modules/

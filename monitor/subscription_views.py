@@ -176,6 +176,39 @@ def _send_trial_welcome(request, user, org):
     )
 
 
+def _notify_new_signup(request, user, org):
+    """Tell the configured staff list a trial account was just created.
+
+    Best-effort and silent on failure, like ``_send_trial_welcome`` beside it —
+    a mail hiccup here must not affect the account that was just created or the
+    request that created it. Disabled entirely when no recipients are configured.
+    """
+    recipients = getattr(settings, 'SIGNUP_NOTIFICATION_EMAILS', [])
+    if not recipients:
+        return
+    ctx = {
+        'org_name': org.name,
+        'contact_name': user.get_full_name() or user.username,
+        'contact_email': user.email,
+        'contact_phone': user.phone,
+        'country': org.country,
+        'registration_id': org.id,
+        'trial_ends_at': org.trial_ends_at,
+        'admin_url': (
+            f'{"https" if request.is_secure() else "http"}://{request.get_host()}'
+            f'/admin/monitor/organization/{org.id}/change/'
+        ),
+    }
+    send_mail(
+        subject=f'New trial signup — {org.name}',
+        message=render_to_string('monitor/email/new_signup_notification.txt', ctx),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=recipients,
+        html_message=render_to_string('monitor/email/new_signup_notification.html', ctx),
+        fail_silently=True,
+    )
+
+
 def _notify_sales(request, sub_request):
     recipients = getattr(settings, 'SALES_NOTIFICATION_EMAILS', [])
     if not recipients:
@@ -248,6 +281,7 @@ def signup(request):
                 onboarding.start(user)
             login(request, user)
             _send_trial_welcome(request, user, org)
+            _notify_new_signup(request, user, org)
             _token, mail_error = send_verification_email(request, user)
             if mail_error:
                 # The account is created and the user is signed in — a mail
@@ -305,6 +339,20 @@ def billing(request):
         'gateway_checkout': redirect_checkout_provider() is not None,
         'checkout_status': request.GET.get('checkout', ''),
         'latest_payment': (org.payments.first() if org else None),
+    })
+
+
+@login_required
+def demo_expired(request):
+    """The bare interstitial an expired trial lands on before it can reach the
+    price list at all — see OrganizationAccessMiddleware._paywall.
+
+    Deliberately minimal and deliberately separate from `billing`: this is the
+    moment the demo stops, not the price list itself, so it carries no package
+    grid or marketing copy — just the one thing the user needs to do next.
+    """
+    return render(request, 'monitor/demo_expired.html', {
+        'org': request.user.organization,
     })
 
 

@@ -141,7 +141,7 @@ def remove_cookie_notice(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
-    dependencies = [('monitor', '0024_assessmentsubmission_channel_and_more')]
+    dependencies = [('monitor', '0033_assessmentsubmission_channel_and_more')]
 
     operations = [
         migrations.AlterField(

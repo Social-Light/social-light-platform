@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('monitor', '0019_seed_legal_documents'),
+        ('monitor', '0027_seed_legal_documents'),
     ]
 
     operations = [

@@ -20,9 +20,10 @@ repeated in each of the ~90 views:
    a flow they were never shown.
 
 4. **The free-trial paywall.** Once an organisation's trial has run out and no
-   package has been activated, its users are redirected to the billing page to
-   pick a package. API calls get a 402 with the billing URL so front-end fetches
-   fail loudly instead of silently rendering half a page.
+   package has been activated, its users are redirected to the bare "demo
+   expired" interstitial, which is what leads them on to billing. API calls get
+   a 402 with the billing URL so front-end fetches fail loudly instead of
+   silently rendering half a page.
 
 Platform admins and superusers bypass rules 1 and 4. They do **not** bypass 2 and
 3 for their own account — a staff account created today verifies its email like
@@ -42,7 +43,7 @@ from django.urls import reverse
 # otherwise an expired organisation could not reach the page that lets it pay,
 # or log out.
 PAYWALL_EXEMPT_URL_NAMES = {
-    'home', 'login', 'logout', 'signup', 'pricing', 'billing', 'package_request',
+    'home', 'login', 'logout', 'signup', 'pricing', 'billing', 'demo_expired', 'package_request',
     # Paying is the way *out* of the paywall, so the checkout must never be
     # behind it. Without this an expired organisation — the only kind that
     # reaches checkout — would be redirected back to billing on its way to pay.
@@ -62,7 +63,7 @@ ONBOARDING_URL_NAMES = {
 }
 
 ALWAYS_ALLOWED_URL_NAMES = ONBOARDING_URL_NAMES | {
-    'home', 'login', 'logout', 'pricing', 'signup',
+    'home', 'login', 'logout', 'pricing', 'signup', 'demo_expired',
     # A payment that has been made must always be able to complete, whatever
     # else the account still has outstanding.
     'checkout_return', 'checkout_callback', 'checkout_cancelled',
@@ -172,7 +173,10 @@ class OrganizationAccessMiddleware:
                  'billing_url': billing_url},
                 status=402,
             )
-        return redirect(billing_url)
+        # A browser navigation gets the bare "demo expired" interstitial rather
+        # than the price list directly — see subscription_views.demo_expired.
+        # Its own CTA is what leads on to billing/checkout.
+        return redirect('monitor:demo_expired')
 
 
 class AttributionMiddleware:

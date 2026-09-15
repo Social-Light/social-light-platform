@@ -17,6 +17,22 @@ def trial_period_days():
     return int(getattr(django_settings, 'TRIAL_PERIOD_DAYS', 14))
 
 
+class ArchivableManager(models.Manager):
+    """
+    Default manager for archivable coverage models — excludes is_archived=True
+    rows, so archiving is transparent to every existing view/lookup (including
+    get_object_or_404 and related-manager access like org.online_articles.all())
+    without touching each call site individually.
+
+    Use <Model>.all_objects to reach archived rows — e.g. an admin "restore"
+    action, or monitor/mediahost.py's dedup preload, which must still see
+    archived rows as "already captured" so a re-ingested mediahost clip isn't
+    silently recreated as a fresh (unarchived) row.
+    """
+    def get_queryset(self):
+        return super().get_queryset().filter(is_archived=False)
+
+
 SENTIMENT_CHOICES = [
     ('positive', 'Positive'),
     ('neutral', 'Neutral'),
@@ -39,6 +55,7 @@ PLATFORM_CHOICES = [
     ('LinkedIn', 'LinkedIn'),
     ('YouTube', 'YouTube'),
     ('TikTok', 'TikTok'),
+    ('Facebook Group', 'Facebook Group'),
     ('Other', 'Other'),
 ]
 
@@ -255,6 +272,13 @@ PLAN_STATUS_CHOICES = [
 class Organization(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200)
+    sentiment_subject = models.CharField(
+        max_length=200, blank=True, default='',
+        help_text="Who coverage is actually ABOUT, if different from this org's own name — "
+                  "e.g. an agency ('Launch Comms') tracking coverage of its client "
+                  "('Botswana Power Corporation'). The AI sentiment pass (monitor/sentiment_ai.py) "
+                  "reasons from this entity's perspective when set; falls back to `name` when blank. "
+                  "Leave blank for an org that IS the brand being covered.")
     email = models.EmailField(blank=True)
     industry = models.CharField(max_length=100, choices=INDUSTRY_CHOICES, blank=True)
     country = models.CharField(max_length=100, default='Botswana')
@@ -520,12 +544,20 @@ class CompetitorArticle(models.Model):
     matched_keywords = models.CharField(max_length=300, blank=True)
     sentiment_score = models.FloatField(default=0)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    sentiment_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI sentiment pass set this — see monitor/sentiment_ai.py. "
+                  "Blank when sentiment was set manually, by a vendor feed, or not yet analysed.")
     reach = models.IntegerField(default=0)
     cpm = models.FloatField(default=0)
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     rank = models.FloatField(default=0)
     coverage_type = models.CharField(max_length=50, blank=True, default='Not Set')
     created_at = models.DateTimeField(auto_now_add=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+
+    objects = ArchivableManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return f"{self.company_name}: {self.headline[:50]}"
@@ -544,11 +576,19 @@ class OnlineArticle(models.Model):
     date_published = models.DateField()
     country = models.CharField(max_length=100, blank=True)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    sentiment_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI sentiment pass set this — see monitor/sentiment_ai.py. "
+                  "Blank when sentiment was set manually, by a vendor feed, or not yet analysed.")
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     coverage = models.CharField(max_length=50, choices=COVERAGE_CHOICES, blank=True, default='Not Set')
     reach = models.IntegerField(default=0)
     relevancy = models.FloatField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+
+    objects = ArchivableManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return self.headline[:60]
@@ -568,10 +608,20 @@ class PrintArticle(models.Model):
     date_published = models.DateField()
     country = models.CharField(max_length=100, blank=True)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    sentiment_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI sentiment pass set this — see monitor/sentiment_ai.py. "
+                  "Blank when sentiment was set manually, by a vendor feed, or not yet analysed.")
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     reach = models.IntegerField(default=0, help_text='Estimated readership (circulation × readers-per-copy).')
     relevancy = models.FloatField(default=0)
+    cover_image = models.FileField(upload_to='print_covers/', blank=True, null=True,
+                                    help_text='Front-page scan/cover image, when captured via automated OCR ingestion.')
     created_at = models.DateTimeField(auto_now_add=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+
+    objects = ArchivableManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return self.headline[:60]
@@ -588,13 +638,28 @@ class SocialMediaPost(models.Model):
     summary = models.TextField(blank=True)
     url = models.URLField(blank=True, max_length=2000)
     date_published = models.DateField()
+    date_correction_note = models.TextField(
+        blank=True, default='',
+        help_text="Evidence an AI date-extraction pass used to change date_published "
+                  "away from its ingestion-time value — see monitor/date_ai.py's "
+                  "extract_published_date(). Blank when date_published has never been "
+                  "AI-corrected (either it was already right, or no correction was "
+                  "attempted/found).")
     country = models.CharField(max_length=100, blank=True)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    sentiment_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI sentiment pass set this — see monitor/sentiment_ai.py. "
+                  "Blank when sentiment was set manually, by a vendor feed, or not yet analysed.")
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     rank = models.FloatField(default=0)
     reach = models.IntegerField(default=0)
     relevancy = models.FloatField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+
+    objects = ArchivableManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return self.headline[:60]
@@ -612,11 +677,19 @@ class BroadcastMention(models.Model):
     date_published = models.DateField()
     country = models.CharField(max_length=100, blank=True)
     sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    sentiment_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI sentiment pass set this — see monitor/sentiment_ai.py. "
+                  "Blank when sentiment was set manually, by a vendor feed, or not yet analysed.")
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     relevancy = models.FloatField(default=0)
     duration = models.CharField(max_length=50, blank=True)
     broadcast_type = models.CharField(max_length=20, choices=BROADCAST_TYPE_CHOICES, default='RADIO')
     created_at = models.DateTimeField(auto_now_add=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+
+    objects = ArchivableManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return self.headline[:60]
@@ -939,7 +1012,11 @@ class Sector(models.Model):
 
 
 class SectorStory(models.Model):
-    """One ranked story under a sector. Written or approved by an editor."""
+    """One ranked story under a sector. Either written/approved by an editor, or
+    (is_ai_generated=True) written by the daily sector-intelligence job from a
+    live web search — see monitor/sector_ai.py. The daily job only ever touches
+    its own is_ai_generated=True rows for a sector; an editor's own stories are
+    never auto-deleted or overwritten by it."""
     sector = models.ForeignKey(Sector, on_delete=models.CASCADE, related_name='stories')
     title = models.CharField(max_length=300)
     summary = models.TextField(blank=True)
@@ -951,6 +1028,8 @@ class SectorStory(models.Model):
     display_order = models.PositiveIntegerField(
         default=0, help_text='Rank within the sector. Lower numbers appear first.')
     is_published = models.BooleanField(default=True)
+    is_ai_generated = models.BooleanField(
+        default=False, help_text='Written by the daily sector-intelligence job, not an editor.')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -968,11 +1047,18 @@ class CommodityQuote(models.Model):
     price_display is free text so a quote can be a price, an index level or a
     range without the model guessing at units. change_percent drives the arrow
     and its colour; leave it at zero for a flat reading.
+
+    Either editor-maintained, or (is_ai_generated=True) refreshed daily by
+    monitor/sector_ai.py from a live web search — see SectorStory's docstring
+    for the same is_ai_generated convention: the daily job only ever touches
+    its own rows.
     """
     name = models.CharField(max_length=80)
     price_display = models.CharField(max_length=40, help_text='Shown as written, e.g. "$2,412.30".')
     change_percent = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     is_published = models.BooleanField(default=True)
+    is_ai_generated = models.BooleanField(
+        default=False, help_text='Refreshed daily by the sector-intelligence job, not an editor.')
     display_order = models.PositiveIntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -50,6 +50,20 @@ REGISTRATION = {
     'confirm_password': 'correct-horse-9',
 }
 
+def _expire_trial(org):
+    """Put `org` past its 14-day trial without touching anything else about it.
+
+    The onboarding payment step only applies once an organisation's trial has
+    actually run out (monitor/onboarding.py:_payments_configured) — a fresh
+    signup starts on a live trial, so tests that exercise the payment step have
+    to simulate the "came back after the trial lapsed, still mid-onboarding"
+    case rather than the everyday one, where the step never applies.
+    """
+    org.trial_ends_at = timezone.now() - timedelta(days=1)
+    org.save(update_fields=['trial_ends_at'])
+    return org
+
+
 AGENCY_POST = {
     'account_type': 'organisation',
     'organisation_name': 'Ministry of Health',
@@ -893,12 +907,36 @@ class EntitlementResolutionTests(TestCase):
         self.assertIn('crawl_result_download', granted)
         self.assertIn('premium_reports', granted)
 
-    def test_a_trial_unlocks_everything(self):
+    def test_existing_paid_packages_keep_broadcast_and_print(self):
+        """migration 0032 grandfathers broadcast_print_monitoring onto every
+        package that already had basic_monitoring, so enforcing the new gate
+        (monitor/views.py:media_print/media_broadcast) does not take anything
+        away from a client already paying for a real tier."""
+        self.assertIn('broadcast_print_monitoring', paid_package().entitlements)
+        self.assertNotIn('broadcast_print_monitoring', free_package().entitlements)
+
+    def test_a_trial_grants_monitoring_only(self):
+        """The trial's limit is the 14-day clock, not an unrestricted feature
+        set: a trial account can see its own online and social coverage on the
+        dashboard, and nothing that lets it create, download or export a
+        report, or reach broadcast/print."""
         org = Organization.objects.create(name='Trial Org')
         org.start_trial()
         org.save()
-        self.assertIn('report_download', entitlements_for_organization(org))
-        self.assertIn('crawl_result_download', entitlements_for_organization(org))
+        granted = entitlements_for_organization(org)
+        self.assertEqual(granted, {'basic_monitoring', 'dashboard'})
+        for code in ('report_download', 'crawl_result_download', 'premium_reports',
+                    'ai_analysis', 'broadcast_print_monitoring', 'competitor_analysis',
+                    'advanced_analytics', 'campaigns', 'alerts', 'api_access',
+                    'media_sources'):
+            self.assertNotIn(code, granted)
+
+    @override_settings(TRIAL_ENTITLEMENTS=['dashboard'])
+    def test_the_trial_is_configurable_without_a_release(self):
+        org = Organization.objects.create(name='Trial Org')
+        org.start_trial()
+        org.save()
+        self.assertEqual(entitlements_for_organization(org), {'dashboard'})
 
     def test_an_organisation_from_before_packages_keeps_full_access(self):
         """Every organisation that predates self-signup is 'active' with no
@@ -1037,6 +1075,7 @@ class PaymentsDisabledTests(TestCase):
     def setUp(self):
         self.client.post(reverse('monitor:signup'), REGISTRATION)
         self.user = User.objects.get(email=REGISTRATION['email'])
+        _expire_trial(self.user.organization)
         token = EmailVerificationToken.objects.get(user=self.user)
         self.client.get(reverse('monitor:onboarding_verify_confirm', args=[token.token]))
         self.client.post(reverse('monitor:onboarding_profile'), {
@@ -1124,6 +1163,7 @@ class PaymentsEnabledTests(TestCase):
     def setUp(self):
         self.client.post(reverse('monitor:signup'), REGISTRATION)
         self.user = User.objects.get(email=REGISTRATION['email'])
+        _expire_trial(self.user.organization)
         token = EmailVerificationToken.objects.get(user=self.user)
         self.client.get(reverse('monitor:onboarding_verify_confirm', args=[token.token]))
         self.client.post(reverse('monitor:onboarding_profile'), {

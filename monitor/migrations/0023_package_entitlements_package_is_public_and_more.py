@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('monitor', '0014_seed_sectors'),
+        ('monitor', '0022_socialmediapost_date_correction_note'),
     ]
 
     operations = [

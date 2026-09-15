@@ -379,7 +379,7 @@ def unseed(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('monitor', '0018_backfill_existing_accounts'),
+        ('monitor', '0026_backfill_existing_accounts'),
     ]
 
     operations = [

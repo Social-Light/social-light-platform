@@ -27,8 +27,11 @@ from .models import (
 from .entitlements import enforce_feature, require_feature
 from .relevancy import compute_relevancy, filter_relevant
 from .print_metrics import estimate_print_reach as _print_reach
-from .alert_email import build_and_send, start_of_today
+from .online_metrics import calculate_online_ave
+from .alert_email import build_and_send, start_of_today, gather, MAX_PUBLISH_AGE_DAYS, DEFAULT_MAX_PUBLISH_AGE_DAYS
+from .alert_xlsx import build_workbook
 from .org_email import send_org_disabled_email, send_org_enabled_email
+from .search_ai import resolve_filters
 from . import legal
 
 
@@ -510,11 +513,17 @@ def dashboard(request, org_id):
     # Keyword trend data (from keywords + article counts this month)
     keyword_trends = _keyword_trends(org, month_start, today)
 
-    # Latest articles (8 each)
-    latest_online = online_qs[:8]
-    latest_print = print_qs[:8]
-    latest_social = social_qs[:8]
-    latest_broadcast = broadcast_qs[:8]
+    # Latest articles (8 each) — by created_at (ingest date), deliberately NOT
+    # the model default (-date_published, -created_at): 2026-09-14 (Tony). A
+    # source can backfill/discover older-dated content (e.g. an Apify social
+    # actor's lookback window), and this widget should answer "what just
+    # arrived," not "what's dated most recently" — those aren't the same
+    # thing, and sorting by date_published let a batch of genuinely new posts
+    # go entirely unseen behind older-arriving but more-recently-dated ones.
+    latest_online = online_qs.order_by('-created_at')[:8]
+    latest_print = print_qs.order_by('-created_at')[:8]
+    latest_social = social_qs.order_by('-created_at')[:8]
+    latest_broadcast = broadcast_qs.order_by('-created_at')[:8]
 
     # Distinct lists for dashboard filters
     print_countries = list(print_qs.exclude(country='').values_list('country', flat=True).distinct().order_by('country'))
@@ -710,12 +719,13 @@ def media_online(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     qs = filter_relevant(org.online_articles.all())
 
-    q = request.GET.get('q', '')
+    q_raw = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
     country = request.GET.get('country', '')
     coverage = request.GET.get('coverage', '')
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
+    q, sentiment, date_from, date_to = resolve_filters(q_raw, sentiment, date_from, date_to)
 
     if q:
         qs = qs.filter(Q(headline__icontains=q) | Q(source__icontains=q))
@@ -741,7 +751,7 @@ def media_online(request, org_id):
         'current_count': current_count,
         'has_more': has_more,
         'next_page_url': next_page_url,
-        'q': q,
+        'q': q_raw,
         'sentiment_choices': SENTIMENT_CHOICES,
         'coverage_choices': COVERAGE_CHOICES,
         'countries': countries,
@@ -810,16 +820,18 @@ def online_article_delete(request, org_id, article_id):
 # ── Media: Print Articles ─────────────────────────────────────────────────────
 
 @login_required
+@require_feature('broadcast_print_monitoring')
 def media_print(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     qs = filter_relevant(org.print_articles.all())
 
-    q = request.GET.get('q', '')
+    q_raw = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
     country = request.GET.get('country', '')
     section = request.GET.get('section', '')
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
+    q, sentiment, date_from, date_to = resolve_filters(q_raw, sentiment, date_from, date_to)
 
     if q:
         qs = qs.filter(Q(headline__icontains=q) | Q(source__icontains=q) | Q(author__icontains=q))
@@ -846,7 +858,7 @@ def media_print(request, org_id):
         'current_count': current_count,
         'has_more': has_more,
         'next_page_url': next_page_url,
-        'q': q,
+        'q': q_raw,
         'sentiment_choices': SENTIMENT_CHOICES,
         'countries': countries,
         'sections': sections,
@@ -860,6 +872,7 @@ def media_print(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('broadcast_print_monitoring')
 def print_article_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
@@ -882,6 +895,7 @@ def print_article_create(request, org_id):
 
 @login_required
 @require_http_methods(['PUT'])
+@require_feature('broadcast_print_monitoring')
 def print_article_update(request, org_id, article_id):
     org = get_object_or_404(Organization, id=org_id)
     article = get_object_or_404(PrintArticle, id=article_id, organization=org)
@@ -901,6 +915,7 @@ def print_article_update(request, org_id, article_id):
 
 @login_required
 @require_http_methods(['DELETE'])
+@require_feature('broadcast_print_monitoring')
 def print_article_delete(request, org_id, article_id):
     org = get_object_or_404(Organization, id=org_id)
     article = get_object_or_404(PrintArticle, id=article_id, organization=org)
@@ -992,6 +1007,7 @@ def _parse_csv_date(value):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('broadcast_print_monitoring')
 def print_article_csv_upload(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     upload = request.FILES.get('file')
@@ -1208,6 +1224,7 @@ def social_post_csv_upload(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('broadcast_print_monitoring')
 def broadcast_csv_upload(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     upload = request.FILES.get('file')
@@ -1280,12 +1297,13 @@ def media_social(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     qs = filter_relevant(org.social_posts.all())
 
-    q = request.GET.get('q', '')
+    q_raw = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
     country = request.GET.get('country', '')
     platform = request.GET.get('platform', '')
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
+    q, sentiment, date_from, date_to = resolve_filters(q_raw, sentiment, date_from, date_to)
 
     if q:
         qs = qs.filter(Q(headline__icontains=q) | Q(page_name__icontains=q))
@@ -1311,7 +1329,7 @@ def media_social(request, org_id):
         'current_count': current_count,
         'has_more': has_more,
         'next_page_url': next_page_url,
-        'q': q,
+        'q': q_raw,
         'sentiment_choices': SENTIMENT_CHOICES,
         'platform_choices': PLATFORM_CHOICES,
         'countries': countries,
@@ -1386,16 +1404,18 @@ def social_post_delete(request, org_id, post_id):
 # ── Media: Broadcast ──────────────────────────────────────────────────────────
 
 @login_required
+@require_feature('broadcast_print_monitoring')
 def media_broadcast(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     qs = filter_relevant(org.broadcast_mentions.all())
 
-    q = request.GET.get('q', '')
+    q_raw = request.GET.get('q', '')
     sentiment = request.GET.get('sentiment', '')
     country = request.GET.get('country', '')
     btype = request.GET.get('btype', '')
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
+    q, sentiment, date_from, date_to = resolve_filters(q_raw, sentiment, date_from, date_to)
 
     if q:
         qs = qs.filter(Q(headline__icontains=q) | Q(source__icontains=q))
@@ -1421,7 +1441,7 @@ def media_broadcast(request, org_id):
         'current_count': current_count,
         'has_more': has_more,
         'next_page_url': next_page_url,
-        'q': q,
+        'q': q_raw,
         'sentiment_choices': SENTIMENT_CHOICES,
         'countries': countries,
         'selected_sentiment': sentiment,
@@ -1434,6 +1454,7 @@ def media_broadcast(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('broadcast_print_monitoring')
 def broadcast_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
@@ -1461,6 +1482,7 @@ def broadcast_create(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('broadcast_print_monitoring')
 def broadcast_update(request, org_id, mention_id):
     org = get_object_or_404(Organization, id=org_id)
     mention = get_object_or_404(BroadcastMention, id=mention_id, organization=org)
@@ -1484,6 +1506,7 @@ def broadcast_update(request, org_id, mention_id):
 
 @login_required
 @require_http_methods(['DELETE'])
+@require_feature('broadcast_print_monitoring')
 def broadcast_delete(request, org_id, mention_id):
     org = get_object_or_404(Organization, id=org_id)
     mention = get_object_or_404(BroadcastMention, id=mention_id, organization=org)
@@ -1501,8 +1524,9 @@ def competitors_view(request, org_id):
     today = date.today()
     month_start = today.replace(day=1)
 
-    q_search = request.GET.get('q', '')
+    q_search_raw = request.GET.get('q', '')
     sentiment_filter = request.GET.get('sentiment', '')
+    q_search, sentiment_filter, _df, _dt = resolve_filters(q_search_raw, sentiment_filter, '', '')
 
     def terms_q(comp):
         """Match if ANY of the competitor's terms (name + aliases) appears in
@@ -1630,7 +1654,7 @@ def competitors_view(request, org_id):
         'broadcast_count': len(deduped_bc),
         'print_count': len(deduped_print),
         'social_count': len(deduped_social),
-        'q': q_search,
+        'q': q_search_raw,
         'selected_sentiment': sentiment_filter,
         'sentiment_choices': SENTIMENT_CHOICES,
     })
@@ -2172,7 +2196,7 @@ def report_full(request, org_id):
     # The stored analysis is kept indefinitely; flag it when new mentions have been
     # added since it was generated so the report can prompt a regenerate.
     analysis_stale = bool(analysis) and analysis_is_stale(org, date_from, date_to)
-    ai_enabled = bool(settings.ANTHROPIC_API_KEY)
+    ai_enabled = bool(settings.GROQ_API_KEY)
 
     # Distribute AI-generated reputational risks/opportunities into their media-type
     # sections (each item is tagged with a media_key in the analysis payload).
@@ -2288,7 +2312,7 @@ _GLOSSARY_TERMS = [
 @require_http_methods(['POST'])
 @require_feature('ai_analysis')
 def report_ai_generate(request, org_id):
-    """Run the Anthropic analysis for a period on demand and cache it. The Full
+    """Run the Groq analysis for a period on demand and cache it. The Full
     Report's 'Generate AI Analysis' button calls this, then reloads."""
     from .report_ai import generate_analysis, ReportAIError
     org = get_object_or_404(Organization, id=org_id)
@@ -2357,6 +2381,7 @@ def reports_view(request, org_id):
 
 
 @login_required
+@require_feature('premium_reports')
 def report_save(request, org_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
@@ -3048,6 +3073,7 @@ def report_source(request, org_id):
 # ── Alerts ────────────────────────────────────────────────────────────────────
 
 @login_required
+@require_feature('alerts')
 def alerts_view(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     alerts = org.alerts.all()
@@ -3094,21 +3120,27 @@ def _clean_categories(data, multipart):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('alerts')
 def alert_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     multipart = request.content_type and 'multipart' in request.content_type
     data = request.POST if multipart else json.loads(request.body)
     recipients = _clean_recipients(data.get('recipients', '') or data.get('email', ''))
+    frequency = data.get('frequency', 'daily')
+    # A daily alert fires at the fixed DAILY_SLOT_TIMES (alert_email.py) and
+    # never consults delivery_time — leave it unset rather than store a value
+    # that would misleadingly suggest it still controls anything.
+    delivery_time = (data.get('delivery_time') or None) if frequency != 'daily' else None
     alert = Alert.objects.create(
         organization=org,
         name=(data.get('name', '') or '').strip(),
         keywords=(data.get('keywords', '') or '').strip(),
         recipients=recipients,
         email=recipients.split(',')[0].strip() if recipients else '',
-        frequency=data.get('frequency', 'daily'),
+        frequency=frequency,
         email_subject=(data.get('email_subject', '') or '').strip(),
         start_date=data.get('start_date') or None,
-        delivery_time=data.get('delivery_time') or None,
+        delivery_time=delivery_time,
         categories=_clean_categories(data, multipart),
     )
     if multipart and 'banner_image' in request.FILES:
@@ -3119,6 +3151,7 @@ def alert_create(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('alerts')
 def alert_update(request, org_id, alert_id):
     org = get_object_or_404(Organization, id=org_id)
     alert = get_object_or_404(Alert, id=alert_id, organization=org)
@@ -3139,7 +3172,10 @@ def alert_update(request, org_id, alert_id):
     if 'start_date' in data:
         alert.start_date = data['start_date'] or None
     if 'delivery_time' in data:
-        alert.delivery_time = data['delivery_time'] or None
+        # See alert_create: daily alerts fire at fixed slots and never consult
+        # delivery_time, so switching an alert to daily clears any stale value
+        # rather than keep one that would misleadingly suggest it still applies.
+        alert.delivery_time = (data['delivery_time'] or None) if alert.frequency != 'daily' else None
     if 'is_active' in data:
         alert.is_active = str(data['is_active']).lower() in ('1', 'true', 'on', 'yes')
     if multipart and 'banner_image' in request.FILES:
@@ -3152,6 +3188,7 @@ def alert_update(request, org_id, alert_id):
 
 @login_required
 @require_http_methods(['DELETE'])
+@require_feature('alerts')
 def alert_delete(request, org_id, alert_id):
     org = get_object_or_404(Organization, id=org_id)
     alert = get_object_or_404(Alert, id=alert_id, organization=org)
@@ -3161,6 +3198,7 @@ def alert_delete(request, org_id, alert_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('alerts')
 def alert_test_send(request, org_id, alert_id):
     """Send a test digest for one alert to the logged-in user only (not the real recipients)."""
     org = get_object_or_404(Organization, id=org_id)
@@ -3185,6 +3223,36 @@ def alert_test_send(request, org_id, alert_id):
         'recipients': result.get('recipients', [test_to]),
         'total': result.get('total', 0),
     })
+
+
+@login_required
+@require_http_methods(['GET'])
+@require_feature('alerts')
+def alert_download_xlsx(request, org_id, alert_id):
+    """On-demand .xlsx download for one alert — the same workbook that used to
+    be auto-attached to every digest email. Digest emails are HTML-only now
+    (see alert_email.build_and_send's include_xlsx default); this is how a user
+    gets the spreadsheet when they actually want it, without generating and
+    mailing one on every automated send.
+
+    Covers the same window the alert's next digest would, so "download" and
+    "what the email would have attached" stay the same data: today only for a
+    daily alert (see alert_email.MAX_PUBLISH_AGE_DAYS — a daily digest never
+    carries a backlog from days before, regardless of last_sent_at), otherwise
+    last_sent_at (or the start of today for an alert that's never sent).
+    """
+    org = get_object_or_404(Organization, id=org_id)
+    alert = get_object_or_404(Alert, id=alert_id, organization=org)
+    since = start_of_today() if alert.frequency == 'daily' else (alert.last_sent_at or start_of_today())
+    max_age = MAX_PUBLISH_AGE_DAYS.get(alert.frequency, DEFAULT_MAX_PUBLISH_AGE_DAYS)
+    online, print_arts, social, broadcast = gather(org, since, alert, max_publish_age_days=max_age)
+    xlsx_bytes = build_workbook(online, print_arts, social, broadcast)
+    filename = f"{org.name}-media-digest-{timezone.localdate().isoformat()}.xlsx"
+    resp = HttpResponse(
+        xlsx_bytes,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────
@@ -3984,6 +4052,7 @@ def report_competitor_pptx(request, org_id):
 # ── Media Sources ─────────────────────────────────────────────────────────────
 
 @login_required
+@require_feature('media_sources')
 def media_sources(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     all_orgs = Organization.objects.all().order_by('name')
@@ -3999,6 +4068,7 @@ def media_sources(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('media_sources')
 def media_source_create(request, org_id):
     org = get_object_or_404(Organization, id=org_id)
     data = json.loads(request.body)
@@ -4024,6 +4094,7 @@ def media_source_create(request, org_id):
 
 @login_required
 @require_http_methods(['POST'])
+@require_feature('media_sources')
 def media_source_csv_upload(request, org_id):
     """Bulk-import media sources from a CSV.
 
@@ -4093,6 +4164,7 @@ def media_source_csv_upload(request, org_id):
 
 @login_required
 @require_http_methods(['PUT'])
+@require_feature('media_sources')
 def media_source_update(request, org_id, source_id):
     org = get_object_or_404(Organization, id=org_id)
     source = get_object_or_404(MediaSource, id=source_id, organization=org)
@@ -4109,6 +4181,7 @@ def media_source_update(request, org_id, source_id):
 
 @login_required
 @require_http_methods(['DELETE'])
+@require_feature('media_sources')
 def media_source_delete(request, org_id, source_id):
     org = get_object_or_404(Organization, id=org_id)
     source = get_object_or_404(MediaSource, id=source_id, organization=org)
@@ -4192,6 +4265,154 @@ def media_monitor_webhook(request, org_id):
         country       = country,
         sentiment     = sentiment,
         relevancy     = compute_relevancy(title, summary, org=org),
+        ave           = calculate_online_ave(source or url_val, sentiment),
+    )
+    return JsonResponse({'ok': True, 'id': article.id})
+
+
+# ── Print Cover Webhook ────────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def print_cover_webhook(request, org_id):
+    """
+    Receive an OCR'd front-page cover (headline/section/etc as form fields, the
+    cover image itself as a file) from media-monitor's print-cover pipeline and
+    store it as a PrintArticle for the given organisation.
+
+    Multipart form fields: headline (required), source, section, author,
+    date_published, url, summary, sentiment. File field: image (optional but
+    expected in practice).
+
+    Security: requests must include X-Webhook-Secret matching
+    settings.PRINT_COVER_WEBHOOK_SECRET (ignored when secret is empty). This is
+    a distinct secret from MEDIA_MONITOR_WEBHOOK_SECRET, which already has an
+    unrelated purpose (auth for media-monitor's own *outbound* alert webhooks) —
+    conflating the two would mix trust boundaries.
+    """
+    secret = settings.PRINT_COVER_WEBHOOK_SECRET
+    if secret and request.headers.get('X-Webhook-Secret') != secret:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    org = get_object_or_404(Organization, id=org_id)
+
+    # Disabled (inactive) organisations receive no new mentions.
+    if org.status != 'active':
+        return JsonResponse({'ok': True, 'skipped': 'organization inactive'})
+
+    headline = (request.POST.get('headline') or '').strip()
+    if not headline:
+        return JsonResponse({'error': 'Missing headline'}, status=400)
+
+    source        = (request.POST.get('source') or '').strip() or 'Print'
+    section       = (request.POST.get('section') or '').strip()
+    author        = (request.POST.get('author') or '').strip()
+    url_val       = (request.POST.get('url') or '').strip()
+    summary       = (request.POST.get('summary') or '').strip()
+    country       = (request.POST.get('country') or '').strip()
+    sentiment = _SENTIMENT_MAP.get((request.POST.get('sentiment') or '').strip().lower(), 'neutral')
+
+    pub_date = _parse_csv_date(request.POST.get('date_published'))
+    if pub_date is None:
+        pub_date = date.today()
+
+    # Dedup on all_objects (not the archiving-aware default manager) — an
+    # archived row must still count as "already captured", or a re-crawl of the
+    # same weekly cover after archiving would silently recreate it. Same
+    # reasoning as ingest_clips's dedup in mediahost.py.
+    if url_val and PrintArticle.all_objects.filter(organization=org, url=url_val).exists():
+        return JsonResponse({'ok': True, 'duplicate': True})
+
+    relevancy = compute_relevancy(headline, summary, org=org)
+    if relevancy <= 0:
+        return JsonResponse({'ok': True, 'skipped': 'low relevancy'})
+
+    article = PrintArticle.objects.create(
+        organization  = org,
+        source        = source[:200],
+        headline      = headline,
+        summary       = summary,
+        author        = author[:200],
+        section       = section[:100],
+        url           = url_val[:2000],
+        date_published= pub_date,
+        country       = country[:100],
+        sentiment     = sentiment,
+        reach         = _print_reach(source),
+        relevancy     = relevancy,
+        cover_image   = request.FILES.get('image'),
+    )
+    return JsonResponse({'ok': True, 'id': article.id})
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def extractor_push_webhook(request, org_id):
+    """Receive one article a demo account pushed from "My Extracts" on the
+    Newspaper Extractor (article-extractor's organisations/views.py:
+    push_to_platform) and store it as a PrintArticle for the given
+    organisation.
+
+    Multipart form fields: headline (required), source, section, author,
+    date_published, sentiment, sentiment_rationale, summary, ave, reach.
+    File field: image (optional — the extraction's own page screenshot).
+
+    Security: requests must include X-Webhook-Secret matching
+    settings.EXTRACTOR_PUSH_WEBHOOK_SECRET (ignored when the secret is
+    empty). Distinct from EXTRACTOR_SSO_SECRET — that one proves a *login*
+    came from social-light-platform; this one proves an *article* came from
+    the extractor. A leak of either must not let someone forge the other.
+
+    Deliberately skips compute_relevancy's gate, unlike print_cover_webhook:
+    the article was already deliberately keyword-matched on the extractor
+    side against this org's own ad-hoc keywords there — re-filtering by
+    whatever this organisation's own (likely empty, for a demo org) Keyword
+    set contains would wrongly drop a result the user just chose to push.
+    """
+    secret = settings.EXTRACTOR_PUSH_WEBHOOK_SECRET
+    if secret and request.headers.get('X-Webhook-Secret') != secret:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    org = get_object_or_404(Organization, id=org_id)
+
+    headline = (request.POST.get('headline') or '').strip()
+    if not headline:
+        return JsonResponse({'error': 'Missing headline'}, status=400)
+
+    source        = (request.POST.get('source') or '').strip() or 'Print'
+    section       = (request.POST.get('section') or '').strip()
+    author        = (request.POST.get('author') or '').strip()
+    summary       = (request.POST.get('summary') or '').strip()
+    sentiment = _SENTIMENT_MAP.get((request.POST.get('sentiment') or '').strip().lower(), 'neutral')
+    rationale = (request.POST.get('sentiment_rationale') or '').strip()
+
+    pub_date = _parse_csv_date(request.POST.get('date_published'))
+    if pub_date is None:
+        pub_date = date.today()
+
+    try:
+        reach = int(float(request.POST.get('reach') or 0))
+    except ValueError:
+        reach = 0
+    try:
+        ave = float(request.POST.get('ave') or 0)
+    except ValueError:
+        ave = 0
+
+    article = PrintArticle.objects.create(
+        organization=org,
+        source=source[:200],
+        headline=headline,
+        summary=summary,
+        author=author[:200],
+        section=section[:100],
+        date_published=pub_date,
+        sentiment=sentiment,
+        sentiment_rationale=rationale,
+        ave=ave,
+        reach=reach or _print_reach(source),
+        relevancy=100,
+        cover_image=request.FILES.get('image'),
     )
     return JsonResponse({'ok': True, 'id': article.id})
 

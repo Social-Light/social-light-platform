@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('monitor', '0021_refund_policy'),
+        ('monitor', '0029_refund_policy'),
     ]
 
     operations = [

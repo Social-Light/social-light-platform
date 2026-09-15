@@ -4,6 +4,7 @@ from . import subscription_views
 from . import onboarding_views
 from . import export_views
 from . import assessment_views
+from . import extractor_sso
 
 app_name = 'monitor'
 
@@ -49,6 +50,7 @@ urlpatterns = [
     path('app/legal/', onboarding_views.reconsent, name='reconsent'),
 
     # Subscription / free trial
+    path('app/expired/', subscription_views.demo_expired, name='demo_expired'),
     path('app/billing/', subscription_views.billing, name='billing'),
     path('app/billing/request/', subscription_views.package_request, name='package_request'),
     path('app/billing/checkout/', subscription_views.checkout_start, name='checkout_start'),
@@ -146,6 +148,7 @@ urlpatterns = [
     path('api/<uuid:org_id>/alerts/', views.alert_create, name='alert_create'),
     path('api/<uuid:org_id>/alerts/<int:alert_id>/', views.alert_update, name='alert_update'),
     path('api/<uuid:org_id>/alerts/<int:alert_id>/test/', views.alert_test_send, name='alert_test_send'),
+    path('api/<uuid:org_id>/alerts/<int:alert_id>/xlsx/', views.alert_download_xlsx, name='alert_download_xlsx'),
     path('api/<uuid:org_id>/alerts/<int:alert_id>/delete/', views.alert_delete, name='alert_delete'),
 
     # Users
@@ -168,6 +171,9 @@ urlpatterns = [
     path('api/<uuid:org_id>/sources/<int:source_id>/', views.media_source_update, name='media_source_update'),
     path('api/<uuid:org_id>/sources/<int:source_id>/delete/', views.media_source_delete, name='media_source_delete'),
 
+    # Newspaper Extractor single sign-on handoff
+    path('app/extractor/<uuid:org_id>/', extractor_sso.handoff, name='extractor_handoff'),
+
     # Profile & Password
     path('api/<uuid:org_id>/profile/', views.profile_update, name='profile_update'),
     path('api/<uuid:org_id>/profile/password/', views.password_change, name='password_change'),
@@ -178,4 +184,8 @@ urlpatterns = [
 
     # Media Monitor webhook receiver
     path('api/<uuid:org_id>/webhook/media-monitor/', views.media_monitor_webhook, name='media_monitor_webhook'),
+    # Print-cover OCR webhook receiver
+    path('api/<uuid:org_id>/webhook/print-cover/', views.print_cover_webhook, name='print_cover_webhook'),
+    # Newspaper Extractor "push to Social Light" webhook receiver
+    path('api/<uuid:org_id>/webhook/extractor-push/', views.extractor_push_webhook, name='extractor_push_webhook'),
 ]

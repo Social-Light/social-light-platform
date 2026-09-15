@@ -1,11 +1,14 @@
 """Tests for how email leaves the platform.
 
-Delivery moved from a vendor HTTP API to plain SMTP. Nothing about *what* the
-application sends changed, so the point of this module is the transport itself:
-that SMTP is what a deployment gets by default, that no vendor package or vendor
-environment variable is needed any more, that a transport failure costs a user
-neither their account nor their verification link, and that an SMTP password
-cannot reach a page, a log line or a console.
+Two transports are supported, chosen by EMAIL_BACKEND alone — a .env decision,
+never a code one: plain SMTP (a fresh deployment's default), and the anymail/
+Resend HTTP API (monitor/verification.py's `email_configuration_problem` and
+`redact_smtp_credentials` are transport-aware, and the platform docstring in
+socialmonitor/settings.py explains why 2026-09-04 put this host back on the API
+path — outbound SMTP is blocked here, HTTPS is not). The point of this module is
+the transport layer itself: that a transport failure costs a user neither their
+account nor their verification link, and that a mail credential — the SMTP
+password or the Resend key — cannot reach a page, a log line or a console.
 
 Everything runs against Django's in-memory backend or a patched one. No socket is
 opened and no credential is real.
@@ -56,7 +59,9 @@ PROJECT_ROOT = Path(settings.BASE_DIR)
 
 
 class TransportTests(TestCase):
-    """SMTP is the transport, and it is the transport a fresh install gets."""
+    """Plain SMTP is what a fresh deployment gets with no .env at all; the
+    anymail/Resend HTTP API is the other supported option, selected the same
+    way — EMAIL_BACKEND, nothing else."""
 
     def test_the_configured_backend_is_djangos_smtp_backend(self):
         with override_settings(**FAKE_SMTP):
@@ -66,7 +71,9 @@ class TransportTests(TestCase):
     def test_smtp_is_the_default_when_the_environment_says_nothing(self):
         """Read from the source rather than from the loaded settings: the running
         process has a .env, and the question here is what a deployment without one
-        would get."""
+        would get. A specific deployment is free to override EMAIL_BACKEND to the
+        anymail path instead (this host's own .env does, since outbound SMTP is
+        blocked here) — that override belongs in .env, not in this default."""
         source = (PROJECT_ROOT / 'socialmonitor' / 'settings.py').read_text(encoding='utf-8')
         self.assertIn(
             "EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', "
@@ -86,44 +93,29 @@ class TransportTests(TestCase):
         self.assertTrue(connection.use_tls)
         self.assertFalse(connection.use_ssl)
 
-    def test_no_vendor_mail_package_is_installed_or_needed(self):
-        self.assertNotIn('anymail', settings.INSTALLED_APPS)
-        self.assertFalse(hasattr(settings, 'ANYMAIL'),
-                         'the ANYMAIL setting should be gone, not left empty')
+    def test_the_anymail_backend_is_available_and_reads_the_resend_key(self):
+        """The other supported transport: not the default, but installed and
+        wired up so a deployment's .env can select it outright — which is
+        exactly what this host's own .env currently does, since outbound SMTP
+        is blocked here but HTTPS is not."""
+        self.assertIn('anymail', settings.INSTALLED_APPS)
+        with override_settings(EMAIL_BACKEND='anymail.backends.resend.EmailBackend',
+                               ANYMAIL={'RESEND_API_KEY': 'not-a-real-key'}):
+            self.assertIsNone(verification.email_configuration_problem())
+            connection = get_connection()
+        self.assertEqual(connection.__class__.__module__, 'anymail.backends.resend')
 
-    def test_email_works_with_no_vendor_environment_variables_present(self):
-        """The old provider key is not read anywhere any more, so its absence
-        cannot be what stops a send."""
-        self.assertFalse(hasattr(settings, 'RESEND_API_KEY'))
+    def test_a_missing_resend_key_is_reported_rather_than_left_to_fail_silently(self):
+        with override_settings(EMAIL_BACKEND='anymail.backends.resend.EmailBackend',
+                               ANYMAIL={'RESEND_API_KEY': ''}):
+            problem = verification.email_configuration_problem()
+        self.assertIn('RESEND_API_KEY', problem)
+
+    def test_email_works_with_no_environment_variables_present(self):
         with mock.patch.dict('os.environ', {}, clear=True), override_settings(EMAIL_BACKEND=LOCMEM):
             self.assertIsNone(verification.email_configuration_problem())
             mail.send_mail('Subject', 'Body', settings.DEFAULT_FROM_EMAIL, ['someone@example.com'])
         self.assertEqual(len(mail.outbox), 1)
-
-    def test_no_vendor_reference_survives_in_the_source(self):
-        """A stray import or a stray setting would be found the hard way, on the
-        first deploy where mail silently stops."""
-        patterns = ('anymail', 'api.resend.com', 'RESEND_API_KEY')
-        searched = [PROJECT_ROOT / 'requirements.txt', PROJECT_ROOT / '.env.example']
-        # settings_local.py is a gitignored per-developer override, not part of
-        # the application, so it is not this test's business.
-        skip = {'test_email_delivery.py', 'settings_local.py'}
-        for folder in ('monitor', 'socialmonitor'):
-            searched += [p for p in (PROJECT_ROOT / folder).rglob('*')
-                         if p.suffix in ('.py', '.html', '.txt') and '__pycache__' not in p.parts]
-
-        offenders = []
-        for path in searched:
-            if not path.is_file():
-                continue
-            body = path.read_text(encoding='utf-8', errors='ignore')
-            # This file names the patterns in order to look for them.
-            if path.name in skip:
-                continue
-            for pattern in patterns:
-                if pattern.lower() in body.lower():
-                    offenders.append(f'{path.relative_to(PROJECT_ROOT)}: {pattern}')
-        self.assertEqual(offenders, [])
 
 
 class CredentialLeakTests(TestCase):

@@ -132,8 +132,17 @@ def _is_billing_owner(user):
 
 
 def _payments_configured(user):
-    """The payment step is always *shown* — a user needs to be told why they are
-    not being asked for a card — but it only applies to the billing owner."""
+    """Whether the payment step applies to this user right now.
+
+    Payment is asked for once money is actually owed, not on the way in: a
+    brand-new trial (started moments ago, in `subscription_views.signup`, before
+    onboarding even begins) owes nothing for 14 days, so the step does not apply
+    until that trial itself has ended. Card collection at that point happens
+    through the billing/checkout flow the expired-trial paywall leads to, not by
+    re-running this wizard. Non-billing-owners never see the step regardless."""
+    org = getattr(user, 'organization', None)
+    if org is not None and org.is_on_trial:
+        return False
     return _is_billing_owner(user)
 
 

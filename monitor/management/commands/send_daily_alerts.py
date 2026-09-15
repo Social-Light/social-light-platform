@@ -1,10 +1,12 @@
 """
 monitor/management/commands/send_daily_alerts.py
 
-Send the daily media digest email to every active Alert that has
-frequency='daily' and at least one recipient. Reports records that came
-through today (by created_at), ordered with the org's own country first.
-The alert's banner image (if set) is embedded inline and links to login.
+Send the media digest email to every active Alert that has frequency='daily'
+and at least one recipient. Daily alerts fire twice a day, fixed at 08:00 and
+15:00 Africa/Gaborone (CAT) — see DAILY_SLOT_TIMES in alert_email.py — each
+covering everything that came through (by created_at) since the previous slot.
+Records are ordered with the org's own country first. The alert's banner
+image (if set) is embedded inline and links to login.
 
 Usage:
     python manage.py send_daily_alerts                       # all active daily alerts
@@ -20,7 +22,10 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from monitor.models import Alert
-from monitor.alert_email import build_and_send, gather, start_of_today, daily_alert_due
+from monitor.alert_email import (
+    build_and_send, gather, start_of_today, daily_alert_due,
+    MAX_PUBLISH_AGE_DAYS, DEFAULT_MAX_PUBLISH_AGE_DAYS,
+)
 
 
 class Command(BaseCommand):
@@ -58,9 +63,10 @@ class Command(BaseCommand):
         # Skip alerts with no recipients at all.
         alerts = [a for a in qs if a.recipient_list()]
 
-        # Daily alerts fire at each alert's own delivery_time (default 08:00). The
-        # beat job runs every ~15 min; only send the ones due now. A forced single
-        # --alert run or --test bypasses this so you can always send on demand.
+        # Daily alerts fire at two fixed times, 08:00 and 15:00 CAT (see
+        # DAILY_SLOT_TIMES in alert_email.py). The beat job runs every ~15 min;
+        # only send the ones due now. A forced single --alert run or --test
+        # bypasses this so you can always send on demand.
         if frequency == 'daily' and not alert_id and not test:
             now = timezone.localtime()
             alerts = [a for a in alerts if daily_alert_due(a, now)]
@@ -73,11 +79,20 @@ class Command(BaseCommand):
         for alert in alerts:
             org = alert.organization
             recipients = alert.recipient_list()
-            # A test send ignores the watermark and reports the full day.
-            since = start_of_today() if test else (alert.last_sent_at or start_of_today())
+            # A test send ignores the watermark and reports the full current day.
+            # Every real send — daily included, since 2026-09-14 — scopes to
+            # `since` = last_sent_at (or start_of_today() on an alert's first-ever
+            # run): a daily digest now covers everything since its *previous*
+            # slot (08:00 or 15:00 CAT), so a missed slot's coverage isn't lost,
+            # it rolls into the next one instead (see daily_alert_due's docstring).
+            if test:
+                since = start_of_today()
+            else:
+                since = alert.last_sent_at or start_of_today()
 
             if dry_run:
-                online, print_arts, social, broadcast = gather(org, since)
+                max_age = MAX_PUBLISH_AGE_DAYS.get(alert.frequency, DEFAULT_MAX_PUBLISH_AGE_DAYS)
+                online, print_arts, social, broadcast = gather(org, since, max_publish_age_days=max_age)
                 total = len(online) + len(print_arts) + len(social) + len(broadcast)
                 if not test and alert.frequency == 'immediate' and total == 0:
                     continue

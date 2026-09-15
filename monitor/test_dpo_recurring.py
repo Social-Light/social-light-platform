@@ -132,13 +132,13 @@ class MiddlewareGatingTests(TestCase):
         self.assertNotEqual(response.get('Location', ''), reverse('monitor:billing'))
         self.assertTrue(self.org.has_platform_access)
 
-    def test_lapsed_org_is_redirected_to_billing(self):
+    def test_lapsed_org_is_redirected_to_the_demo_expired_page(self):
         self.org.activate_package(self.package)
         self.org.current_period_end = timezone.now() - timedelta(days=1)
         self.org.save(update_fields=['current_period_end'])
 
         response = self.client.get(reverse('monitor:organizations'))
-        self.assertRedirects(response, reverse('monitor:billing'))
+        self.assertRedirects(response, reverse('monitor:demo_expired'))
 
 
 @override_settings(**DPO_SETTINGS)

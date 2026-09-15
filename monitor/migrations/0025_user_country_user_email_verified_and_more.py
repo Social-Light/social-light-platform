@@ -12,7 +12,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('monitor', '0016_package_entitlement_map_and_free_tier'),
+        ('monitor', '0024_package_entitlement_map_and_free_tier'),
     ]
 
     operations = [

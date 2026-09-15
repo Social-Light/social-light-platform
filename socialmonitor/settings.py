@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'crispy_forms',
     'crispy_bootstrap5',
     'widget_tweaks',
+    'anymail',
     'monitor',
 ]
 
@@ -128,26 +129,74 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')  # monitor/sentiment_ai.py
+# Additional Groq accounts' keys — monitor/sentiment_ai.py's analyze_sentiment()
+# and monitor/date_ai.py's extract_published_date() fall back through these in
+# order when a request fails (in practice: each account's own free-tier
+# 200,000 tokens/day cap, which report_ai.py/sector_ai.py/issue_report_ai.py
+# also draw against — GROQ_API_KEY specifically, not the _2/_3/_4 accounts).
+# All optional; leave blank to run on fewer accounts.
+GROQ_API_KEY_2 = os.getenv('GROQ_API_KEY_2', '')
+GROQ_API_KEY_3 = os.getenv('GROQ_API_KEY_3', '')
+GROQ_API_KEY_4 = os.getenv('GROQ_API_KEY_4', '')
+GROQ_API_KEY_5 = os.getenv('GROQ_API_KEY_5', '')
+GROQ_API_KEY_6 = os.getenv('GROQ_API_KEY_6', '')
+GROQ_API_KEY_7 = os.getenv('GROQ_API_KEY_7', '')
+
+# Dedicated to monitor/date_ai.py's extract_published_date() ONLY — never
+# read by sentiment_ai.py (see that module's _groq_api_keys() vs. date_ai.py's
+# own), so re-dating social posts to their real publish date never competes
+# with sentiment analysis for quota, and vice versa.
+GROQ_API_KEY_DATE_1 = os.getenv('GROQ_API_KEY_DATE_1', '')
+GROQ_API_KEY_DATE_2 = os.getenv('GROQ_API_KEY_DATE_2', '')
+
+# Dedicated to monitor/report_ai.py's generate_analysis() and
+# monitor/issue_report_ai.py's generate_issue_report() ONLY — appended after
+# the shared pool above by report_ai._groq_api_keys(), so it's spent only as
+# a last resort once every shared key is exhausted for the day, rather than
+# competing with sentiment_ai.py's continuous live traffic for quota.
+GROQ_API_KEY_REPORTS = os.getenv('GROQ_API_KEY_REPORTS', '')
+# Self-hosted metasearch (same instance media-monitor's discovery/services/
+# search_api.py uses) — sector_ai.py's free fallback when Anthropic is
+# unavailable. Reachable on the compose network; see docker-compose.yml.
+SEARXNG_URL = os.getenv('SEARXNG_URL', 'http://searxng:8080')
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN', '')
 
 # ── Email ──────────────────────────────────────────────────────
-# Onboarding depends on outbound email: a new account cannot reach the product
-# until it follows a verification link. Delivery goes over SMTP, and which mail
-# server is used is a .env question rather than a code one — nothing here names a
-# provider. Run `manage.py test_email you@example.com` to check what is live and
-# whether it actually delivers.
+# 2026-09-03: sociallightbw.com is not a verified sending domain in Resend
+# (only sociallight.africa is — see resend.com/domains) — sending from it 403s
+# on every attempt, so DEFAULT_FROM_EMAIL's fallback below matches the verified
+# domain. That was the only real bug; it is fixed regardless of transport.
 #
-#   1. Any SMTP provider — a hosted mail service or your own mail server
+# 2026-09-04: this host cannot reach outbound SMTP at all — ports 587/465 to
+# smtp.resend.com time out (confirmed: a raw socket connect hangs the full
+# EMAIL_TIMEOUT and never completes), while HTTPS/443 is wide open. The
+# payments/onboarding merge (origin/main PR #36) had defaulted this deployment
+# onto plain SMTP, which is what turned a pre-existing, unrelated firewall fact
+# into a broken signup — every registration hung for EMAIL_TIMEOUT seconds
+# before the mail attempt gave up. Back on the vendor HTTP-API backend
+# (`anymail`, reaching Resend over 443) for that reason. Which mail path is
+# used is still a .env decision, never a code one — set EMAIL_BACKEND to
+# whichever of the options below the deployment can actually reach:
+#
+#   1. Resend's HTTP API — works anywhere plain HTTPS does, including here
+#        EMAIL_BACKEND=anymail.backends.resend.EmailBackend
+#        RESEND_API_KEY=...
+#
+#   2. Any SMTP provider — a hosted mail service or your own mail server
 #        EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 #        EMAIL_HOST=smtp.your-provider.example
 #        EMAIL_PORT=587
 #        EMAIL_USE_TLS=True          ← port 587; use EMAIL_USE_SSL on port 465
 #        EMAIL_HOST_USER=...  EMAIL_HOST_PASSWORD=...
 #
-#   2. The console, for development — the whole message, link included, is
+#   3. The console, for development — the whole message, link included, is
 #      printed to the terminal and nothing is sent anywhere
 #        EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <noreply@sociallight.africa>')
+#
+# Run `manage.py test_email you@example.com` to check what is live and whether
+# it actually delivers.
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Social Light <support@sociallight.africa>')
 SERVER_EMAIL = os.getenv('SERVER_EMAIL', DEFAULT_FROM_EMAIL)
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 
@@ -166,9 +215,32 @@ EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '20'))
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
     EMAIL_USE_SSL = False
 
+# What the anymail backend needs when EMAIL_BACKEND selects it (option 1 above).
+# Harmless and unused otherwise — anymail is always installed (INSTALLED_APPS),
+# but nothing reads ANYMAIL unless EMAIL_BACKEND actually points at it.
+RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+ANYMAIL = {
+    'RESEND_API_KEY': RESEND_API_KEY,
+}
+
 MEDIA_MONITOR_WEBHOOK_SECRET = os.getenv('MEDIA_MONITOR_WEBHOOK_SECRET', '')
+# Distinct from MEDIA_MONITOR_WEBHOOK_SECRET, which already authenticates a
+# different (outbound alert) integration — see print_cover_webhook docstring.
+PRINT_COVER_WEBHOOK_SECRET = os.getenv('PRINT_COVER_WEBHOOK_SECRET', '')
 
 ARTICLE_EXTRACTOR_URL = os.getenv('ARTICLE_EXTRACTOR_URL', 'https://extractor.sociallight.africa/')
+# Signs the short-lived, single-use handoff token that lets a logged-in org
+# member land signed-in on the extractor with no separate account there — see
+# monitor/extractor_sso.py. Deliberately its own secret, not either app's
+# SECRET_KEY: rotating one app's SECRET_KEY must not silently break the other
+# side's handoff. Must be identical in both apps' .env, same as
+# PRINT_COVER_WEBHOOK_SECRET above.
+EXTRACTOR_SSO_SECRET = os.getenv('EXTRACTOR_SSO_SECRET', '')
+# Verifies a "My Extracts" push from the extractor (monitor/views.py:
+# extractor_push_webhook) — must be identical to that app's own
+# EXTRACTOR_PUSH_WEBHOOK_SECRET. Distinct from EXTRACTOR_SSO_SECRET (that one
+# proves a login came from here; this one proves an article came from there).
+EXTRACTOR_PUSH_WEBHOOK_SECRET = os.getenv('EXTRACTOR_PUSH_WEBHOOK_SECRET', '')
 
 # ── mediahost clips API ───────────────────────────────────────────────────────
 # Single global API key (x-api-key header). Imported clips route to organisations
@@ -223,6 +295,11 @@ TRIAL_PERIOD_DAYS = int(os.getenv('TRIAL_PERIOD_DAYS', '14'))
 SALES_NOTIFICATION_EMAILS = [
     e.strip() for e in os.getenv('SALES_NOTIFICATION_EMAILS', 'sales@sociallight.africa').split(',') if e.strip()
 ]
+# Where new trial signups are emailed as they happen. Comma-separated; empty
+# disables the notification entirely (see _notify_new_signup).
+SIGNUP_NOTIFICATION_EMAILS = [
+    e.strip() for e in os.getenv('SIGNUP_NOTIFICATION_EMAILS', 'support@sociallight.africa').split(',') if e.strip()
+]
 
 # ── Onboarding & email verification ──────────────────────────────────────────
 # How long a verification link stays valid. A user whose link has expired can ask
@@ -234,7 +311,8 @@ EMAIL_VERIFICATION_TTL_HOURS = int(os.getenv('EMAIL_VERIFICATION_TTL_HOURS', '48
 # monitor/entitlements.py (basic monitoring, dashboard, alerts). Set to a
 # comma-separated list of feature codes to widen or narrow the free tier without
 # a release. TRIAL_ENTITLEMENTS does the same for the free trial; unset means the
-# trial unlocks everything, which is how it has always behaved.
+# trial is monitoring only (basic monitoring, dashboard) — the 14-day clock is
+# the trial's limit, not an unrestricted feature set.
 _free_entitlements = os.getenv('FREE_PLAN_ENTITLEMENTS', '')
 if _free_entitlements:
     FREE_PLAN_ENTITLEMENTS = [c.strip() for c in _free_entitlements.split(',') if c.strip()]
@@ -322,13 +400,34 @@ CELERY_TASK_TIME_LIMIT = 600
 CELERY_BEAT_SCHEDULE = {
     'send-daily-digests': {
         'task': 'monitor.send_alerts',
-        'schedule': crontab(minute='*/15'),          # 08:00 Africa/Gaborone, daily
+        # Ticks every 15 min; daily_alert_due() (alert_email.py) gates the
+        # actual send to the two fixed slots, 08:00 + 15:00 Africa/Gaborone.
+        'schedule': crontab(minute='*/15'),
         'kwargs': {'frequency': 'daily'},
     },
     'send-immediate-alerts': {
         'task': 'monitor.send_alerts',
         'schedule': crontab(minute='*/15'),             # every 15 min, picks up new records
         'kwargs': {'frequency': 'immediate'},
+    },
+    'update-sector-intelligence': {
+        'task': 'monitor.update_sector_intelligence',
+        'schedule': crontab(hour=5, minute=12),          # once daily, before business hours
+    },
+    'analyze-sentiment': {
+        'task': 'monitor.analyze_sentiment',
+        'schedule': crontab(minute='*/30'),              # every 30 min, picks up newly-ingested mentions
+    },
+    # Pulls Tony's personal Apify Facebook-posts schedule (FNBB + BPC's own
+    # pages) into SocialMediaPost. The Apify actor itself runs @daily and its
+    # last run typically finishes ~02:40 UTC; 05:00 UTC gives it comfortable
+    # room to finish before this pulls the dataset. Added 2026-09-11 — this
+    # command had run manually-only since 2026-09-04, and un-noticed silence
+    # after 2026-09-08 lost several days of owned Facebook coverage. See
+    # monitor/management/commands/pull_facebook_schedule.py for the full story.
+    'pull-facebook-schedule': {
+        'task': 'monitor.pull_facebook_schedule',
+        'schedule': crontab(hour=5, minute=0),
     },
     # Charges saved cards for subscriptions whose paid period has run out.
     # Hourly rather than daily so a renewal lands close to the moment it falls
@@ -380,6 +479,17 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
 
 MENTION_RELEVANCY_THRESHOLD = float(os.getenv('MENTION_RELEVANCY_THRESHOLD', '0'))
+# 2026-09-01, at Tony's request: analyze_sentiment (management command +
+# Celery Beat task) previously had no date scope at all — every scheduled
+# run chipped away at the ENTIRE historical backlog of unanalysed mentions
+# (across all orgs/history), competing with report_ai.py/live traffic for
+# the same shared Groq daily-token pool (see report_ai.py's module
+# docstring). Setting this stops the backlog dead: only mentions published
+# on/after this date get AI sentiment going forward; older unanalysed rows
+# are left as-is permanently unless a deliberate one-off backfill is run
+# with --include-backlog. ISO date (YYYY-MM-DD); blank disables the cutoff
+# (restores the old unscoped behaviour).
+SENTIMENT_AI_CUTOFF_DATE = os.getenv('SENTIMENT_AI_CUTOFF_DATE', '')
 # TEMPORARY: drop YouTube clips at ingest time (source/link is YouTube). Set
 # MEDIAHOST_EXCLUDE_YOUTUBE=0 to re-enable YouTube coverage.
 MEDIAHOST_EXCLUDE_YOUTUBE = os.getenv('MEDIAHOST_EXCLUDE_YOUTUBE', '1') not in ('0', 'false', 'False', '')

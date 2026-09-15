@@ -1,0 +1,43 @@
+{% extends 'monitor/email/base_email.html' %}
+
+{% block title %}New trial signup — {{ org_name }}{% endblock %}
+{% block subtitle %}New Trial Signup{% endblock %}
+
+{% block content %}
+<p>Hi Support,</p>
+
+<p><strong>{{ org_name }}</strong> just started a free trial.</p>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;font-size:14px;">
+    <tr>
+        <td style="padding:6px 0;color:#666;width:140px;">Organisation</td>
+        <td style="padding:6px 0;color:#333;"><strong>{{ org_name }}</strong></td>
+    </tr>
+    <tr>
+        <td style="padding:6px 0;color:#666;">Contact</td>
+        <td style="padding:6px 0;color:#333;">{{ contact_name }} &lt;{{ contact_email }}&gt;</td>
+    </tr>
+    <tr>
+        <td style="padding:6px 0;color:#666;">Phone</td>
+        <td style="padding:6px 0;color:#333;">{{ contact_phone|default:"—" }}</td>
+    </tr>
+    <tr>
+        <td style="padding:6px 0;color:#666;">Country</td>
+        <td style="padding:6px 0;color:#333;">{{ country|default:"—" }}</td>
+    </tr>
+    <tr>
+        <td style="padding:6px 0;color:#666;">Registration ID</td>
+        <td style="padding:6px 0;color:#333;"><span class="link">{{ registration_id }}</span></td>
+    </tr>
+    <tr>
+        <td style="padding:6px 0;color:#666;">Trial ends</td>
+        <td style="padding:6px 0;color:#333;">{% if trial_ends_at %}{{ trial_ends_at|date:"j F Y" }}{% else %}n/a{% endif %}</td>
+    </tr>
+</table>
+
+<div class="btn-wrap">
+    <a href="{{ admin_url }}" class="button button--blue">Open in admin</a>
+</div>
+
+<p>— The Social Light Team</p>
+{% endblock %}

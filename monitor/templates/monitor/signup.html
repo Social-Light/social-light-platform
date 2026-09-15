@@ -11,12 +11,13 @@
   <link rel="manifest" href="{% static 'favicon/site.webmanifest' %}?v=2">
   <meta name="theme-color" content="#ffffff">
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
   <style>
     *,*::before,*::after{box-sizing:border-box;}
     html,body{height:100%;margin:0;padding:0;}
-    body{display:flex;min-height:100vh;font-family:'Inter',system-ui,sans-serif;color:#0f172a;background:#fff;-webkit-font-smoothing:antialiased;}
+    body{display:flex;min-height:100vh;font-family:'Montserrat',system-ui,sans-serif;color:#0f172a;background:#fff;-webkit-font-smoothing:antialiased;}
+    .su-heading{font-family:'Poppins',sans-serif;}
 
     /* ── Left: the form ── */
     .su-left{flex:1;display:flex;justify-content:center;padding:44px 48px;overflow-y:auto;}
@@ -26,7 +27,7 @@
     .su-logo{display:flex;align-items:center;gap:11px;text-decoration:none;}
     .su-logo img{width:40px;height:40px;object-fit:contain;border-radius:8px;}
     .su-logo-name{font-size:15px;font-weight:800;color:#0f172a;letter-spacing:.06em;line-height:1;}
-    .su-logo-name .lt{color:#3891C7;}
+    .su-logo-name .lt{color:#0B4893;}
     .su-close{color:#94a3b8;font-size:22px;line-height:1;text-decoration:none;padding:4px 8px;border-radius:6px;}
     .su-close:hover{color:#0f172a;background:#f1f5f9;}
 
@@ -39,7 +40,7 @@
     select.su-input{appearance:none;background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3e%3cpolyline points='6 9 12 15 18 9'/%3e%3c/svg%3e");background-repeat:no-repeat;background-position:right 12px center;background-size:16px;padding-right:38px;}
     .su-label{display:block;font-size:11px;font-weight:600;color:#64748b;letter-spacing:.09em;text-transform:uppercase;margin-bottom:7px;}
     .su-input{width:100%;padding:12px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14.5px;font-family:inherit;color:#0f172a;background:#fff;outline:none;transition:border-color .18s,box-shadow .18s;}
-    .su-input:focus{border-color:#3891C7;box-shadow:0 0 0 3px rgba(56,145,199,.12);}
+    .su-input:focus{border-color:#0B4893;box-shadow:0 0 0 3px rgba(11,72,147,.12);}
     .su-input::placeholder{color:#94a3b8;}
     .su-input.is-invalid{border-color:#dc2626;}
     .su-hint{display:block;font-size:12px;color:#94a3b8;margin-top:6px;}
@@ -53,20 +54,20 @@
 
     .su-alert{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:11px 14px;font-size:13px;display:flex;align-items:flex-start;gap:8px;margin-bottom:22px;}
 
-    .btn-create{width:100%;padding:14px;margin-top:8px;background:#12305f;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;transition:transform .15s,box-shadow .15s,background .15s;box-shadow:0 4px 16px rgba(18,48,95,.28);}
-    .btn-create:hover{background:#0d2547;transform:translateY(-1px);box-shadow:0 6px 22px rgba(18,48,95,.34);}
+    .btn-create{width:100%;padding:14px;margin-top:8px;background:#062E72;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;transition:transform .15s,box-shadow .15s,background .15s;box-shadow:0 4px 16px rgba(18,48,95,.28);}
+    .btn-create:hover{background:#041F4D;transform:translateY(-1px);box-shadow:0 6px 22px rgba(18,48,95,.34);}
     .btn-create:active{transform:translateY(0);}
 
     .su-signin{text-align:center;margin-top:24px;font-size:13.5px;color:#64748b;}
-    .su-signin a{color:#3891C7;font-weight:600;text-decoration:none;}
+    .su-signin a{color:#0B4893;font-weight:600;text-decoration:none;}
     .su-signin a:hover{text-decoration:underline;}
     .su-terms{text-align:center;font-size:11.5px;color:#94a3b8;line-height:1.6;margin-top:18px;}
     .su-terms a{color:#64748b;text-decoration:underline;}
     .su-terms a:hover{color:#0f172a;}
 
     /* ── Right: the trial panel ── */
-    .su-right{width:46%;max-width:560px;flex-shrink:0;position:relative;overflow:hidden;background:linear-gradient(165deg,#12305f 0%,#1d4878 55%,#0d2547 100%);color:#fff;padding:52px 52px;display:flex;flex-direction:column;}
-    .su-right::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#f59e0b 0%,#22c55e 55%,#3891C7 100%);}
+    .su-right{width:46%;max-width:560px;flex-shrink:0;position:relative;overflow:hidden;background:linear-gradient(165deg,#062E72 0%,#062E72 55%,#041F4D 100%);color:#fff;padding:52px 52px;display:flex;flex-direction:column;}
+    .su-right::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#f59e0b 0%,#22c55e 55%,#0B4893 100%);}
     .su-right::after{content:'';position:absolute;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(66,148,206,.20) 0%,transparent 70%);bottom:-90px;right:-110px;pointer-events:none;}
     .su-right>*{position:relative;z-index:1;}
 
@@ -237,7 +238,7 @@
   </ul>
 
   <p style="margin:26px 0 0;font-size:13.5px;color:rgba(255,255,255,.6);">
-    <a href="{% url 'monitor:pricing' %}" style="color:#8dcaed;font-weight:600;text-decoration:none;">See the full price list →</a>
+    <a href="{% url 'monitor:pricing' %}" style="color:#F5B01B;font-weight:600;text-decoration:none;">See the full price list →</a>
   </p>
 
   <div class="su-divider"></div>

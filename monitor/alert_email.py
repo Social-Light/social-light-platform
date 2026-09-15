@@ -4,7 +4,7 @@ Shared logic for building and sending the media-digest alert email.
 Used by both the scheduled management command (send_daily_alerts) and the
 "Send test now" button in the UI, so the two paths stay identical.
 """
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from email.mime.image import MIMEImage
 
 from django.conf import settings
@@ -12,6 +12,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from .alert_xlsx import build_workbook
 from .relevancy import filter_relevant
 
 
@@ -27,7 +28,35 @@ def _pub_ordinal(obj):
     return d.toordinal() if d else 0
 
 
-def gather(org, since, alert=None):
+
+# How far back a mention's own publish date may be and still count as "new" for
+# a digest, keyed by Alert.frequency. A backfill or late import can create a
+# row today (created_at = now) for something published months ago — without
+# this, `since` (a created_at watermark) alone would let it through as if it
+# just happened. Values are generous grace windows around each cadence, not a
+# strict window equal to it, so a slightly-delayed same-cycle item still shows.
+#
+# 'daily' has no entry (falls back to DEFAULT_MAX_PUBLISH_AGE_DAYS below) as of
+# 2026-09-14 (Tony): it used to be 0 — an EXACT match on today's date_published —
+# to stop a stuck watermark from ever ballooning into a multi-day backlog dump.
+# That's now handled instead by daily_alert_due()/send_daily_alerts sending
+# twice a day (08:00 + 15:00 CAT) off the `last_sent_at` watermark, which caps
+# any gap at one missed slot and self-heals on the next tick — so the
+# exact-day rule was pure downside: it silently and *permanently* dropped
+# genuinely relevant coverage whenever a source's own date_published lagged its
+# ingestion date by so much as a day (e.g. wire-syndicated stories, or social
+# mentions the crawler only discovers after the fact) — see the 2026-09-14
+# audit for BPC/L'Oréal SA examples. A grace window (like immediate's) still
+# guards against an old backfill reading as "new" without that permanent loss.
+MAX_PUBLISH_AGE_DAYS = {
+    'immediate': 3,
+    'weekly':    10,
+    'monthly':   35,
+}
+DEFAULT_MAX_PUBLISH_AGE_DAYS = 3
+
+
+def gather(org, since, alert=None, max_publish_age_days=None):
     """
     Return (online, print, social, broadcast) lists of records that came through
     since `since` (a datetime watermark, by created_at), each sorted with the
@@ -36,17 +65,34 @@ def gather(org, since, alert=None):
     When `alert` is given and its categories exclude 'mention' (see
     Alert.wants_category), all four lists come back empty — the alert has been
     configured to skip raw media mentions entirely (e.g. reports/system only).
+
+    max_publish_age_days: if given, also requires date_published to fall within
+    that many days of today — independent of created_at. Without this, a row
+    backfilled today for something published months ago passes the created_at
+    watermark and reads as "new" in the digest. 0 is a special case — an EXACT
+    match on today's date_published (see MAX_PUBLISH_AGE_DAYS's 'daily' entry),
+    rather than a >= bound, so a stray future-dated row can't slip in under a
+    >= comparison. Pass None to skip this guard entirely (e.g. for tooling that
+    intentionally wants everything since the watermark).
     """
     if alert is not None and not alert.wants_category('mention'):
         return [], [], [], []
 
     oc = org.country or ''
+    today = timezone.localdate()
+    exact_today = max_publish_age_days == 0
+    earliest_pub = (
+        today - timedelta(days=max_publish_age_days)
+        if max_publish_age_days is not None and not exact_today else None
+    )
 
     def collect(manager):
-        items = list(
-            filter_relevant(manager.all())
-            .filter(created_at__gte=since).order_by('-date_published', '-created_at')[:50]
-        )
+        qs = filter_relevant(manager.all()).filter(created_at__gte=since)
+        if exact_today:
+            qs = qs.filter(date_published=today)
+        elif earliest_pub is not None:
+            qs = qs.filter(date_published__gte=earliest_pub)
+        items = list(qs.order_by('-date_published', '-created_at')[:50])
         return sorted(items, key=lambda a: (_country_sort_key(a, oc), -_pub_ordinal(a)))
 
     return (
@@ -73,33 +119,42 @@ def start_of_today():
     return timezone.make_aware(datetime.combine(timezone.localdate(), time.min))
 
 
-# Used when a daily alert has no delivery_time set on the form.
-DEFAULT_DELIVERY_TIME = time(8, 0)
+# Fixed twice-daily send times, Africa/Gaborone (CAT) — 2026-09-14 (Tony);
+# evening slot moved 18:00 -> 15:00 same day: every daily alert fires at both,
+# regardless of any per-alert delivery_time (that field is no longer consulted
+# for frequency='daily'; it's still used, unchanged, by other frequencies).
+# Each slot's digest covers everything since the *previous* slot via the
+# last_sent_at watermark — 08:00 carries what came in overnight since the day
+# before's 15:00 send, 15:00 carries what came in since that morning's 08:00
+# send.
+DAILY_SLOT_TIMES = [time(8, 0), time(15, 0)]
 
 
 def daily_alert_due(alert, now=None):
     """
-    True when a daily alert should be sent on this run: the current local time has
-    reached the alert's delivery_time today (default 08:00 when unset), it hasn't
-    already been sent since that time today, and we're on/after its start_date.
+    True when a daily alert should be sent on this run: at least one of today's
+    fixed slots (DAILY_SLOT_TIMES) has already passed and hasn't been sent yet,
+    and we're on/after the alert's start_date.
 
     The beat job runs every ~15 min and calls this for each daily alert, so each
-    one fires once per day at its chosen time. The last_sent_at watermark stops
-    repeats and gives automatic catch-up if a scheduled tick was missed.
+    slot fires once, at or shortly after its clock time. The last_sent_at
+    watermark stops repeats and gives automatic catch-up if a tick was missed:
+    e.g. if 08:00 failed to send, by 15:00 that slot is still "due" (last_sent_at
+    predates it), so the 15:00 run sends one digest covering the whole gap back
+    to the last successful send, rather than losing that slot's coverage.
     """
     now = now or timezone.localtime()
     if alert.start_date and now.date() < alert.start_date:
         return False
-    delivery = alert.delivery_time or DEFAULT_DELIVERY_TIME
-    scheduled = timezone.make_aware(datetime.combine(now.date(), delivery))
-    if now < scheduled:
-        return False
-    if alert.last_sent_at and alert.last_sent_at >= scheduled:
-        return False
-    return True
+    for slot in DAILY_SLOT_TIMES:
+        scheduled = timezone.make_aware(datetime.combine(now.date(), slot))
+        if now >= scheduled and (not alert.last_sent_at or alert.last_sent_at < scheduled):
+            return True
+    return False
 
 
-def build_and_send(alert, *, since=None, force=False, update_watermark=True, recipients_override=None):
+def build_and_send(alert, *, since=None, force=False, update_watermark=True,
+                    recipients_override=None, include_xlsx=False):
     """
     Build and send the digest email for a single alert.
 
@@ -110,6 +165,9 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True, rec
     - `update_watermark`: advance alert.last_sent_at after a successful send.
     - `recipients_override`: send to these addresses instead of the alert's
       configured recipients (used by the "send test to me" button).
+    - `include_xlsx`: attach the .xlsx workbook to the email. Defaults to False —
+      digest emails are HTML-only; the workbook is available on demand instead
+      (see views.alert_download_xlsx), not pushed out with every automated send.
 
     Returns a dict describing the outcome. Raises if the email backend fails to send.
     """
@@ -122,7 +180,8 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True, rec
     if since is None:
         since = alert.last_sent_at or start_of_today()
 
-    online, print_arts, social, broadcast = gather(org, since, alert)
+    max_age = MAX_PUBLISH_AGE_DAYS.get(alert.frequency, DEFAULT_MAX_PUBLISH_AGE_DAYS)
+    online, print_arts, social, broadcast = gather(org, since, alert, max_publish_age_days=max_age)
     events = gather_events(org, since, alert.categories)
     reports = [e for e in events if e.category == 'report']
     system_events = [e for e in events if e.category == 'system']
@@ -184,7 +243,19 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True, rec
         img.add_header('Content-ID', '<alertbanner>')
         img.add_header('Content-Disposition', 'inline', filename='banner')
         msg.attach(img)
-        msg.mixed_subtype = 'related'
+        # Deliberately NOT setting mixed_subtype = 'related' here: that would wrap
+        # the whole message (including the xlsx attachment below) in
+        # multipart/related, which some clients (notably Outlook) treat as "only
+        # render parts the HTML actually references via cid:" — silently dropping
+        # the real, downloadable xlsx attachment. Plain multipart/mixed (Django's
+        # default) still renders the inline cid-referenced banner correctly in
+        # every mainstream client, while keeping the xlsx as a normal attachment.
+
+    if include_xlsx:
+        xlsx_bytes = build_workbook(online, print_arts, social, broadcast)
+        xlsx_name = f"{org.name}-media-digest-{timezone.localdate().isoformat()}.xlsx"
+        msg.attach(xlsx_name, xlsx_bytes,
+                   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     msg.send()  # let failures propagate to the caller
 

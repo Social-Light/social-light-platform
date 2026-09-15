@@ -151,7 +151,7 @@ def remove_refund_policy(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
-    dependencies = [('monitor', '0020_assessmentsubmission')]
+    dependencies = [('monitor', '0028_assessmentsubmission')]
 
     operations = [
         migrations.AlterField(

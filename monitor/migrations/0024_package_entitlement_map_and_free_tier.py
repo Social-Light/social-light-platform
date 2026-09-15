@@ -100,7 +100,7 @@ def remove_entitlements(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('monitor', '0015_package_entitlements_package_is_public_and_more'),
+        ('monitor', '0023_package_entitlements_package_is_public_and_more'),
     ]
 
     operations = [

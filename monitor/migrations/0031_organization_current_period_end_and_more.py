@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('monitor', '0022_alter_consentrecord_doc_type'),
+        ('monitor', '0030_alter_consentrecord_doc_type'),
     ]
 
     operations = [
