@@ -44,6 +44,11 @@ LEGAL_DOCUMENT_TYPES = [
     # cancellations; it is not a permission the user grants us, and adding it to
     # the consent gate would force every existing account to re-accept.
     ('refund', 'Refund & Cancellation Policy'),
+    # Same arrangement as the refund policy: published and publicly readable,
+    # but not part of the onboarding consent gate. Cookie consent is given at
+    # the banner on the public pages, by a visitor who has no account yet, so
+    # putting it in the wizard would ask the wrong people at the wrong time.
+    ('cookies', 'Cookie Notice'),
 ]
 
 # Deliberately explicit. Nothing drafted in-product may be presented to a user as

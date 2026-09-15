@@ -1,0 +1,69 @@
+{% comment %}
+The cookie banner.
+
+Shown only when there is something to consent to — with no pixel and no GA4
+configured, no third-party cookie is ever set and asking would be theatre — and
+only until the visitor has answered once either way.
+
+Two buttons, both real. "Decline" is not a dark pattern here: it writes the same
+cookie with a different value, so the answer sticks and the visitor is not asked
+again on their next visit. Nothing on the site stops working either way, because
+the lead attribution that actually reports on campaigns is first-party and runs
+regardless.
+
+The choice is stored in a cookie rather than the session because it has to
+outlive the session; a decision that expires in two weeks is not a decision.
+
+Styled with the landing page's tokens as literal values rather than var()
+references, because this partial is included by pages that carry different token
+blocks and one of them (the price list) carries none of these at all.
+{% endcomment %}
+{% if tracking_configured and not cookie_consent %}
+<div id="sl-cookie-banner" role="dialog" aria-live="polite"
+     aria-label="Cookies on this site" style="
+  position:fixed;left:16px;right:16px;bottom:16px;z-index:9999;max-width:760px;margin:0 auto;
+  background:#FFFFFF;border:1px solid #E3E8ED;border-radius:14px;
+  box-shadow:0 18px 48px rgba(6,46,114,.18);padding:22px 24px;
+  font-family:'Montserrat','Inter',system-ui,sans-serif;">
+  <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:center;justify-content:space-between;">
+    <div style="flex:1 1 380px;min-width:260px;">
+      <div style="font-family:'Poppins','Montserrat',system-ui,sans-serif;font-weight:600;
+                  font-size:15px;color:#0C1420;margin-bottom:6px;">Cookies on this site</div>
+      <p style="margin:0;font-size:13.5px;line-height:1.55;color:#4A5568;">
+        We use cookies to see which campaigns bring people here and to show our ads to
+        people who have visited before. Decline and the site works exactly the same.
+        <a href="{% url 'monitor:legal_document' 'cookies' %}"
+           style="color:#0A6C9E;text-decoration:underline;">Read the cookie notice</a>.
+      </p>
+    </div>
+    <div style="display:flex;gap:10px;flex:0 0 auto;">
+      <button type="button" data-sl-consent="essential" style="
+        border:1px solid #E3E8ED;background:#FFFFFF;color:#4A5568;border-radius:9px;
+        padding:11px 18px;font-size:13.5px;font-weight:600;cursor:pointer;
+        font-family:'Montserrat','Inter',system-ui,sans-serif;">Decline</button>
+      <button type="button" data-sl-consent="all" style="
+        border:1px solid #062E72;background:#062E72;color:#FFFFFF;border-radius:9px;
+        padding:11px 18px;font-size:13.5px;font-weight:600;cursor:pointer;
+        font-family:'Montserrat','Inter',system-ui,sans-serif;">Accept</button>
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    var banner = document.getElementById('sl-cookie-banner');
+    if (!banner) { return; }
+    banner.addEventListener('click', function (event) {
+      var choice = event.target.getAttribute && event.target.getAttribute('data-sl-consent');
+      if (!choice) { return; }
+      var secure = location.protocol === 'https:' ? ';Secure' : '';
+      document.cookie = 'sl_cookie_consent=' + choice
+        + ';path=/;max-age={{ cookie_consent_max_age }};SameSite=Lax' + secure;
+      banner.remove();
+      // Accepting reloads so the tracking partial renders server-side. The
+      // scripts are never injected from here, which keeps one gate rather
+      // than two that can disagree.
+      if (choice === 'all') { location.reload(); }
+    });
+  })();
+</script>
+{% endif %}

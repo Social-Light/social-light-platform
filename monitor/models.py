@@ -1110,3 +1110,6 @@ from .assessment_models import (          # noqa: E402,F401
     ACTION_CHOICES, FIT_CHOICES, STATUS_CHOICES as ASSESSMENT_STATUS_CHOICES,
     TIER_CHOICES, AssessmentSubmission,
 )
+from .visit_models import (               # noqa: E402,F401
+    VisitCount,
+)

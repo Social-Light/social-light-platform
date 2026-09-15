@@ -177,3 +177,43 @@ class OrganizationAccessMiddleware:
         # than the price list directly — see subscription_views.demo_expired.
         # Its own CTA is what leads on to billing/checkout.
         return redirect('monitor:demo_expired')
+
+
+class AttributionMiddleware:
+    """Remember where each visit came from, for the length of the session.
+
+    Sits on every request rather than on the assessment view alone, because the
+    campaign parameters are on the *first* URL a visitor opens and that is
+    usually the landing page, not the form they eventually fill in.
+
+    Two things happen here, both once per visit rather than once per request: the
+    campaign is stored on the session, and the visit is added to a daily tally
+    per source so the site can say how many people arrived, not only how many
+    became leads.
+
+    Deliberately quiet. It skips anything that is not an ordinary page load —
+    API calls, the admin and static files carry no campaign parameters, and
+    counting them would inflate every number with machine traffic. After the
+    first page of a visit both halves short-circuit on a session flag, so the
+    steady-state cost is a dictionary lookup.
+    """
+    # The application area is excluded along with the machinery. A client
+    # working inside /app/ all day is not a marketing visit, and counting them
+    # would pile the platform's own daily usage onto "direct" — swamping the
+    # numbers this exists to produce.
+    SKIP_PREFIXES = ('/api/', '/admin/', '/static/', '/media/', '/payments/', '/app/')
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if (request.method == 'GET'
+                and not request.path.startswith(self.SKIP_PREFIXES)):
+            from . import attribution
+            data = attribution.capture(request)
+            # Counted once per visit, so this is people rather than page views.
+            # Signed-in users are excluded outright: an existing client reading
+            # the price list is not traffic a campaign brought in.
+            if not getattr(request.user, 'is_authenticated', False):
+                attribution.count_visit(request, data)
+        return self.get_response(request)

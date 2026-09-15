@@ -67,6 +67,7 @@ urlpatterns = [
     path('payments/cancelled/', subscription_views.checkout_cancelled, name='checkout_cancelled'),
 
     # Organizations
+    path('app/marketing/', views.marketing, name='marketing'),
     path('app/organizations/', views.organizations, name='organizations'),
     path('app/organizations/manage/', views.manage_organizations, name='manage_organizations'),
 

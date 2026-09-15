@@ -1,0 +1,52 @@
+{% extends "admin/change_list.html" %}
+{% comment %}
+The per-channel summary that sits above the day-by-day visit rows.
+
+The rows underneath answer "what happened on Tuesday", which is almost never the
+question. The question is "how many people has Facebook sent us, and how many of
+them became leads" — so that is what this block shows, and it respects whatever
+filter is applied to the list below it.
+
+The conversion column is the one worth reading. Visits alone flatter a channel
+that sends a lot of the wrong people; visits against leads does not.
+{% endcomment %}
+{% block result_list %}
+{% if visit_totals %}
+<div style="margin:0 0 22px;padding:18px 20px;background:#fff;border:1px solid #e3e8ed;border-radius:8px;">
+  <h2 style="margin:0 0 4px;font-size:15px;">Where the traffic came from</h2>
+  <p style="margin:0 0 14px;font-size:12px;color:#666;">
+    {% if visit_span.first %}{{ visit_span.first }} to {{ visit_span.last }}{% endif %}
+    — {{ visit_grand_total }} visit{{ visit_grand_total|pluralize }},
+    {{ lead_grand_total }} assessment{{ lead_grand_total|pluralize }} completed.
+    Reflects the filters applied below.
+  </p>
+  <table style="border-collapse:collapse;width:100%;max-width:620px;font-size:13px;">
+    <tr style="text-align:left;border-bottom:2px solid #e3e8ed;">
+      <th style="padding:7px 14px 7px 0;">Channel</th>
+      <th style="padding:7px 14px 7px 0;text-align:right;">Visits</th>
+      <th style="padding:7px 14px 7px 0;text-align:right;">Leads</th>
+      <th style="padding:7px 0;text-align:right;">Converted</th>
+    </tr>
+    {% for row in visit_totals %}
+    <tr style="border-bottom:1px solid #f0f3f6;">
+      <td style="padding:7px 14px 7px 0;font-weight:600;{% if row.channel == 'meta' %}color:#1877F2;{% elif row.channel == 'direct' %}color:#9B9B9B;{% endif %}">
+        {{ row.channel|default:"direct" }}</td>
+      <td style="padding:7px 14px 7px 0;text-align:right;">{{ row.visits }}</td>
+      <td style="padding:7px 14px 7px 0;text-align:right;">{{ row.leads }}</td>
+      <td style="padding:7px 0;text-align:right;{% if row.rate >= 5 %}color:#17754E;font-weight:600;{% endif %}">
+        {{ row.rate }}%</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p style="margin:14px 0 0;font-size:11.5px;color:#888;line-height:1.6;">
+    A channel is decided by the campaign tag first, then the referring site, then the
+    app whose in-app browser it is — so untagged Instagram and Facebook traffic still
+    counts as <strong>meta</strong> even though those apps send no referrer.
+    <strong>direct</strong> is what none of the three can place: WhatsApp, typed
+    addresses, bookmarks and desktop mail. Leads are matched to a channel by the visit
+    that produced them, so a lead appears here only if its visit was counted.
+  </p>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

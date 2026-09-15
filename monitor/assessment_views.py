@@ -22,7 +22,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from . import assessment, assessment_email
+from . import assessment, assessment_email, attribution, meta_pixel
 from .assessment_models import ACTION_CHOICES, AssessmentSubmission
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,8 @@ def assessment_submit(request):
     result = assessment.score(answers)
     submission = AssessmentSubmission.objects.create(
         answers=answers,
+        # Where the visit began, carried through from the landing page.
+        **attribution.submission_fields(request),
         note=result['note'][:MAX_NOTE_LENGTH],
         score=result['score'],
         tier=result['tier'],
@@ -87,11 +89,40 @@ def assessment_submit(request):
         submission.sales_notified_at = now
     submission.save(update_fields=['report_sent_at', 'sales_notified_at'])
 
-    logger.info('Assessment %s scored %s%% (%s) for %s',
-                submission.pk, submission.score, submission.fit, submission.company)
+    logger.info('Assessment %s scored %s%% (%s) for %s from %s',
+                submission.pk, submission.score, submission.fit, submission.company,
+                submission.source_label)
+
+    # Report the conversion to Meta from the server as well as the browser. The
+    # two carry the same event_id, so Meta counts one Lead however many arrive.
+    event_id = meta_pixel.new_event_id()
+    meta_pixel.send_event(
+        request, 'Lead', event_id=event_id,
+        event_source_url=request.build_absolute_uri('/assessment/'),
+        user=meta_pixel.user_data(
+            request,
+            email=submission.email,
+            first_name=submission.first_name,
+            last_name=submission.last_name,
+            country=submission.country,
+        ),
+        custom={
+            'content_name': 'Media intelligence assessment',
+            'content_category': submission.industry or 'unspecified',
+            # The score and fit tier are what make one lead worth more than
+            # another. Passing them lets Meta optimise toward the visitors who
+            # actually qualify rather than toward whoever fills a form fastest.
+            'value': float(submission.score),
+            'currency': 'BWP',
+            'lead_score': submission.score,
+            'lead_fit': submission.fit,
+        },
+    )
 
     return JsonResponse({
         'id': str(submission.pk),
+        # Handed back so the browser pixel can fire the matching Lead event.
+        'event_id': event_id,
         'result': result,
         'headline': assessment.HEADLINES[result['tier']],
         'summary': assessment.SUMMARIES[result['tier']],
@@ -124,7 +155,24 @@ def assessment_action(request, submission_id):
     submission.save(update_fields=['requested_action', 'requested_action_at'])
 
     assessment_email.notify_sales(submission, requested_action=action)
-    return JsonResponse({'ok': True})
+
+    # A lead who asks for a call is worth more than one who merely finished the
+    # questions, and is reported as a separate, further-down-funnel event.
+    event_id = meta_pixel.new_event_id()
+    meta_pixel.send_event(
+        request, 'Schedule', event_id=event_id,
+        user=meta_pixel.user_data(
+            request,
+            email=submission.email,
+            first_name=submission.first_name,
+            last_name=submission.last_name,
+            country=submission.country,
+        ),
+        custom={'content_name': dict(ACTION_CHOICES)[action],
+                'lead_score': submission.score,
+                'lead_fit': submission.fit},
+    )
+    return JsonResponse({'ok': True, 'event_id': event_id})
 
 
 def _clean_contact(contact):

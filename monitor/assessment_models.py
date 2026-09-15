@@ -64,6 +64,26 @@ class AssessmentSubmission(models.Model):
     timeline = models.CharField(max_length=20, blank=True)
     platforms = models.JSONField(default=list)
 
+    # ── Where they came from ─────────────────────────────────────────────────
+    # Copied off the session at submit time by monitor/attribution.py. Stored on
+    # the row rather than resolved later, so a lead's origin stays true after
+    # the campaign that produced it is renamed or switched off.
+    channel = models.CharField(
+        max_length=50, blank=True, db_index=True,
+        help_text='Where the visit came from: meta, google, linkedin, direct, referral…')
+    utm_source = models.CharField(max_length=200, blank=True)
+    utm_medium = models.CharField(max_length=200, blank=True)
+    utm_campaign = models.CharField(max_length=200, blank=True, db_index=True)
+    utm_content = models.CharField(max_length=200, blank=True)
+    utm_term = models.CharField(max_length=200, blank=True)
+    click_id = models.CharField(
+        max_length=200, blank=True,
+        help_text='The ad platform’s own click identifier (fbclid, gclid…), when present.')
+    referrer = models.URLField(max_length=500, blank=True)
+    landing_path = models.CharField(
+        max_length=200, blank=True,
+        help_text='The first page of the visit, which is not always the assessment.')
+
     # ── What happened next ───────────────────────────────────────────────────
     requested_action = models.CharField(max_length=20, choices=ACTION_CHOICES, blank=True)
     requested_action_at = models.DateTimeField(null=True, blank=True)
@@ -78,6 +98,9 @@ class AssessmentSubmission(models.Model):
         indexes = [
             models.Index(fields=['-created_at']),
             models.Index(fields=['fit', '-created_at']),
+            # "How many leads did the Meta campaign produce this month" is the
+            # question this table gets asked most once ads are running.
+            models.Index(fields=['channel', '-created_at']),
         ]
 
     def __str__(self):
@@ -86,6 +109,12 @@ class AssessmentSubmission(models.Model):
     @property
     def full_name(self):
         return f'{self.first_name} {self.last_name}'.strip()
+
+    @property
+    def source_label(self):
+        """A one-line origin for the admin list, e.g. "meta · cpc · q3-awareness"."""
+        parts = [p for p in (self.channel, self.utm_medium, self.utm_campaign) if p]
+        return ' · '.join(parts) if parts else 'direct'
 
     @property
     def report_delivered(self):

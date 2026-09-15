@@ -22,7 +22,7 @@ REQUIRED_DOC_TYPES = ('terms', 'privacy', 'disclaimer')
 # refund policy has to be readable by anyone — the card schemes and DPO require a
 # published one — but it is a statement of what we do, not a consent, so it is not
 # part of the onboarding gate.
-PUBLIC_DOC_TYPES = REQUIRED_DOC_TYPES + ('refund',)
+PUBLIC_DOC_TYPES = REQUIRED_DOC_TYPES + ('refund', 'cookies')
 
 DOC_TYPE_LABELS = dict(LEGAL_DOCUMENT_TYPES)
 
