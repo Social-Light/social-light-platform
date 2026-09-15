@@ -149,6 +149,7 @@ Thumbs.db
 # Runtime data & local dumps — never committed (was accumulating untracked
 # on the live server: DB backups, media uploads, a live searxng secret_key)
 db.sqlite3.backup
+backups/
 media/
 searxng/settings.yml
 data.json
