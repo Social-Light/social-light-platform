@@ -46,7 +46,8 @@ from . import onboarding
 from .models import Organization, Package, SubscriptionRequest, User, trial_period_days
 from .onboarding import COUNTRY_CHOICES, DEFAULT_COUNTRY
 from .payment_models import Payment
-from .payments import PaymentError, PaymentRejected, get_provider, payments_enabled
+from .payments import (PaymentConfigurationError, PaymentError, PaymentRejected,
+                       get_provider, payments_enabled)
 from .verification import send_verification_email
 
 logger = logging.getLogger(__name__)
@@ -425,6 +426,20 @@ def checkout_start(request):
             # every renewal would mean sending the customer back through checkout.
             allow_recurrent=not package.contact_only,
         )
+    except PaymentConfigurationError as exc:
+        # The gateway refused the request itself rather than the payment. That
+        # can be our settings, but it can equally be an account the gateway has
+        # not activated — so this says what happened and leaves the diagnosis to
+        # the gateway's own explanation, rather than asserting a cause and
+        # sending whoever reads it hunting for a typo that may not exist.
+        #
+        # Error level because it needs a developer either way, and shown to the
+        # customer as a refusal because retrying cannot help. Caught before
+        # PaymentError, which it subclasses.
+        logger.error('Checkout impossible for org %s: the gateway rejected our request '
+                     'outright. Check the configured credentials, then whether the '
+                     'account is active at the gateway. %s', org.id, exc)
+        return redirect(_billing_url(checkout='rejected'))
     except PaymentRejected as exc:
         # Reached the gateway and been refused. Retrying will be refused the same
         # way, so the customer must not be told to try again in a moment. The

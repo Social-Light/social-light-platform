@@ -134,6 +134,26 @@ class CheckoutFlowTests(TestCase):
         self.assertNotContains(page, 'directpay.online')
         self.assertContains(page, "We couldn't start that payment")
 
+    def test_an_inactive_company_token_does_not_invite_retries(self):
+        """802 means our own credential is wrong or not activated. Retrying can
+        never succeed, so the customer must not be told to try again shortly —
+        which is exactly what happened when this fell through to the generic
+        PaymentError branch it subclasses."""
+        inactive = xml('<Result>802</Result>'
+                       '<ResultExplanation>Company is not active</ResultExplanation>')
+        with canned(inactive):
+            response = self.start()
+        self.assertRedirects(response, reverse('monitor:billing') + '?checkout=rejected')
+
+    def test_a_misconfiguration_is_logged_as_an_error_not_a_warning(self):
+        """It needs a developer, so it must not sit at the same level as a
+        customer's card being declined."""
+        inactive = xml('<Result>802</Result>'
+                       '<ResultExplanation>Company is not active</ResultExplanation>')
+        with canned(inactive):
+            with self.assertLogs('monitor.subscription_views', level='ERROR'):
+                self.start()
+
     def test_an_unreachable_gateway_still_reads_as_temporary(self):
         import requests
         with patch('requests.post', side_effect=requests.ConnectionError('down')):

@@ -72,7 +72,11 @@ RECURRENT_PAID = {'000'}
 #: staging instead of looking like a customer's card being declined.
 CONFIG_RESULTS = {
     '801': 'Missing CompanyToken.',
-    '802': 'The configured DPO company token does not exist.',
+    # Deliberately does not claim the token is wrong. DPO answers 802 both for a
+    # token it has never seen and for a real token on an account it has not
+    # activated, and its own ResultExplanation is what tells the two apart — so
+    # this wording must not contradict the explanation printed beside it.
+    '802': 'DPO would not accept our company token.',
     '803': 'Invalid request name.',
     '804': 'DPO could not parse the XML we sent.',
     '902': 'Data mismatch.',

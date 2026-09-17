@@ -30,6 +30,10 @@ DPO_SETTINGS = dict(
     PAYMENT_PROVIDER='dpo',
     DPO_COMPANY_TOKEN='00000000-0000-4000-8000-000000000000',
     DPO_SERVICE_TYPE='54841',
+    # Pinned rather than left to the environment. DPO issues a payment URL per
+    # account — payv2.php for one test account, payv3.php for another — so a
+    # developer's own .env would otherwise decide whether these tests pass.
+    DPO_PAYMENT_URL='https://secure.3gdirectpay.com/payv3.php',
 )
 
 
