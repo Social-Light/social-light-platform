@@ -56,6 +56,8 @@
     .btn-create{width:100%;padding:14px;margin-top:8px;background:#12305f;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;transition:transform .15s,box-shadow .15s,background .15s;box-shadow:0 4px 16px rgba(18,48,95,.28);}
     .btn-create:hover{background:#0d2547;transform:translateY(-1px);box-shadow:0 6px 22px rgba(18,48,95,.34);}
     .btn-create:active{transform:translateY(0);}
+    .btn-create--secondary{background:#fff;color:#12305f;border:1.5px solid #cbd5e1;box-shadow:none;}
+    .btn-create--secondary:hover{background:#f8fafc;color:#0d2547;box-shadow:none;transform:none;}
 
     .su-signin{text-align:center;margin-top:24px;font-size:13.5px;color:#64748b;}
     .su-signin a{color:#3891C7;font-weight:600;text-decoration:none;}
@@ -214,6 +216,13 @@
       </div>
 
       <button type="submit" class="btn-create">Create account</button>
+      <button type="submit" name="intent" value="pay_now" class="btn-create btn-create--secondary">
+        Skip the trial — pay now
+      </button>
+      <p class="su-hint" style="text-align:center;margin-top:10px;">
+        Either way you'll verify your email and accept our terms first — "pay now" just means
+        the package you pick afterwards charges immediately instead of waiting for the trial to end.
+      </p>
     </form>
 
     <p class="su-signin">Already have an account? <a href="{% url 'monitor:login' %}">Sign in</a></p>

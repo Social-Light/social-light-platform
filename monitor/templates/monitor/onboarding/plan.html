@@ -19,6 +19,11 @@
   .pl-feat--off{background:#f8fafc;color:#94a3b8;text-decoration:line-through;}
   .pl-note{font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;
            padding:7px 10px;margin-top:10px;line-height:1.55;}
+  .pl-pay-now{margin-top:12px;padding-top:12px;border-top:1px solid #f1f5f9;}
+  .pl-pay-now button{padding:9px 16px;border-radius:7px;border:1.5px solid #12305f;background:#12305f;
+                     color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;}
+  .pl-pay-now button:hover{background:#0d2547;}
+  .pl-pay-now button:disabled{opacity:.65;cursor:default;}
 </style>
 {% endblock %}
 
@@ -29,21 +34,31 @@
 </div>
 {% endif %}
 
-{% if org and org.is_on_trial %}
+{% if onboarding_progress.skip_trial_requested and gateway_checkout %}
+<div class="ob-alert ob-alert--info">
+  <i class="bi bi-lightning-fill"></i>
+  <span>You chose to skip the trial. Pick a package below and use its <strong>Pay now</strong>
+    button to activate it immediately — no need to wait for anything to run out first.</span>
+</div>
+{% elif org and org.is_on_trial %}
 <div class="ob-alert ob-alert--info">
   <i class="bi bi-clock"></i>
   <span>You have <strong>{{ org.trial_days_left }} day{{ org.trial_days_left|pluralize }}</strong>
     of full trial access left, whichever plan you pick now. Your choice takes effect when the
-    trial ends.</span>
+    trial ends — or use a package's <strong>Pay now</strong> button below to activate it right away.</span>
 </div>
 {% endif %}
 
-<form method="post" novalidate id="planForm">
-  {% csrf_token %}
-  <div class="pl-grid">
-    {% for p in packages %}
-    <label class="pl-card {% if org and org.package_id == p.id %}pl-card--selected{% endif %}" data-slug="{{ p.slug }}">
-      <input type="radio" name="package" value="{{ p.slug }}"
+<!-- Holds only the CSRF token — the radios below live outside it and point back
+     in via form="planForm", because a package's own "Pay now" form (which posts
+     straight to checkout_start) cannot be nested inside this one. -->
+<form method="post" novalidate id="planForm">{% csrf_token %}</form>
+
+<div class="pl-grid">
+  {% for p in packages %}
+  <div class="pl-card {% if org and org.package_id == p.id %}pl-card--selected{% endif %}" data-slug="{{ p.slug }}">
+    <label style="display:flex;gap:14px;align-items:flex-start;cursor:pointer;">
+      <input type="radio" name="package" value="{{ p.slug }}" form="planForm"
              {% if org and org.package_id == p.id %}checked{% endif %}/>
       <span style="flex:1;">
         <span class="pl-head">
@@ -65,16 +80,26 @@
         {% endif %}
       </span>
     </label>
-    {% empty %}
-    <p class="ob-blurb">No plans are configured yet. You can continue — our team will be in touch.</p>
-    {% endfor %}
-  </div>
 
-  <div class="ob-actions">
-    <button type="submit" class="ob-btn ob-btn--primary">Continue</button>
-    {% if back_url %}<a href="{{ back_url }}" class="ob-back">Back</a>{% endif %}
+    {% if gateway_checkout and p.price and not p.contact_only %}
+    <div class="pl-pay-now">
+      <form method="post" action="{% url 'monitor:checkout_start' %}" class="checkout-form">
+        {% csrf_token %}
+        <input type="hidden" name="package" value="{{ p.slug }}"/>
+        <button type="submit">Pay {{ p.price_display }} now — skip the trial</button>
+      </form>
+    </div>
+    {% endif %}
   </div>
-</form>
+  {% empty %}
+  <p class="ob-blurb">No plans are configured yet. You can continue — our team will be in touch.</p>
+  {% endfor %}
+</div>
+
+<div class="ob-actions">
+  <button type="submit" form="planForm" class="ob-btn ob-btn--primary">Continue</button>
+  {% if back_url %}<a href="{{ back_url }}" class="ob-back">Back</a>{% endif %}
+</div>
 
 <script>
   document.querySelectorAll('.pl-card input').forEach(function (radio) {
@@ -82,6 +107,17 @@
       document.querySelectorAll('.pl-card').forEach(function (card) {
         card.classList.toggle('pl-card--selected', card.dataset.slug === radio.value);
       });
+    });
+  });
+
+  // Same guard as the billing page: posts to the gateway and redirects, so a
+  // double-click or a slow response must not fire a second POST first.
+  Array.prototype.forEach.call(document.querySelectorAll('.checkout-form'), function (form) {
+    form.addEventListener('submit', function () {
+      var button = form.querySelector('button[type="submit"]');
+      if (!button || button.disabled) return;
+      button.disabled = true;
+      button.textContent = 'Redirecting…';
     });
   });
 </script>

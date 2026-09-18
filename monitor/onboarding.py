@@ -236,10 +236,20 @@ def get_progress(user, create=False):
     return user.onboarding_progress
 
 
-def start(user):
-    """Create the onboarding record for a brand-new account."""
+def start(user, skip_trial_requested=False):
+    """Create the onboarding record for a brand-new account.
+
+    ``skip_trial_requested`` records that the account chose "skip trial, pay
+    now" over "start free trial" at signup. It changes nothing about which
+    steps apply or their order — email verification and consent still come
+    first — it only tells the plan step to lead with paying immediately
+    instead of the usual request-an-invoice-and-stay-on-trial framing.
+    """
     progress, _ = OnboardingProgress.objects.get_or_create(user=user)
-    progress.mark('registered')
+    progress.mark('registered', save=False)
+    if skip_trial_requested:
+        progress.skip_trial_requested = True
+    progress.save()
     return progress
 
 

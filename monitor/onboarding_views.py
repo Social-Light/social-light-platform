@@ -402,7 +402,7 @@ def plan(request):
     if guard:
         return guard
 
-    from .subscription_views import selectable_packages
+    from .subscription_views import redirect_checkout_provider, selectable_packages
 
     org = request.user.organization
     packages = list(selectable_packages())
@@ -424,6 +424,10 @@ def plan(request):
         'org': org,
         'error': error,
         'payments_enabled': payments_enabled() and get_provider().is_enabled,
+        # The "pay now, skip the trial" button posts straight to checkout_start
+        # instead of onboarding's own plan form. Only a redirect-style gateway
+        # (DPO) supports that; Stripe's card-on-file provider does not.
+        'gateway_checkout': redirect_checkout_provider() is not None,
     })
 
 
