@@ -69,7 +69,7 @@
       <p class="section-cover-sub">
         {{ td.vol }} mention{{ td.vol|pluralize }}
         &nbsp;·&nbsp;
-        BWP {{ td.ave|floatformat:0 }} AVE
+        {{ org.ave_currency }} {{ td.ave|floatformat:0 }} AVE
         {% if td.reach %}&nbsp;·&nbsp; {{ td.reach|floatformat:0 }} {% if td.reach_estimated %}Est. Reach{% else %}Reach{% endif %}{% endif %}
       </p>
     </div>
@@ -99,7 +99,7 @@
         </div>
         <div class="kpi-card">
           <div class="kpi-lbl">Total AVE</div>
-          <div class="kpi-val">BWP {{ td.ave|floatformat:0 }}</div>
+          <div class="kpi-val">{{ org.ave_currency }} {{ td.ave|floatformat:0 }}</div>
           <div class="kpi-sub">Advertising Value Equivalency</div>
         </div>
         {% if td.reach %}
@@ -380,7 +380,7 @@
         </div>
         <div class="kpi-card">
           <div class="kpi-lbl">AVE</div>
-          <div class="kpi-val" style="color:{{ td.color }};">BWP {{ td.ave|floatformat:0 }}</div>
+          <div class="kpi-val" style="color:{{ td.color }};">{{ org.ave_currency }} {{ td.ave|floatformat:0 }}</div>
           <div class="kpi-sub">Advertising value</div>
         </div>
         <div class="kpi-card">
@@ -571,7 +571,7 @@
             <td style="color:#16a34a;">{{ j.pos }}</td>
             <td style="color:#6b7280;">{{ j.neu }}</td>
             <td style="color:#dc2626;">{{ j.neg }}</td>
-            <td>BWP {{ j.ave_total|floatformat:0 }}</td>
+            <td>{{ org.ave_currency }} {{ j.ave_total|floatformat:0 }}</td>
           </tr>
           {% endfor %}
         </tbody>

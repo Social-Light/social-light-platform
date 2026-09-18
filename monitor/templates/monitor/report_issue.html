@@ -195,7 +195,7 @@
         </div>
         <div class="ir-kpi">
           <div class="ir-kpi-label">Tracked AVE</div>
-          <div class="ir-kpi-value">BWP {{ ave_total|floatformat:2|intcomma }}</div>
+          <div class="ir-kpi-value">{{ org.ave_currency }} {{ ave_total|floatformat:2|intcomma }}</div>
           <div class="ir-kpi-sub">Platform-recorded values</div>
         </div>
         <div class="ir-kpi">
@@ -247,7 +247,7 @@
       <h2 class="ir-sec-title">Issue Coverage Log</h2>
       <table class="ir-table">
         <thead>
-          <tr><th>Source</th><th>Headline</th><th>Channel</th><th>Date</th><th>Sentiment</th><th class="num">AVE (BWP)</th><th class="num">Reach</th></tr>
+          <tr><th>Source</th><th>Headline</th><th>Channel</th><th>Date</th><th>Sentiment</th><th class="num">AVE ({{ org.ave_currency }})</th><th class="num">Reach</th></tr>
         </thead>
         <tbody>
           {% for r in coverage_log %}
@@ -282,7 +282,7 @@
         <div class="ir-media-meta" style="margin-top:4px;">
           <span class="ir-badge {{ r.sentiment }}">{{ r.sentiment_label }}</span>
           &nbsp;{{ r.source }}
-          {% if r.ave %} · AVE BWP {{ r.ave|floatformat:2|intcomma }}{% endif %}
+          {% if r.ave %} · AVE {{ org.ave_currency }} {{ r.ave|floatformat:2|intcomma }}{% endif %}
           {% if r.reach %} · Reach {{ r.reach|intcomma }}{% endif %}
         </div>
       </div>

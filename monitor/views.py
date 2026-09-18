@@ -2119,7 +2119,7 @@ def report_full(request, org_id):
         exec_narrative = (
             f"Media coverage of {org.name} during the reporting period was {tone}. "
             f"The organisation recorded a total of {total_vol:,} media mentions across all channels, "
-            f"generating an estimated BWP {total_ave:,.0f} in Advertising Value Equivalency (AVE) "
+            f"generating an estimated {org.ave_currency} {total_ave:,.0f} in Advertising Value Equivalency (AVE) "
             f"and a potential audience reach of {int(total_reach):,}. "
             f"Positive sentiment accounted for {pos_pct}% of total coverage, "
             f"with {neu_pct}% neutral and {neg_pct}% negative mentions."
@@ -3904,7 +3904,7 @@ def report_competitor_pptx(request, org_id):
         ('Total Broadcast Mentions', str(org_bc_count), RGBColor(0x3B, 0x82, 0xF6)),
         ('Org Online Articles', str(org_art_count), NAVY),
         (f'Positive Sentiment', f'{pos_pct}%', GREEN),
-        ('Online Article AVE (BWP)', f'{org_art_ave:,.0f}', ORANGE),
+        (f'Online Article AVE ({org.ave_currency})', f'{org_art_ave:,.0f}', ORANGE),
     ]
     box_w = 2.0
     box_h = 1.5
@@ -3986,7 +3986,7 @@ def report_competitor_pptx(request, org_id):
                 row.get('source') or '',
                 str(row.get('date') or ''),
                 row.get('sentiment') or '',
-                f"BWP {row.get('ave') or 0:,.0f}",
+                f"{org.ave_currency} {row.get('ave') or 0:,.0f}",
             ]
             for ci, v in enumerate(vals):
                 cell = tbl.cell(ri, ci)
@@ -4265,7 +4265,7 @@ def media_monitor_webhook(request, org_id):
         country       = country,
         sentiment     = sentiment,
         relevancy     = compute_relevancy(title, summary, org=org),
-        ave           = calculate_online_ave(source or url_val, sentiment),
+        ave           = calculate_online_ave(source or url_val, sentiment, org.country),
     )
     return JsonResponse({'ok': True, 'id': article.id})
 

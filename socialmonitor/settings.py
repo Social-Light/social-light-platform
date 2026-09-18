@@ -142,6 +142,8 @@ GROQ_API_KEY_4 = os.getenv('GROQ_API_KEY_4', '')
 GROQ_API_KEY_5 = os.getenv('GROQ_API_KEY_5', '')
 GROQ_API_KEY_6 = os.getenv('GROQ_API_KEY_6', '')
 GROQ_API_KEY_7 = os.getenv('GROQ_API_KEY_7', '')
+GROQ_API_KEY_8 = os.getenv('GROQ_API_KEY_8', '')
+GROQ_API_KEY_9 = os.getenv('GROQ_API_KEY_9', '')
 
 # Dedicated to monitor/date_ai.py's extract_published_date() ONLY — never
 # read by sentiment_ai.py (see that module's _groq_api_keys() vs. date_ai.py's
@@ -418,6 +420,13 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'monitor.analyze_sentiment',
         'schedule': crontab(minute='*/30'),              # every 30 min, picks up newly-ingested mentions
     },
+    'analyze-relevancy': {
+        'task': 'monitor.analyze_relevancy',
+        # Every 30 min like analyze-sentiment, offset by 15 min so the two
+        # don't both fire in the same minute and double up on the same
+        # shared Groq key pool at once.
+        'schedule': crontab(minute='15,45'),
+    },
     # Pulls Tony's personal Apify Facebook-posts schedule (FNBB + BPC's own
     # pages) into SocialMediaPost. The Apify actor itself runs @daily and its
     # last run typically finishes ~02:40 UTC; 05:00 UTC gives it comfortable
@@ -490,6 +499,10 @@ MENTION_RELEVANCY_THRESHOLD = float(os.getenv('MENTION_RELEVANCY_THRESHOLD', '0'
 # with --include-backlog. ISO date (YYYY-MM-DD); blank disables the cutoff
 # (restores the old unscoped behaviour).
 SENTIMENT_AI_CUTOFF_DATE = os.getenv('SENTIMENT_AI_CUTOFF_DATE', '')
+# Same guard, same reasoning, for analyze_relevancy (monitor/relevancy_ai.py)
+# — it shares this same Groq daily-token pool. See that command's module
+# docstring. ISO date (YYYY-MM-DD); blank disables the cutoff.
+RELEVANCY_AI_CUTOFF_DATE = os.getenv('RELEVANCY_AI_CUTOFF_DATE', '')
 # TEMPORARY: drop YouTube clips at ingest time (source/link is YouTube). Set
 # MEDIAHOST_EXCLUDE_YOUTUBE=0 to re-enable YouTube coverage.
 MEDIAHOST_EXCLUDE_YOUTUBE = os.getenv('MEDIAHOST_EXCLUDE_YOUTUBE', '1') not in ('0', 'false', 'False', '')

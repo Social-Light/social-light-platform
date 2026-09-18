@@ -103,6 +103,38 @@ def gather(org, since, alert=None, max_publish_age_days=None):
     )
 
 
+def gather_today(org, alert=None):
+    """
+    Return (online, print, social, broadcast) lists of records whose own
+    date_published is today (Africa/Gaborone) — an exact-date snapshot,
+    independent of the alert's created_at watermark and uncapped.
+
+    Used for the xlsx attached to the 15:00 daily send, which is meant to be
+    a complete same-day record ("everything dated the 18th") rather than the
+    incremental since-last-slot diff the email body shows via gather(). Kept
+    separate from gather()'s watermark/grace-window logic so this doesn't
+    reintroduce the permanent-loss bug fixed 2026-09-14 (see MAX_PUBLISH_AGE_DAYS
+    above) — the email body's coverage is untouched by this.
+    """
+    if alert is not None and not alert.wants_category('mention'):
+        return [], [], [], []
+
+    oc = org.country or ''
+    today = timezone.localdate()
+
+    def collect(manager):
+        qs = filter_relevant(manager.all()).filter(date_published=today)
+        items = list(qs.order_by('-date_published', '-created_at'))
+        return sorted(items, key=lambda a: (_country_sort_key(a, oc), -_pub_ordinal(a)))
+
+    return (
+        collect(org.online_articles),
+        collect(org.print_articles),
+        collect(org.social_posts),
+        collect(org.broadcast_mentions),
+    )
+
+
 def gather_events(org, since, categories=None):
     """Return Event rows for `org` created since `since`, newest first, capped like
     the mention collections above. `categories` (an iterable of Event.category
@@ -167,7 +199,10 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True,
       configured recipients (used by the "send test to me" button).
     - `include_xlsx`: attach the .xlsx workbook to the email. Defaults to False —
       digest emails are HTML-only; the workbook is available on demand instead
-      (see views.alert_download_xlsx), not pushed out with every automated send.
+      (see views.alert_download_xlsx). send_daily_alerts sets this True on the
+      15:00 slot, and the attached workbook covers today's date_published
+      exactly (see gather_today), not the since-watermark window the email
+      body uses.
 
     Returns a dict describing the outcome. Raises if the email backend fails to send.
     """
@@ -252,7 +287,8 @@ def build_and_send(alert, *, since=None, force=False, update_watermark=True,
         # every mainstream client, while keeping the xlsx as a normal attachment.
 
     if include_xlsx:
-        xlsx_bytes = build_workbook(online, print_arts, social, broadcast)
+        x_online, x_print, x_social, x_broadcast = gather_today(org, alert)
+        xlsx_bytes = build_workbook(x_online, x_print, x_social, x_broadcast)
         xlsx_name = f"{org.name}-media-digest-{timezone.localdate().isoformat()}.xlsx"
         msg.attach(xlsx_name, xlsx_bytes,
                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

@@ -8,6 +8,11 @@ covering everything that came through (by created_at) since the previous slot.
 Records are ordered with the org's own country first. The alert's banner
 image (if set) is embedded inline and links to login.
 
+The 15:00 send additionally attaches an .xlsx workbook covering everything
+whose own date_published is today (Africa/Gaborone) — see
+alert_email.gather_today — independent of the since-watermark window the
+email body itself shows. The 08:00 send has no attachment.
+
 Usage:
     python manage.py send_daily_alerts                       # all active daily alerts
     python manage.py send_daily_alerts --frequency immediate # immediate alerts (new records only)
@@ -24,7 +29,7 @@ from django.utils import timezone
 from monitor.models import Alert
 from monitor.alert_email import (
     build_and_send, gather, start_of_today, daily_alert_due,
-    MAX_PUBLISH_AGE_DAYS, DEFAULT_MAX_PUBLISH_AGE_DAYS,
+    MAX_PUBLISH_AGE_DAYS, DEFAULT_MAX_PUBLISH_AGE_DAYS, DAILY_SLOT_TIMES,
 )
 
 
@@ -63,13 +68,19 @@ class Command(BaseCommand):
         # Skip alerts with no recipients at all.
         alerts = [a for a in qs if a.recipient_list()]
 
+        now = timezone.localtime()
+
         # Daily alerts fire at two fixed times, 08:00 and 15:00 CAT (see
         # DAILY_SLOT_TIMES in alert_email.py). The beat job runs every ~15 min;
         # only send the ones due now. A forced single --alert run or --test
         # bypasses this so you can always send on demand.
         if frequency == 'daily' and not alert_id and not test:
-            now = timezone.localtime()
             alerts = [a for a in alerts if daily_alert_due(a, now)]
+
+        # Attach the day's xlsx snapshot only on the 15:00 slot (or a late
+        # catch-up run after it) — not the 08:00 morning slot. See
+        # alert_email.gather_today / build_and_send's include_xlsx.
+        send_xlsx = frequency == 'daily' and now.time() >= DAILY_SLOT_TIMES[-1]
 
         if not alerts:
             self.stdout.write('No qualifying alerts found.')
@@ -109,6 +120,7 @@ class Command(BaseCommand):
                     since=since,
                     force=test,
                     update_watermark=not test,
+                    include_xlsx=send_xlsx,
                 )
             except Exception as exc:
                 self.stderr.write(f"Failed for {', '.join(recipients)} ({org.name}): {exc}")

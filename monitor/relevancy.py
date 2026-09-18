@@ -58,8 +58,16 @@ def _scoring_terms(keywords, competitors):
                 yield term, COMPETITOR_WEIGHT
 
 
-def compute_relevancy(headline, summary='', keywords=None, org=None, competitors=None):
+def compute_relevancy(headline, summary='', body='', keywords=None, org=None, competitors=None):
     """Return a 0–100 relevancy score for the given text.
+
+    ``body`` is optional full article/post text (e.g. a crawler's parsed body) —
+    scored on equal footing with headline + summary so a term that only appears
+    in the body still counts. Without it, capture (which already matches against
+    full title+body — see fetcher/bridge.py's _matched_terms) and scoring (this
+    function) disagreed: an article could be captured as coverage of an org yet
+    score 0 and sit invisible below the display-time relevancy threshold, purely
+    because its headline paraphrased the matched term instead of quoting it.
 
     Pass ``keywords`` (Keyword instances) and/or ``competitors`` (Competitor
     instances) — preferred for bulk loops so the querysets are fetched once — or
@@ -74,7 +82,7 @@ def compute_relevancy(headline, summary='', keywords=None, org=None, competitors
     if not keywords and not competitors:
         return 0.0
 
-    text = f"{headline or ''} {summary or ''}".lower()
+    text = f"{headline or ''} {summary or ''} {body or ''}".lower()
     if not text.strip():
         return 0.0
 
@@ -104,6 +112,41 @@ def compute_relevancy(headline, summary='', keywords=None, org=None, competitors
     return round(min(score, MAX_SCORE), 2)
 
 
+def matched_terms(headline, summary='', body='', keywords=None, org=None, competitors=None):
+    """Return the list of tracked keyword/competitor terms that literally
+    matched in the given text — same matching rules as compute_relevancy
+    (real \\b-bounded hits plus the squashed-text fuzzy fallback for
+    multi-word terms), but returning *which* terms hit rather than a score.
+
+    Used by relevancy_ai.py's disambiguation pass to tell the AI which
+    term(s) triggered the match — a short, generic-acronym term (e.g. "BPC")
+    is exactly the case that needs disambiguating, since the same literal
+    string can belong to an unrelated entity. Arguments mirror
+    compute_relevancy's.
+    """
+    if keywords is None:
+        keywords = list(org.keywords.all()) if org is not None else []
+    if competitors is None:
+        competitors = list(org.competitors.all()) if org is not None else []
+    if not keywords and not competitors:
+        return []
+
+    text = f"{headline or ''} {summary or ''} {body or ''}".lower()
+    if not text.strip():
+        return []
+    squashed_text = re.sub(r'\s+', '', text)
+
+    hits = []
+    for term, _weight in _scoring_terms(keywords, competitors):
+        if re.search(r'\b' + re.escape(term) + r'\b', text):
+            hits.append(term)
+            continue
+        squashed_term = re.sub(r'\s+', '', term)
+        if ' ' in term and squashed_term in squashed_text:
+            hits.append(term)
+    return hits
+
+
 def relevance_threshold():
     """The minimum relevancy score a mention must reach to be surfaced.
 
@@ -116,11 +159,21 @@ def relevance_threshold():
 
 
 def filter_relevant(qs):
-    """Restrict a mention queryset to rows meeting the relevancy threshold.
+    """Restrict a mention queryset to rows meeting the relevancy threshold,
+    and always excludes rows the AI disambiguation pass (relevancy_ai.py)
+    has confirmed are a false-positive keyword collision (e.g. "BPC" the
+    peptide, not Botswana Power Corporation) — unlike the score threshold,
+    that exclusion isn't tunable, since a confirmed false positive is never
+    relevant regardless of its (still keyword-only) score.
 
-    A no-op when the threshold is 0, so callers can apply it unconditionally.
-    The queryset's model must have a ``relevancy`` field (all four mention
-    models do).
+    The threshold check alone is a no-op when the threshold is 0, so callers
+    can apply this unconditionally. The queryset's model must have
+    ``relevancy`` and ``relevancy_ai_relevant`` fields (all four mention
+    models do). Rows the AI pass hasn't reached yet (relevancy_ai_relevant
+    is None — the common case, since it runs as a rate-limited background
+    pass) are unaffected and keep passing on their keyword score alone.
     """
     threshold = relevance_threshold()
-    return qs.filter(relevancy__gte=threshold) if threshold else qs
+    if threshold:
+        qs = qs.filter(relevancy__gte=threshold)
+    return qs.exclude(relevancy_ai_relevant=False)

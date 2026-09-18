@@ -465,7 +465,7 @@
     </div>
     <div class="rpt-kpi-box">
       <div class="rpt-kpi-label">Online Article AVE</div>
-      <div class="rpt-kpi-value" style="font-size:22px;">BWP {{ org_art_ave|floatformat:0 }}</div>
+      <div class="rpt-kpi-value" style="font-size:22px;">{{ org.ave_currency }} {{ org_art_ave|floatformat:0 }}</div>
       <div class="rpt-kpi-sub">Advertising Value Equivalency</div>
     </div>
   </div>
@@ -559,7 +559,7 @@
         <th>Publisher</th>
         <th>Date</th>
         <th>Sentiment</th>
-        <th>AVE (BWP)</th>
+        <th>AVE ({{ org.ave_currency }})</th>
       </tr>
     </thead>
     <tbody>

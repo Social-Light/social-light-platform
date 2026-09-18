@@ -86,7 +86,7 @@
   <h3>Coverage ({{ m.mentions }})</h3>
   <div style="overflow-x:auto;">
     <table class="cd-table">
-      <thead><tr><th>Source</th><th>Headline</th><th>Channel</th><th>Date</th><th>Sentiment</th><th class="num">AVE (BWP)</th><th class="num">Reach</th></tr></thead>
+      <thead><tr><th>Source</th><th>Headline</th><th>Channel</th><th>Date</th><th>Sentiment</th><th class="num">AVE ({{ org.ave_currency }})</th><th class="num">Reach</th></tr></thead>
       <tbody>
         {% for r in m.coverage %}
         <tr>

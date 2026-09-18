@@ -76,6 +76,32 @@ def analyze_sentiment_task(limit=300):
     return f'analyze_sentiment ran (limit={limit})'
 
 
+@shared_task(name='monitor.analyze_relevancy')
+def analyze_relevancy_task(limit=150):
+    """
+    Disambiguate relevancy on newly-ingested mentions via a real contextual
+    AI read (Groq — see monitor/relevancy_ai.py), catching keyword/competitor
+    matches that are a false-positive collision on the same tracked term
+    (e.g. "BPC" the peptide, not Botswana Power Corporation) rather than
+    genuine coverage — see filter_relevant() in monitor/relevancy.py.
+
+    Only ever touches rows with relevancy > 0 and relevancy_ai_relevant still
+    NULL (i.e. not yet checked) — see the analyze_relevancy management
+    command — so each scheduled run only costs API calls on what's genuinely
+    new since the last run. `limit` bounds one run's duration/cost. Default
+    is lower than analyze_sentiment_task's (150 vs. 300): this shares the
+    same Groq daily-token pool with sentiment/report/sector/issue-report AI
+    passes, which is already frequently exhausted by mid-day on a typical
+    day's traffic, so this new consumer starts conservative rather than
+    doubling the existing load outright.
+
+    Scheduled every 30 min by Celery Beat (see CELERY_BEAT_SCHEDULE), but can
+    also be triggered ad-hoc: analyze_relevancy_task.delay(limit=500).
+    """
+    call_command('analyze_relevancy', limit=limit)
+    return f'analyze_relevancy ran (limit={limit})'
+
+
 @shared_task(name='monitor.pull_facebook_schedule')
 def pull_facebook_schedule_task():
     """

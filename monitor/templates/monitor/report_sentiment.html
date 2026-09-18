@@ -323,7 +323,7 @@
         <div class="sr-mention-meta">
           <span>{{ item.source }}</span>
           <span>{{ item.date }}</span>
-          <span class="sr-mention-ave">BWP {{ item.ave|floatformat:0 }} AVE</span>
+          <span class="sr-mention-ave">{{ org.ave_currency }} {{ item.ave|floatformat:0 }} AVE</span>
         </div>
       </div>
       {% empty %}
@@ -342,7 +342,7 @@
         <div class="sr-mention-meta">
           <span>{{ item.source }}</span>
           <span>{{ item.date }}</span>
-          <span class="sr-mention-ave">BWP {{ item.ave|floatformat:0 }} AVE</span>
+          <span class="sr-mention-ave">{{ org.ave_currency }} {{ item.ave|floatformat:0 }} AVE</span>
         </div>
       </div>
       {% empty %}

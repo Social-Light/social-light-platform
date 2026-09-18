@@ -52,10 +52,19 @@ KNOWN_ONLINE_REACH = {
 }
 
 DEFAULT_REACH = 5000    # unmatched-outlet fallback — same figure article-extractor uses for an unknown print publisher
-BASE_RATE = 250.0       # flat rate-card placeholder, matching article-extractor's unknown-publisher base_rate.
+BASE_RATE = 250.0       # flat rate-card placeholder, matching article-extractor's unknown-publisher base_rate,
+                         # denominated in Botswana Pula (this platform's home currency).
                          # Only reach is verified per-outlet below; a differentiated real ad-rate card isn't
                          # available, so the rate stays uniform and reach (real where known) drives the AVE
                          # difference between a major outlet and an unknown one.
+
+# South African clients (Organization.country == "South Africa", e.g. L'Oréal South
+# Africa, Economic Freedom Fighters) want AVE reported in Rand, not Pula — a BWP
+# rate card handed to a ZAR client is the wrong currency, not just the wrong number.
+# No differentiated ZAR rate card exists either, so BASE_RATE is carried across at
+# the BWP->ZAR spot rate (~1.19 as of 2026-09-18; revisit if it drifts materially).
+BWP_TO_ZAR = 1.19
+ZAR_BASE_RATE = round(BASE_RATE * BWP_TO_ZAR, 2)
 
 # Same weights article-extractor's print AVE uses, so a positive/negative story
 # is valued consistently whether it ran in print or online.
@@ -71,13 +80,15 @@ def _domain(source_or_url: str) -> str:
     return netloc[4:] if netloc.startswith('www.') else netloc
 
 
-def calculate_online_ave(source_or_url: str, sentiment: str = 'neutral') -> float:
+def calculate_online_ave(source_or_url: str, sentiment: str = 'neutral', org_country: str = '') -> float:
     """
     Estimate AVE for one piece of online coverage.
 
     Args:
         source_or_url: the article's source/domain/URL — only the host is used.
         sentiment:      'positive' | 'neutral' | 'negative' | 'mixed' (case-insensitive).
+        org_country:    the covered organisation's Organization.country — determines the
+                         rate card's currency (ZAR for "South Africa", BWP otherwise).
 
     Returns:
         AVE rounded to 2 decimal places. Never raises — unrecognised input
@@ -87,4 +98,5 @@ def calculate_online_ave(source_or_url: str, sentiment: str = 'neutral') -> floa
     domain = _domain(source_or_url)
     reach = KNOWN_ONLINE_REACH.get(domain, DEFAULT_REACH)
     mult = SENTIMENT_MULTIPLIER.get((sentiment or 'neutral').strip().lower(), 1.0)
-    return round(BASE_RATE * (reach / 1000) * mult, 2)
+    base_rate = ZAR_BASE_RATE if (org_country or '').strip() == 'South Africa' else BASE_RATE
+    return round(base_rate * (reach / 1000) * mult, 2)

@@ -117,9 +117,11 @@
       </a>
 
       <div class="nav-section-label" style="margin-top:8px;">MANAGEMENT</div>
-      {# Matches the view's own rule, which admits superusers as well as the
-         platform_admin role — otherwise a superuser can open the page but
-         cannot see the link to it. #}
+      {% comment %}
+      Matches the view's own rule, which admits superusers as well as the
+      platform_admin role — otherwise a superuser can open the page but
+      cannot see the link to it.
+      {% endcomment %}
       {% if user.role == 'platform_admin' or user.is_superuser %}
       <a href="{% url 'monitor:marketing' %}" class="nav-item {% if page == 'marketing' %}active{% endif %}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><polyline points="7 14 11 10 15 13 21 7"/></svg>
@@ -252,23 +254,36 @@ function switchOrg() {
 }
 
 // Sidebar (desktop collapse / mobile drawer)
+// Desktop's "collapsed" preference persists across visits; the mobile drawer
+// is a one-off overlay and must always start closed, or it opens on top of
+// the header's own toggle button (z-index:100 vs the header underneath) and
+// nothing can dismiss it — a first-time mobile visitor gets a stuck drawer.
 let sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+let mobileOpen = false;
 function applyCollapse() {
   const sb = document.getElementById('sidebar');
   const mc = document.getElementById('mainContent');
   const hd = document.getElementById('topheader');
   if (!sb) return;
   if (window.innerWidth <= 768) {
-    sb.classList.toggle('mobile-open', !sidebarCollapsed);
-    document.getElementById('sidebarBackdrop').style.display = sidebarCollapsed ? 'none' : 'block';
+    sb.classList.toggle('mobile-open', mobileOpen);
+    document.getElementById('sidebarBackdrop').style.display = mobileOpen ? 'block' : 'none';
   } else {
     sb.classList.toggle('collapsed', sidebarCollapsed);
     if (mc) mc.classList.toggle('sidebar-collapsed', sidebarCollapsed);
     if (hd) hd.classList.toggle('sidebar-collapsed', sidebarCollapsed);
   }
 }
-function toggleSidebar() { sidebarCollapsed = !sidebarCollapsed; localStorage.setItem('sidebarCollapsed', sidebarCollapsed); applyCollapse(); }
-function closeSidebar()   { sidebarCollapsed = true; applyCollapse(); }
+function toggleSidebar() {
+  if (window.innerWidth <= 768) {
+    mobileOpen = !mobileOpen;
+  } else {
+    sidebarCollapsed = !sidebarCollapsed;
+    localStorage.setItem('sidebarCollapsed', sidebarCollapsed);
+  }
+  applyCollapse();
+}
+function closeSidebar() { mobileOpen = false; applyCollapse(); }
 applyCollapse();
 window.addEventListener('resize', applyCollapse);
 

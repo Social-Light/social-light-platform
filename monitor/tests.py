@@ -7,6 +7,7 @@ touches a real mail server, Celery or the development database.
 """
 import json
 from datetime import datetime, time, timedelta
+from unittest import mock
 
 from django.core import mail
 from django.test import TestCase, override_settings
@@ -14,7 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from monitor.alert_email import (
-    build_and_send, daily_alert_due, gather, gather_events, start_of_today,
+    build_and_send, daily_alert_due, gather, gather_events, gather_today, start_of_today,
 )
 from monitor.models import Alert, Event, Organization, OnlineArticle, User
 
@@ -317,3 +318,131 @@ class DailySlotTests(TestCase):
         body = mail.outbox[0].alternatives[0][0]
         self.assertIn('Today piece', body)
         self.assertIn('Old backlog piece', body)
+
+
+@override_settings(MENTION_RELEVANCY_THRESHOLD=0)
+class GatherTodayTests(TestCase):
+    """gather_today() — the exact-date snapshot behind the 15:00 xlsx
+    attachment, deliberately kept separate from gather()'s watermark/grace-
+    window logic (see gather_today's docstring and MAX_PUBLISH_AGE_DAYS)."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='Today Org', country='Botswana')
+        self.alert = Alert.objects.create(
+            organization=self.org, name='Daily digest',
+            recipients='someone@example.com', frequency='daily',
+        )
+        self.today = timezone.localdate()
+        self.yesterday = self.today - timedelta(days=1)
+
+    def _article(self, date_published, headline):
+        return OnlineArticle.objects.create(
+            organization=self.org, headline=headline, url='https://example.com/' + headline,
+            date_published=date_published, relevancy=100,
+        )
+
+    def test_only_todays_date_published_is_included(self):
+        self._article(self.yesterday, 'Yesterday piece')
+        self._article(self.today, 'Today piece')
+
+        online, _, _, _ = gather_today(self.org, self.alert)
+
+        self.assertEqual([a.headline for a in online], ['Today piece'])
+
+    def test_ignores_the_watermark_entirely(self):
+        """Unlike gather(), a stale last_sent_at neither narrows nor widens
+        this — it's always exactly today's date_published."""
+        self.alert.last_sent_at = timezone.now() - timedelta(days=30)
+        self.alert.save()
+        self._article(self.today, 'Today piece')
+
+        online, _, _, _ = gather_today(self.org, self.alert)
+
+        self.assertEqual([a.headline for a in online], ['Today piece'])
+
+    def test_excluding_mentions_empties_the_lists_like_gather_does(self):
+        self.alert.categories = ['report']
+
+        online, print_arts, social, broadcast = gather_today(self.org, self.alert)
+
+        self.assertEqual([online, print_arts, social, broadcast], [[], [], [], []])
+
+
+@override_settings(MENTION_RELEVANCY_THRESHOLD=0)
+class DailySendXlsxAttachmentTests(TestCase):
+    """send_daily_alerts attaches the xlsx workbook only on the 15:00 slot,
+    scoped to gather_today() rather than the email body's since-watermark
+    window."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='Xlsx Org', country='Botswana')
+        self.alert = Alert.objects.create(
+            organization=self.org, name='Daily digest',
+            recipients='someone@example.com', frequency='daily',
+        )
+        self.today = timezone.localdate()
+
+    def _article(self, date_published, headline):
+        return OnlineArticle.objects.create(
+            organization=self.org, headline=headline, url='https://example.com/' + headline,
+            date_published=date_published, relevancy=100,
+        )
+
+    def _at(self, hour, minute=0):
+        return timezone.make_aware(datetime.combine(self.today, time(hour, minute)))
+
+    def _run_at(self, hour, minute=0):
+        from django.core.management import call_command
+        with mock.patch(
+            'monitor.management.commands.send_daily_alerts.timezone.localtime',
+            return_value=self._at(hour, minute),
+        ):
+            with override_settings(EMAIL_BACKEND=LOCMEM):
+                call_command('send_daily_alerts', alert=str(self.alert.id))
+
+    def test_no_attachment_on_the_morning_slot(self):
+        self._article(self.today, 'Today piece')
+
+        self._run_at(8, 0)
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].attachments, [])
+
+    def test_xlsx_attached_on_the_afternoon_slot(self):
+        self._article(self.today, 'Today piece')
+
+        self._run_at(15, 0)
+
+        self.assertEqual(len(mail.outbox), 1)
+        attachments = mail.outbox[0].attachments
+        self.assertEqual(len(attachments), 1)
+        filename, content, mimetype = attachments[0]
+        self.assertEqual(
+            filename, f"{self.org.name}-media-digest-{self.today.isoformat()}.xlsx"
+        )
+        self.assertEqual(
+            mimetype,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        self.assertTrue(content)
+
+    def test_xlsx_reflects_todays_date_published_not_the_watermark(self):
+        """The email body (since last_sent_at) and the xlsx (gather_today) can
+        legitimately disagree: a stale watermark widens the body's backlog
+        coverage but never changes what the xlsx snapshot contains."""
+        self.alert.last_sent_at = timezone.now() - timedelta(days=5)
+        self.alert.save()
+        self._article(self.today - timedelta(days=2), 'Old backlog piece')
+        self._article(self.today, 'Today piece')
+
+        self._run_at(15, 0)
+
+        body = mail.outbox[0].alternatives[0][0]
+        self.assertIn('Old backlog piece', body)
+        self.assertIn('Today piece', body)
+
+        from monitor.alert_xlsx import build_workbook
+        online, _, _, _ = gather_today(self.org, self.alert)
+        self.assertEqual([a.headline for a in online], ['Today piece'])
+        # Sanity: build_workbook accepts gather_today's output without error.
+        self.assertTrue(build_workbook(online, [], [], []))

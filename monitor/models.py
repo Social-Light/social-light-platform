@@ -317,6 +317,14 @@ class Organization(models.Model):
     class Meta:
         ordering = ['name']
 
+    @property
+    def ave_currency(self):
+        """AVE currency label for this org's reports/exports — ZAR for a South
+        African org (e.g. L'Oréal South Africa, EFF), BWP (this platform's home
+        currency) otherwise. Mirrors the rate selection in monitor/online_metrics.py
+        and fetcher/_social_ave — keep both in sync if this changes."""
+        return 'ZAR' if self.country == 'South Africa' else 'BWP'
+
     # ── Trial helpers ────────────────────────────────────────────────────────
     def start_trial(self, days=None):
         """Put the organisation on a fresh free trial. Called at signup."""
@@ -490,6 +498,14 @@ class Keyword(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='keywords')
     keyword = models.CharField(max_length=200)
     category = models.CharField(max_length=100, default='brand')
+    is_acronym = models.BooleanField(
+        default=False,
+        help_text="Bare acronym/short-form term (e.g. 'EFF') prone to false-positive "
+                  "collisions with unrelated entities or slang sharing the same letters. "
+                  "media-monitor's crawler runs a synchronous AI disambiguation check "
+                  "(fetcher/relevancy_ai.py) before pushing a match that ONLY matched via "
+                  "acronym-flagged term(s), rather than waiting for the scheduled post-hoc "
+                  "relevancy_ai pass (see monitor/relevancy_ai.py) to catch it later.")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -584,6 +600,18 @@ class OnlineArticle(models.Model):
     coverage = models.CharField(max_length=50, choices=COVERAGE_CHOICES, blank=True, default='Not Set')
     reach = models.IntegerField(default=0)
     relevancy = models.FloatField(default=0)
+    relevancy_ai_relevant = models.BooleanField(
+        null=True, blank=True, default=None,
+        help_text="Whether an AI disambiguation pass (see monitor/relevancy_ai.py) confirmed this "
+                  "keyword/competitor match is genuinely about this organisation, as opposed to an "
+                  "unrelated entity that happens to share the same tracked term (e.g. 'BPC' the "
+                  "peptide vs. Botswana Power Corporation). NULL when not yet checked — relevancy "
+                  "(the deterministic keyword score) alone still governs visibility until then. "
+                  "False permanently excludes the row from filter_relevant() regardless of score.")
+    relevancy_ai_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI disambiguation pass set relevancy_ai_relevant — see "
+                  "monitor/relevancy_ai.py. Blank when not yet checked.")
     created_at = models.DateTimeField(auto_now_add=True)
     is_archived = models.BooleanField(default=False, db_index=True)
 
@@ -615,6 +643,18 @@ class PrintArticle(models.Model):
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     reach = models.IntegerField(default=0, help_text='Estimated readership (circulation × readers-per-copy).')
     relevancy = models.FloatField(default=0)
+    relevancy_ai_relevant = models.BooleanField(
+        null=True, blank=True, default=None,
+        help_text="Whether an AI disambiguation pass (see monitor/relevancy_ai.py) confirmed this "
+                  "keyword/competitor match is genuinely about this organisation, as opposed to an "
+                  "unrelated entity that happens to share the same tracked term (e.g. 'BPC' the "
+                  "peptide vs. Botswana Power Corporation). NULL when not yet checked — relevancy "
+                  "(the deterministic keyword score) alone still governs visibility until then. "
+                  "False permanently excludes the row from filter_relevant() regardless of score.")
+    relevancy_ai_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI disambiguation pass set relevancy_ai_relevant — see "
+                  "monitor/relevancy_ai.py. Blank when not yet checked.")
     cover_image = models.FileField(upload_to='print_covers/', blank=True, null=True,
                                     help_text='Front-page scan/cover image, when captured via automated OCR ingestion.')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -655,6 +695,18 @@ class SocialMediaPost(models.Model):
     rank = models.FloatField(default=0)
     reach = models.IntegerField(default=0)
     relevancy = models.FloatField(default=0)
+    relevancy_ai_relevant = models.BooleanField(
+        null=True, blank=True, default=None,
+        help_text="Whether an AI disambiguation pass (see monitor/relevancy_ai.py) confirmed this "
+                  "keyword/competitor match is genuinely about this organisation, as opposed to an "
+                  "unrelated entity that happens to share the same tracked term (e.g. 'BPC' the "
+                  "peptide vs. Botswana Power Corporation). NULL when not yet checked — relevancy "
+                  "(the deterministic keyword score) alone still governs visibility until then. "
+                  "False permanently excludes the row from filter_relevant() regardless of score.")
+    relevancy_ai_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI disambiguation pass set relevancy_ai_relevant — see "
+                  "monitor/relevancy_ai.py. Blank when not yet checked.")
     created_at = models.DateTimeField(auto_now_add=True)
     is_archived = models.BooleanField(default=False, db_index=True)
 
@@ -683,6 +735,18 @@ class BroadcastMention(models.Model):
                   "Blank when sentiment was set manually, by a vendor feed, or not yet analysed.")
     ave = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     relevancy = models.FloatField(default=0)
+    relevancy_ai_relevant = models.BooleanField(
+        null=True, blank=True, default=None,
+        help_text="Whether an AI disambiguation pass (see monitor/relevancy_ai.py) confirmed this "
+                  "keyword/competitor match is genuinely about this organisation, as opposed to an "
+                  "unrelated entity that happens to share the same tracked term (e.g. 'BPC' the "
+                  "peptide vs. Botswana Power Corporation). NULL when not yet checked — relevancy "
+                  "(the deterministic keyword score) alone still governs visibility until then. "
+                  "False permanently excludes the row from filter_relevant() regardless of score.")
+    relevancy_ai_rationale = models.TextField(
+        blank=True, default='',
+        help_text="Why an AI disambiguation pass set relevancy_ai_relevant — see "
+                  "monitor/relevancy_ai.py. Blank when not yet checked.")
     duration = models.CharField(max_length=50, blank=True)
     broadcast_type = models.CharField(max_length=20, choices=BROADCAST_TYPE_CHOICES, default='RADIO')
     created_at = models.DateTimeField(auto_now_add=True)
