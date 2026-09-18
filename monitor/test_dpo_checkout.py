@@ -6,13 +6,16 @@ activated only on a verified payment, and that the manual invoice path still
 works untouched when no gateway is configured.
 """
 import re
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from monitor.models import Organization, Package, SubscriptionRequest, User
+from monitor.models import (EmailVerificationToken, OnboardingProgress, Organization, Package,
+                            SubscriptionRequest, User)
 from monitor.payment_models import Payment
 from monitor.test_dpo import CREATE_OK, DPO_SETTINGS, canned, verify_xml, xml
 
@@ -59,6 +62,36 @@ class CheckoutFlowTests(TestCase):
             response = self.start()
         self.assertEqual(response.status_code, 302)
         self.assertIn('3gdirectpay.com', response['Location'])
+
+    def test_a_second_rapid_submit_reuses_the_pending_checkout(self):
+        """A double-click, or a second POST fired before the first request's
+        redirect lands, must not open a second transaction at the gateway: the
+        second submit should be sent straight back to the token the first one
+        already opened. Only one createToken call, only one Payment row."""
+        with canned(CREATE_OK) as post:
+            first = self.start()
+            second = self.start()
+
+        self.assertEqual(post.call_count, 1)
+        self.assertEqual(Payment.objects.filter(organization=self.org).count(), 1)
+        self.assertEqual(first.status_code, 302)
+        self.assertEqual(second.status_code, 302)
+        self.assertEqual(first['Location'], second['Location'])
+
+    def test_an_expired_pending_checkout_opens_a_fresh_one(self):
+        """The reuse guard is windowed by the gateway's own token lifetime — once
+        that has elapsed the old token is dead at DPO regardless of our status,
+        so a new submit must open a new one rather than reusing it forever."""
+        with canned(CREATE_OK):
+            self.start()
+        stale_cutoff = timezone.now() - timedelta(hours=3)
+        Payment.objects.filter(organization=self.org).update(created_at=stale_cutoff)
+
+        with canned(CREATE_OK) as post:
+            self.start()
+
+        self.assertEqual(post.call_count, 1)
+        self.assertEqual(Payment.objects.filter(organization=self.org).count(), 2)
 
     # ── Return URLs ──────────────────────────────────────────────────────────
     # DPO rejects a loopback return URL with 403 on the whole createToken call,
@@ -295,6 +328,22 @@ class CheckoutFlowTests(TestCase):
         self.assertEqual(payment.settlement_available_at, settlement)
         self.assertEqual(Payment.objects.count(), 1)
 
+    def test_settling_a_payment_does_not_create_an_onboarding_record_for_a_legacy_account(self):
+        """This fixture's user predates onboarding — never had onboarding.start()
+        called for it, so it has no OnboardingProgress row, same as a real account
+        that existed before onboarding was introduced. Settling a payment must not
+        conjure one into existence and drag a grandfathered account into a wizard
+        it was never shown."""
+        self.expire_trial()
+        with canned(CREATE_OK):
+            self.start()
+        payment = Payment.objects.get()
+
+        with canned(verify_xml('000')):
+            self.return_for(payment)
+
+        self.assertFalse(OnboardingProgress.objects.filter(user=self.user).exists())
+
 
 @override_settings(PAYMENTS_ENABLED=False, PAYMENT_PROVIDER='manual',
                    DPO_COMPANY_TOKEN='', DPO_SERVICE_TYPE='')
@@ -332,3 +381,90 @@ class ManualPathUnaffectedTests(TestCase):
         post.assert_not_called()
         self.assertEqual(SubscriptionRequest.objects.count(), 1)
         self.assertEqual(Payment.objects.count(), 0)
+
+
+@override_settings(**DPO_SETTINGS)
+class SkipTrialPayNowTests(TestCase):
+    """"Skip the trial, pay now" — the second signup button, through to the
+    plan step's Pay now button and a settled DPO payment.
+
+    Walks the same sequence PaymentsDisabledTests does (signup → verify →
+    profile → agency → terms/privacy/disclaimer → payment), just with DPO
+    switched on and the "pay now" intent set at signup, since the plan step's
+    Pay now button is only reachable once everything ahead of it is done.
+    """
+    REGISTRATION = {
+        'first_name': 'Naledi', 'last_name': 'Mokgadi', 'email': 'naledi@paynow-test.bw',
+        'phone': '+267 71 234 567', 'job_title': 'Communications Manager',
+        'country': 'Botswana', 'org_name': 'Pay Now Test Org',
+        'password': 'correct-horse-9', 'confirm_password': 'correct-horse-9',
+    }
+
+    def setUp(self):
+        self.package = Package.objects.create(
+            name='Scale', slug='scale-paynow-test', price=1299, currency='USD')
+        self.client.post(reverse('monitor:signup'), {**self.REGISTRATION, 'intent': 'pay_now'})
+        self.user = User.objects.get(email=self.REGISTRATION['email'])
+        self.org = self.user.organization
+        token = EmailVerificationToken.objects.get(user=self.user)
+        self.client.get(reverse('monitor:onboarding_verify_confirm', args=[token.token]))
+        self.client.post(reverse('monitor:onboarding_profile'), {
+            'first_name': 'Naledi', 'last_name': 'Mokgadi',
+            'job_title': 'Communications Manager', 'country': 'Botswana'})
+        self.client.post(reverse('monitor:onboarding_agency'), {'account_type': 'individual'})
+        for name in ('onboarding_terms', 'onboarding_privacy', 'onboarding_disclaimer'):
+            self.client.post(reverse(f'monitor:{name}'), {'accept': 'on'})
+        self.client.post(reverse('monitor:onboarding_payment'), {'action': 'skip'})
+
+    def test_signup_records_the_skip_trial_intent(self):
+        self.assertTrue(self.user.onboarding.skip_trial_requested)
+
+    def test_the_ordinary_create_account_button_does_not_set_the_flag(self):
+        # setUp's own signup left the client logged in, and signup() redirects
+        # an already-authenticated request straight past the form.
+        self.client.logout()
+        other = {**self.REGISTRATION, 'email': 'someoneelse@paynow-test.bw',
+                'org_name': 'Someone Elses Org'}
+        self.client.post(reverse('monitor:signup'), other)
+        user = User.objects.get(email=other['email'])
+        self.assertFalse(user.onboarding.skip_trial_requested)
+
+    def test_the_plan_step_offers_a_pay_now_button_for_a_priced_package(self):
+        response = self.client.get(reverse('monitor:onboarding_plan'))
+        self.assertContains(response, reverse('monitor:checkout_start'))
+        self.assertContains(response, 'Pay now')
+
+    def test_the_plan_step_leads_with_the_skip_trial_banner(self):
+        response = self.client.get(reverse('monitor:onboarding_plan'))
+        self.assertContains(response, 'You chose to skip the trial')
+
+    def test_paying_from_the_plan_step_activates_the_package_immediately(self):
+        with canned(CREATE_OK):
+            response = self.client.post(
+                reverse('monitor:checkout_start'), {'package': self.package.slug})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('3gdirectpay.com', response['Location'])
+
+        payment = Payment.objects.get(organization=self.org)
+        with canned(verify_xml('000', amount=f'{self.package.price:.2f}')):
+            self.client.get(reverse('monitor:checkout_return'), {'CompanyRef': str(payment.id)})
+
+        self.org.refresh_from_db()
+        self.assertEqual(self.org.plan_status, 'active')
+        self.assertEqual(self.org.package_id, self.package.id)
+
+    def test_paying_from_the_plan_step_completes_onboarding_without_a_bounce_back(self):
+        """Without _advance_onboarding_past_plan, this user would land back on
+        the plan step (or earlier) after paying, since plan_assigned is never
+        marked along the checkout_start path."""
+        with canned(CREATE_OK):
+            self.client.post(reverse('monitor:checkout_start'), {'package': self.package.slug})
+        payment = Payment.objects.get(organization=self.org)
+        with canned(verify_xml('000', amount=f'{self.package.price:.2f}')):
+            self.client.get(reverse('monitor:checkout_return'), {'CompanyRef': str(payment.id)})
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.onboarding.is_complete)
+
+        response = self.client.get(reverse('monitor:dashboard', args=[self.org.id]))
+        self.assertEqual(response.status_code, 200)

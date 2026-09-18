@@ -64,7 +64,10 @@ ONBOARDING_URL_NAMES = {
 ALWAYS_ALLOWED_URL_NAMES = ONBOARDING_URL_NAMES | {
     'home', 'login', 'logout', 'pricing', 'signup',
     # A payment that has been made must always be able to complete, whatever
-    # else the account still has outstanding.
+    # else the account still has outstanding. checkout_start is deliberately
+    # NOT here — see _onboarding_gate, which allows it only once the plan step
+    # has actually been reached, so this cannot be used to pay before
+    # verifying an email address or accepting terms.
     'checkout_return', 'checkout_callback', 'checkout_cancelled',
     # Public marketing, reachable at any point — a half-onboarded account
     # following a campaign link should see the page, not be bounced back.
@@ -99,7 +102,7 @@ class OrganizationAccessMiddleware:
         # the step it is on rather than to a page it cannot use yet. Applies to
         # staff accounts too — see the module docstring.
         if url_name not in ALWAYS_ALLOWED_URL_NAMES:
-            gate = self._onboarding_gate(request, user)
+            gate = self._onboarding_gate(request, user, url_name)
             if gate is not None:
                 return gate
 
@@ -122,7 +125,7 @@ class OrganizationAccessMiddleware:
         return None
 
     # ── helpers ──────────────────────────────────────────────────────────────
-    def _onboarding_gate(self, request, user):
+    def _onboarding_gate(self, request, user, url_name=None):
         """Send a user who has not finished onboarding back to their next step.
 
         A missing progress record means the account predates onboarding — it is
@@ -142,6 +145,14 @@ class OrganizationAccessMiddleware:
         step = onboarding.next_step(user)
         if step is None:
             onboarding.advance(user, 'complete')
+            return None
+
+        # The plan step's own "Pay now" button posts to checkout_start. It is a
+        # legitimate destination only once the plan step has actually been
+        # reached — everything ahead of it (verification, terms, privacy,
+        # disclaimer) is already done by then — so allowing it here does not
+        # open a way to pay before any of that.
+        if url_name == 'checkout_start' and step.key == 'plan':
             return None
 
         return self._redirect_onboarding(

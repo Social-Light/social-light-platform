@@ -26,6 +26,7 @@ remains available on every deployment for purchase orders and EFT.
 """
 import logging
 import re
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import login
@@ -39,11 +40,13 @@ from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from . import onboarding
-from .models import Organization, Package, SubscriptionRequest, User, trial_period_days
+from .models import (OnboardingProgress, Organization, Package, SubscriptionRequest, User,
+                     trial_period_days)
 from .onboarding import COUNTRY_CHOICES, DEFAULT_COUNTRY
 from .payment_models import Payment
 from .payments import (PaymentConfigurationError, PaymentError, PaymentRejected,
@@ -223,6 +226,12 @@ def signup(request):
     values, errors = {'country': DEFAULT_COUNTRY}, {}
     if request.method == 'POST':
         values, errors = _validate_signup(request.POST)
+        # "Skip trial, pay now" still creates the account and starts the trial
+        # exactly like "Start free trial" does below — a real payment overrides
+        # plan_status the moment it settles regardless of trial_ends_at, so there
+        # is nothing to skip here. This only changes what the plan step, several
+        # steps later, leads with.
+        skip_trial_requested = request.POST.get('intent') == 'pay_now'
         if not errors:
             with transaction.atomic():
                 org = Organization(
@@ -246,7 +255,7 @@ def signup(request):
                     organization=org,
                     role='org_admin',
                 )
-                onboarding.start(user)
+                onboarding.start(user, skip_trial_requested=skip_trial_requested)
             login(request, user)
             _send_trial_welcome(request, user, org)
             _token, mail_error = send_verification_email(request, user)
@@ -383,6 +392,31 @@ def _billing_url(**params):
     return f"{reverse('monitor:billing')}?{query}" if query else reverse('monitor:billing')
 
 
+def _reusable_pending_payment(org, package, provider):
+    """A still-open checkout for this org/package, if one exists.
+
+    Guards against a second click — or a slow response to the first — opening a
+    second transaction at the gateway: reusing the same payment/token is safe as
+    long as the gateway's own token has not expired, which is why this is
+    windowed by the provider's payment time limit rather than by ``status``
+    alone. An abandoned attempt is left ``pending`` indefinitely (see
+    ``checkout_cancelled``), so without the time window this would reuse a dead
+    token forever instead of ever opening a fresh one.
+    """
+    checkout_url = getattr(provider, 'checkout_url', None)
+    if checkout_url is None:
+        return None
+    time_limit_hours = getattr(provider, 'payment_time_limit', 2)
+    cutoff = timezone.now() - timedelta(hours=time_limit_hours)
+    return Payment.objects.filter(
+        organization=org,
+        package=package,
+        provider=provider.key,
+        status='pending',
+        created_at__gte=cutoff,
+    ).exclude(provider_reference='').order_by('-created_at').first()
+
+
 @login_required
 @require_http_methods(['POST'])
 def checkout_start(request):
@@ -399,6 +433,13 @@ def checkout_start(request):
 
     if org is None or provider is None or package is None or package.contact_only or not package.price:
         return package_request(request)
+
+    existing = _reusable_pending_payment(org, package, provider)
+    if existing is not None:
+        # Same org, same package, same still-open token — send them straight
+        # back to it instead of asking the gateway to open a second one.
+        logger.info('Reusing pending checkout for org %s: payment %s', org.id, existing.id)
+        return redirect(provider.checkout_url(existing.provider_reference))
 
     return_url = _absolute(request, 'monitor:checkout_return')
     cancel_url = _absolute(request, 'monitor:checkout_cancelled')
@@ -482,7 +523,36 @@ def _settle(payment):
             # Only on the transition to paid. Re-verifying a settled payment must
             # not generate fresh gateway traffic.
             _capture_saved_card(provider, payment)
+        _advance_onboarding_past_plan(payment)
     return result
+
+
+def _advance_onboarding_past_plan(payment):
+    """Skip the rest of the onboarding wizard for whoever just paid.
+
+    A payment made from the onboarding plan step's "Pay now" button settles
+    here, same as any other — but plan_assigned is never marked along that
+    path, so without this the user would be sent straight back into the
+    wizard they just paid their way out of. A no-op for accounts that predate
+    onboarding (no progress record) and for payments made from the billing
+    page after onboarding is already complete — advancing an already-complete
+    record is harmless, but one that does not exist must not be created here.
+
+    Checks for an existing record with a direct query rather than
+    ``onboarding.get_progress()``, which reads ``user.onboarding`` — Django
+    caches that reverse relation on the user instance, and ``advance()``
+    below reads the same cached attribute internally to decide whether
+    onboarding is now complete. Populating that cache here first would leave
+    it holding the pre-payment state, so the completion check would never see
+    ``plan_assigned`` having just been reached.
+    """
+    user = payment.created_by
+    if user is None:
+        return
+    exists_and_incomplete = OnboardingProgress.objects.filter(
+        user=user).exclude(state='complete').exists()
+    if exists_and_incomplete:
+        onboarding.advance(user, 'plan_assigned')
 
 
 def _capture_saved_card(provider, payment):

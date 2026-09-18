@@ -414,6 +414,11 @@ class OnboardingProgress(models.Model):
     payment_skipped = models.BooleanField(
         default=False,
         help_text='The payment step was skipped because no payment gateway was enabled.')
+    skip_trial_requested = models.BooleanField(
+        default=False,
+        help_text="Chose \"skip trial, pay now\" at signup rather than \"start free trial\". "
+                  "Surfaced at the plan step to emphasise paying immediately over the usual "
+                  "request-an-invoice-and-stay-on-trial path; does not skip any other step.")
 
     started_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)

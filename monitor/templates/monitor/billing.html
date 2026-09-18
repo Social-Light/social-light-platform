@@ -364,7 +364,7 @@
         <div class="pkg-current"><i class="bi bi-check-circle-fill"></i> Your current package</div>
       {% else %}
         {% if gateway_checkout and p.price and not p.contact_only %}
-        <form method="post" action="{% url 'monitor:checkout_start' %}">
+        <form method="post" action="{% url 'monitor:checkout_start' %}" class="checkout-form">
           {% csrf_token %}
           <input type="hidden" name="package" value="{{ p.slug }}"/>
           <button type="submit" class="pkg-btn">Pay {{ p.price_display }} and activate</button>
@@ -503,6 +503,18 @@
         answer.removeAttribute('hidden');
         qa.querySelector('.sign').textContent = '−';
       }
+    });
+  });
+
+  // Package checkout posts to the gateway and redirects; without this a
+  // double-click or a slow response fires a second POST before the redirect
+  // lands, which used to open a second transaction at the gateway.
+  Array.prototype.forEach.call(document.querySelectorAll('.checkout-form'), function (form) {
+    form.addEventListener('submit', function () {
+      var button = form.querySelector('button[type="submit"]');
+      if (!button || button.disabled) return;
+      button.disabled = true;
+      button.textContent = 'Redirecting…';
     });
   });
 })();
